@@ -1,69 +1,236 @@
-import Image from "next/image";
+import Link from "next/link";
+import { Brand } from "@/components/brand";
+import { MarketsStrip } from "@/components/markets-strip";
+import { Lamp } from "@/components/ui/lamp";
+import { UtcClock } from "@/components/ui/clock";
+import { getSessionUser } from "@/lib/auth";
 
-export default function Home() {
+/**
+ * The landing page.
+ *
+ * Deliberately not a centred hero above a row of equal feature cards. The
+ * product is a screen full of live numbers, so the page shows one: the same
+ * settlement-point monitor the desk uses, running on the real feed, beside a
+ * left-aligned statement. Everything below it is written as a specification
+ * rather than as a set of promises, because a trading desk is bought on what
+ * it does with a number, not on adjectives.
+ */
+
+const SPEC: Array<{ term: string; detail: string }> = [
+  {
+    term: "Market",
+    detail:
+      "ERCOT hubs, load zones and resource nodes, priced forward across the curve.",
+  },
+  {
+    term: "Series",
+    detail: "DAM_HOURLY, RTM_HOURLY and RTM_15MIN settlement intervals.",
+  },
+  {
+    term: "Instruments",
+    detail:
+      "Point energy, basis spread, convergence, block forward and virtual trade, each with its own settlement rule.",
+  },
+  {
+    term: "Starting capital",
+    detail:
+      "$100,000 virtual cash and a $500,000 gross exposure cap, per account.",
+  },
+  {
+    term: "Execution",
+    detail:
+      "Server-authoritative price for the exact delivery interval an order references. An order with no price for its own interval is refused rather than filled at an older one.",
+  },
+  {
+    term: "Accounting",
+    detail:
+      "Weighted-average cost basis, realized P&L booked on every close, and positions cashed out automatically at delivery.",
+  },
+  {
+    term: "Order integrity",
+    detail:
+      "Idempotent by client order id, so a repeated or concurrent submission fills exactly once. The blotter is append-only and immutable.",
+  },
+  {
+    term: "Privacy",
+    detail:
+      "Row-level security isolates every account. Leaderboard participation is opt-in.",
+  },
+  {
+    term: "Data source",
+    detail:
+      "A deterministic simulated generator, labelled on every screen. This is never presented as live ERCOT data.",
+  },
+];
+
+const SEQUENCE: Array<{ title: string; body: string }> = [
+  {
+    title: "Fund the desk",
+    body: "Sign in with email, Google or GitHub. The account bootstraps itself with virtual cash and an exposure limit.",
+  },
+  {
+    title: "Pick a point and an interval",
+    body: "Choose a settlement point, a series and an upcoming delivery window. The ticket states what the priced horizon can actually cover.",
+  },
+  {
+    title: "Send the order",
+    body: "The server prices the exact interval, checks cash cover and gross exposure, then fills or refuses. Nothing fills at a stale price.",
+  },
+  {
+    title: "Read the book",
+    body: "Positions, realized and unrealized P&L, margin state and drawdown, recomputed from the executed blotter rather than from a running total.",
+  },
+];
+
+export default async function Home() {
+  const user = await getSessionUser().catch(() => null);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="min-h-dvh">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-[var(--ink-panel)]">
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
+          <Brand tag="paper trading" />
+          <div className="ml-auto flex items-center gap-3">
+            <span className="hidden border-l border-white/10 pl-3 sm:block">
+              <UtcClock />
+            </span>
+            {user ? (
+              <Link href="/dashboard" className="btn btn-primary btn-sm">
+                Open the desk
+              </Link>
+            ) : (
+              <>
+                <Link href="/login" className="btn btn-sm">
+                  Sign in
+                </Link>
+                <Link href="/signup" className="btn btn-primary btn-sm">
+                  Create account
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-4">
+        {/* ---- Statement + the actual product ---------------------------- */}
+        <section className="grid gap-10 py-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,27rem)] lg:gap-14 lg:py-20">
+          <div className="reveal">
+            <p className="caption">ERCOT · day-ahead and real-time</p>
+            <h1 className="mt-4 max-w-2xl font-display text-4xl leading-[1.05] font-bold tracking-tight sm:text-5xl">
+              Trade the Texas power curve, hour by hour.
+            </h1>
+            <p className="mt-6 max-w-xl text-[15px] leading-relaxed t-dim">
+              PowerFlow is a paper-trading desk for the ERCOT market. Hourly
+              day-ahead and real-time series, 15-minute intervals, point and
+              basis positions, block forwards and virtual trades. Every fill is
+              priced off the interval it names, and every position is settled by
+              the same engine that opened it.
+            </p>
+
+            <div className="mt-8 flex flex-wrap gap-3">
+              {user ? (
+                <Link href="/dashboard" className="btn btn-primary">
+                  Go to the desk
+                </Link>
+              ) : (
+                <>
+                  <Link href="/signup" className="btn btn-primary">
+                    Start with $100,000 virtual
+                  </Link>
+                  <Link href="/markets" className="btn">
+                    Browse markets
+                  </Link>
+                </>
+              )}
+            </div>
+
+            <p className="mt-5 caption">
+              No card, no deposit, no real money. Simulation only.
+            </p>
+          </div>
+
+          <div className="reveal" style={{ animationDelay: "80ms" }}>
+            <section className="card card-bracket p-0">
+              <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+                <h2 className="card-title mb-0">Settlement point monitor</h2>
+                <span className="badge badge-amber">
+                  <Lamp pulse />
+                  Live
+                </span>
+              </div>
+              <div className="p-4">
+                <MarketsStrip />
+              </div>
+            </section>
+            <p className="mt-3 caption">
+              Running on the live feed right now, not a screenshot.
+            </p>
+          </div>
+        </section>
+
+        {/* ---- Specification --------------------------------------------- */}
+        <section className="pb-14">
+          <div className="mb-5 flex items-baseline gap-4">
+            <h2 className="caption t-dim">System specification</h2>
+            <div className="h-px flex-1 bg-white/10" />
+          </div>
+          <dl className="border-t border-white/10">
+            {SPEC.map((row) => (
+              <div
+                key={row.term}
+                className="grid gap-1 border-b border-white/[0.07] py-3 sm:grid-cols-[13rem_1fr] sm:gap-6"
+              >
+                <dt className="caption pt-0.5">{row.term}</dt>
+                <dd className="text-[12.5px] leading-relaxed t-dim">
+                  {row.detail}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        {/* ---- Operating sequence ---------------------------------------- */}
+        <section className="pb-20">
+          <div className="mb-6 flex items-baseline gap-4">
+            <h2 className="caption t-dim">Operating sequence</h2>
+            <div className="h-px flex-1 bg-white/10" />
+          </div>
+          <ol className="grid gap-7 sm:grid-cols-2 lg:grid-cols-4">
+            {SEQUENCE.map((step, i) => (
+              <li
+                key={step.title}
+                className="reveal"
+                style={{ animationDelay: `${i * 70}ms` }}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="mono text-[11px] t-accent">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className="h-px flex-1 bg-white/10" />
+                </div>
+                <h3 className="mt-3 font-display text-sm font-semibold">
+                  {step.title}
+                </h3>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed t-dim">
+                  {step.body}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      </main>
+
+      <footer className="border-t border-white/10 bg-[var(--ink-panel)]">
+        <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-7 sm:flex-row sm:items-center sm:justify-between">
+          <p className="caption">
+            PowerFlow · for education only · not investment advice
+          </p>
+          <p className="caption">
+            All timestamps UTC · market data is simulated and labelled as such
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </footer>
     </div>
   );
 }

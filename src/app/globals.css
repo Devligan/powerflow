@@ -1,26 +1,708 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   PowerFlow — grid control room
+   --------------------------------------------------------------------------
+   A deliberately narrow system, chosen for the domain (a Texas grid trading
+   desk) rather than left at a component-kit default:
+
+     - Three typefaces with three separate jobs. Archivo for structure, IBM
+       Plex Sans for prose, IBM Plex Mono for every number, code and
+       timestamp. Data is monospaced because a column of figures that does not
+       align is a column nobody can scan.
+     - One attention colour: signal amber, the colour a control room uses for
+       "look here". Green and red mean profit and loss and nothing else, so
+       colour always carries meaning instead of decoration.
+     - Square corners and hairline rules. Panels are labelled like equipment
+       faceplates, not styled like cards.
+     - Motion only where it reports something: a price that moved, a feed that
+       is live, a chart that just drew.
+   ========================================================================== */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0b0c0e;
+  --foreground: #e6e3dd;
+  --muted: #9c9891;
+  --border: rgb(230 227 221 / 0.1);
+
+  --ink:       #0b0c0e; /* page            */
+  --ink-panel: #101214; /* panel face      */
+  --ink-plate: #17191c; /* raised header   */
+  --ink-well:  #0e1012; /* input well      */
+  --ink-hover: #1b1e21;
+
+  --text:      #e6e3dd; /* 13.9:1 on the panel face */
+  --text-dim:  #9c9891; /* 6.5:1  */
+  --text-mute: #8a867f; /* 5.1:1 — captions are 10px, so this floor
+                           matters; anything darker fails AA. */
+
+  --line:        rgb(230 227 221 / 0.1);
+  --line-strong: rgb(230 227 221 / 0.18);
+  --line-bright: rgb(230 227 221 / 0.3);
+
+  /* The one attention colour. */
+  --accent:      #e2a33d;
+  --accent-hi:   #efb352;
+  --accent-ink:  #1a1204;
+  --accent-bg:   rgb(226 163 61 / 0.12);
+  --accent-line: rgb(226 163 61 / 0.4);
+
+  /* Semantic only: long/profit and short/loss. */
+  --long:      #5ec98b;
+  --long-bg:   rgb(94 201 139 / 0.12);
+  --long-line: rgb(94 201 139 / 0.36);
+
+  --short:      #e2664e;
+  --short-bg:   rgb(226 102 78 / 0.12);
+  --short-line: rgb(226 102 78 / 0.36);
+
+  /* Structural, for tags that classify rather than warn. */
+  --steel:      #8fa9b8;
+  --steel-bg:   rgb(143 169 184 / 0.1);
+  --steel-line: rgb(143 169 184 / 0.34);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-archivo);
+  --font-sans: var(--font-plex);
+  --font-mono: var(--font-plex-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    /* A faint engineering grid. Held at 3% so it is texture in the gutters
+       and never competes with a table. */
+    background-color: var(--ink);
+    background-image:
+      linear-gradient(to right, rgb(230 227 221 / 0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(230 227 221 / 0.03) 1px, transparent 1px);
+    background-size: 56px 56px;
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: var(--font-plex), ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  * {
+    border-color: var(--border);
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.012em;
+  }
+
+  ::selection {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(230 227 221 / 0.16) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(230 227 221 / 0.16);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(230 227 221 / 0.28);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  /* ---------------------------------------------------------------------
+     Type roles
+     --------------------------------------------------------------------- */
+
+  /* Every figure, identifier and timestamp. */
+  .mono {
+    font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "zero" 1;
+    letter-spacing: -0.01em;
+  }
+
+  /* The shouted label: a faceplate caption, not a word in a sentence. */
+  .caption {
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+  }
+
+  .pos {
+    color: var(--long);
+  }
+  .neg {
+    color: var(--short);
+  }
+  .flat {
+    color: var(--text-mute);
+  }
+
+  /* Tone helpers, so no page reaches for a framework grey. */
+  .t-fg {
+    color: var(--text);
+  }
+  .t-dim {
+    color: var(--text-dim);
+  }
+  .t-mute {
+    color: var(--text-mute);
+  }
+  .t-accent {
+    color: var(--accent);
+  }
+  .t-long {
+    color: var(--long);
+  }
+  .t-short {
+    color: var(--short);
+  }
+  .t-steel {
+    color: var(--steel);
+  }
+
+  /* ---------------------------------------------------------------------
+     Inline notes — square and hairline-bordered, never a rounded tint block
+     --------------------------------------------------------------------- */
+
+  .note {
+    border: 1px solid var(--line);
+    border-left: 2px solid var(--line-bright);
+    background: var(--ink-well);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.6875rem;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+
+  .note-warn {
+    border-color: var(--accent-line);
+    border-left-color: var(--accent);
+    background: var(--accent-bg);
+    color: #f0d3a0;
+  }
+
+  .note-error {
+    border-color: var(--short-line);
+    border-left-color: var(--short);
+    background: var(--short-bg);
+    color: #f3b7a9;
+  }
+
+  .note-ok {
+    border-color: var(--long-line);
+    border-left-color: var(--long);
+    background: var(--long-bg);
+    color: #b3e6c9;
+  }
+
+  /* ---------------------------------------------------------------------
+     Panels
+     --------------------------------------------------------------------- */
+
+  /* A panel is a piece of equipment with a labelled face, so the top edge
+     gets a hairline highlight rather than a soft shadow. */
+  .card {
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: 0;
+    background: var(--ink-panel);
+    padding: 1rem;
+  }
+
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(230 227 221 / 0.14),
+      transparent
+    );
+    pointer-events: none;
+  }
+
+  /* The faceplate caption. The amber tick is the one place amber is
+     decorative, and it is what makes a panel read as labelled. */
+  .card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .card-title::before {
+    content: "";
+    flex: none;
+    width: 3px;
+    height: 0.85em;
+    background: var(--accent);
+  }
+
+  /* Corner brackets, for the one panel that is the product itself. */
+  .card-bracket::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    pointer-events: none;
+    background:
+      linear-gradient(var(--accent-line), var(--accent-line)) left top / 10px 1px no-repeat,
+      linear-gradient(var(--accent-line), var(--accent-line)) left top / 1px 10px no-repeat,
+      linear-gradient(var(--accent-line), var(--accent-line)) right top / 10px 1px no-repeat,
+      linear-gradient(var(--accent-line), var(--accent-line)) right top / 1px 10px no-repeat;
+  }
+
+  .hair {
+    height: 1px;
+    background: var(--line);
+  }
+
+  /* A fixed-width readout tile, used along the settlement point strip. */
+  .tile {
+    position: relative;
+    flex: none;
+    width: 10rem;
+    border: 1px solid var(--line);
+    background: var(--ink-panel);
+    padding: 0.75rem;
+    transition:
+      border-color 130ms ease,
+      background-color 130ms ease;
+  }
+
+  .tile:hover {
+    border-color: var(--line-bright);
+    background: var(--ink-hover);
+  }
+
+  /* ---------------------------------------------------------------------
+     Navigation — a rule that grows under the pointer, not a rounded chip
+     --------------------------------------------------------------------- */
+
+  .nav-link {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 0.6rem;
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: var(--text-dim);
+    transition: color 130ms ease;
+  }
+
+  .nav-link::after {
+    content: "";
+    position: absolute;
+    right: 0.6rem;
+    bottom: -1px;
+    left: 0.6rem;
+    height: 2px;
+    background: var(--line-bright);
+    transform: scaleX(0.35);
+    transition:
+      transform 160ms cubic-bezier(0.22, 0.7, 0.3, 1),
+      background-color 130ms ease;
+  }
+
+  .nav-link:hover {
+    color: var(--text);
+  }
+
+  .nav-link:hover::after {
+    transform: scaleX(1);
+  }
+
+  .nav-link-active {
+    color: var(--accent);
+  }
+
+  .nav-link-active::after {
+    background: var(--accent);
+    transform: scaleX(1);
+  }
+
+  /* ---------------------------------------------------------------------
+     Tags — squarish equipment labels, deliberately not pills
+     --------------------------------------------------------------------- */
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: transparent;
+    padding: 0.0625rem 0.375rem;
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: 0.09em;
+    line-height: 1.5;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: var(--text-dim);
+  }
+
+  .badge-green {
+    border-color: var(--long-line);
+    background: var(--long-bg);
+    color: var(--long);
+  }
+  .badge-red {
+    border-color: var(--short-line);
+    background: var(--short-bg);
+    color: var(--short);
+  }
+  .badge-amber {
+    border-color: var(--accent-line);
+    background: var(--accent-bg);
+    color: var(--accent);
+  }
+  .badge-blue {
+    border-color: var(--steel-line);
+    background: var(--steel-bg);
+    color: var(--steel);
+  }
+  .badge-neutral {
+    border-color: var(--line-strong);
+    background: transparent;
+    color: var(--text-dim);
+  }
+
+  /* A status lamp. Colour comes from the surrounding tag. */
+  .lamp {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    background: currentColor;
+  }
+  .lamp-pulse {
+    animation: pf-lamp 2.4s ease-in-out infinite;
+  }
+
+  /* ---------------------------------------------------------------------
+     Controls
+     --------------------------------------------------------------------- */
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: var(--ink-plate);
+    padding: 0.5rem 0.875rem;
+    font-family: var(--font-plex), ui-sans-serif, sans-serif;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: var(--text);
+    cursor: pointer;
+    transition:
+      background-color 130ms ease,
+      border-color 130ms ease,
+      color 130ms ease,
+      transform 90ms ease;
+  }
+
+  .btn:hover:not(:disabled) {
+    background: var(--ink-hover);
+    border-color: var(--line-bright);
+  }
+
+  .btn:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  .btn:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-hi);
+    border-color: var(--accent-hi);
+  }
+
+  .btn-danger {
+    background: var(--short-bg);
+    border-color: var(--short-line);
+    color: var(--short);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: rgb(226 102 78 / 0.22);
+    border-color: var(--short);
+  }
+
+  .btn-sm {
+    padding: 0.25rem 0.55rem;
+    font-size: 0.625rem;
+    letter-spacing: 0.06em;
+  }
+
+  .label {
+    display: block;
+    margin-bottom: 0.3rem;
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .input {
+    width: 100%;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: var(--ink-well);
+    padding: 0.5rem 0.625rem;
+    font-family: var(--font-plex), ui-sans-serif, sans-serif;
+    font-size: 0.8125rem;
+    color: var(--text);
+    outline: none;
+    transition:
+      border-color 130ms ease,
+      background-color 130ms ease;
+  }
+
+  .input:hover {
+    border-color: var(--line-bright);
+  }
+
+  /* No glow: a solid amber edge is the focus state. */
+  .input:focus,
+  .input:focus-visible {
+    border-color: var(--accent);
+    background: var(--ink-panel);
+  }
+
+  .input::placeholder {
+    color: var(--text-mute);
+  }
+
+  select.input {
+    appearance: auto;
+  }
+
+  /* A focus ring that survives on any surface. */
+  :focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  /* ---------------------------------------------------------------------
+     Tables
+     --------------------------------------------------------------------- */
+
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .table thead th {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--line-strong);
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-align: left;
+    white-space: nowrap;
+    color: var(--text-mute);
+  }
+
+  .table tbody td {
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid rgb(230 227 221 / 0.055);
+    white-space: nowrap;
+  }
+
+  .table tbody tr {
+    transition: background-color 110ms ease;
+  }
+
+  .table tbody tr:hover {
+    background: rgb(230 227 221 / 0.026);
+  }
+
+  /* The hover marker rides the first cell so the row can stay a table row. */
+  .table tbody tr:hover td:first-child {
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+
+  .table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  /* ---------------------------------------------------------------------
+     Meters
+     --------------------------------------------------------------------- */
+
+  .meter {
+    position: relative;
+    height: 6px;
+    border: 1px solid var(--line);
+    background: var(--ink-well);
+    overflow: hidden;
+  }
+
+  .meter > span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    transition: width 420ms cubic-bezier(0.22, 0.7, 0.3, 1);
+  }
+
+  /* ---------------------------------------------------------------------
+     Motion — only where it reports a state change
+     --------------------------------------------------------------------- */
+
+  @keyframes pf-rise {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes pf-lamp {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.3;
+    }
+  }
+
+  @keyframes pf-flash-up {
+    from {
+      background-color: var(--long-bg);
+      box-shadow: inset 0 0 0 1px var(--long-line);
+    }
+    to {
+      background-color: transparent;
+      box-shadow: inset 0 0 0 1px transparent;
+    }
+  }
+
+  @keyframes pf-flash-down {
+    from {
+      background-color: var(--short-bg);
+      box-shadow: inset 0 0 0 1px var(--short-line);
+    }
+    to {
+      background-color: transparent;
+      box-shadow: inset 0 0 0 1px transparent;
+    }
+  }
+
+  @keyframes pf-sweep {
+    from {
+      background-position: -160% 0;
+    }
+    to {
+      background-position: 260% 0;
+    }
+  }
+
+  @keyframes pf-draw {
+    from {
+      stroke-dashoffset: var(--pf-length, 1200);
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  /* Staggered entrance. The delay is set per element as an inline style. */
+  .reveal {
+    animation: pf-rise 280ms cubic-bezier(0.22, 0.7, 0.3, 1) both;
+  }
+
+  .flash-up {
+    animation: pf-flash-up 620ms ease-out both;
+  }
+  .flash-down {
+    animation: pf-flash-down 620ms ease-out both;
+  }
+
+  .skeleton {
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(230 227 221 / 0.07) 45%,
+      transparent 90%
+    );
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    animation: pf-sweep 1.5s linear infinite;
+  }
+
+  .draw {
+    stroke-dasharray: var(--pf-length, 1200);
+    animation: pf-draw 900ms cubic-bezier(0.3, 0.7, 0.3, 1) both;
+  }
+
+  .scroll-thin {
+    scrollbar-width: thin;
+  }
+}
+
+/* Nothing above may move when the reader has asked for stillness. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

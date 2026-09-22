@@ -30,11 +30,19 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files: real values stay local, the documented template is committed
+.env
+.env.*
+!.env.example
 
 # vercel
 .vercel
+
+# supabase CLI local state
+supabase/.temp
+
+# editor/agent tooling state
+.freebuff
 
 # typescript
 *.tsbuildinfo
