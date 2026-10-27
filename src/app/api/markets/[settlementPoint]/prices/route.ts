@@ -5,7 +5,7 @@ import { DEFAULT_MARKET_PRODUCT, getProduct } from "@/lib/ercot/types";
 
 export const dynamic = "force-dynamic";
 
-export const maxDuration = 30;
+export const maxDuration = 10;
 
 interface Params {
   params: Promise<{ settlementPoint: string }>;
