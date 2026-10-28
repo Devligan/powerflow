@@ -81,7 +81,7 @@ export function LoginForm() {
               id="password"
               type="password"
               required
-              autoComplete="current-password"
+              autoComplete="password"
               className="input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

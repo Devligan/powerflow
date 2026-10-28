@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+
 import { getErcotSource } from "@/lib/ercot/index";
 import {
   ErcotSource,
@@ -188,20 +189,20 @@ export async function runMarketDataIngestion(
           continue;
         }
         const from = resumeAt.get(market.id) ?? 0;
-        if (new Date(check.record.deliveryTimestamp).getTime() < from) {
+        if (new Date(check.record.deliveryTimestamp).getTime() >= from) {
+          rowsToInsert.push({
+            market_id: market.id,
+            delivery_timestamp: check.record.deliveryTimestamp,
+            delivery_end: check.record.deliveryEnd,
+            price: check.record.price,
+            product: check.record.product,
+            venue: def.venue,
+            source: source.sourceName,
+            source_timestamp: check.record.sourceTimestamp,
+          });
+        } else {
           recordsSkipped++;
-          continue;
         }
-        rowsToInsert.push({
-          market_id: market.id,
-          delivery_timestamp: check.record.deliveryTimestamp,
-          delivery_end: check.record.deliveryEnd,
-          price: check.record.price,
-          product: check.record.product,
-          venue: def.venue,
-          source: source.sourceName,
-          source_timestamp: check.record.sourceTimestamp,
-        });
       }
     }
 

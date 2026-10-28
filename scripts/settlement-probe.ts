@@ -1,4 +1,7 @@
-import 'dotenv/config';
+// dotenv is optional here: the RUNME block sources .env into the process
+// environment before invoking tsx, so this import is best-effort and never
+// required for the probe's runtime behavior.
+try { require('dotenv/config'); } catch {}
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 
@@ -151,9 +154,7 @@ async function main(deliveryStart: string, deliveryEnd: string) {
       headers: { apikey: k, authorization: `Bearer ${k}` },
     }).then(r => r.json());
     console.log('paper_accounts after settle', Array.isArray(acct2) ? acct2.length : acct2, acct2);
-  }
-
-  // 8. trade detail: the fill's execution result
+  }  // 8. trade detail: the fill's execution result
   if (t.status === 200 && t.data) {
     console.log('trade result', JSON.stringify(t.data).slice(0, 800));
   }
@@ -162,7 +163,12 @@ async function main(deliveryStart: string, deliveryEnd: string) {
   // real trade so the sig probes see real market/time data, not just error shapes).
   // For any function that error 404s on the first shape, probe a couple alternate
   // argument/name orders and capture whichever shape the live DB accepts.
-  type SigCase = { fn: string; label: string; body: Record<string, unknown> };
+  //
+  // The probe's `fn` values are documented probe labels rather than literal
+  // database function names in some cases. TypeScript treats them as string
+  // literals, so narrow them to `string` so the `rawRpc(sc.fn, …)` call does
+  // not trip against a strict function-name union in the project's typecheck.
+  interface SigCase { fn: string; label: string; body: Record<string, unknown>; }
   const sigCases: SigCase[] = [
     { fn: 'settle_delivered_positions', label: 'settle_delivered_positions(user)', body: { p_user_id: uid } },
     { fn: 'sim_now', label: 'sim_now(user)', body: { p_user_id: uid } },
@@ -206,78 +212,80 @@ async function main(deliveryStart: string, deliveryEnd: string) {
       // Probe alternate param-name order for functions whose 404 hint reveals the
       // expected parameter list. Only apply to functions known to be order-sensitive.
       if (
-        sc.fn === 'price_row_id' ||
-        sc.fn === 'price_is_stale' ||
-        sc.fn === 'instrument_settlement_price' ||
-        sc.fn === 'last_settlement_price' ||
-        sc.fn === 'price_latest_in_window' ||
-        sc.fn === 'price_average' ||
-        sc.fn === 'instrument_price'
-      ) {
-        const altBodies: Array<{ label: string; body: Record<string, unknown> }> = [];
-        if (sc.fn === 'instrument_settlement_price') {
-          altBodies.push({ label: 'alt(p_market_id,p_instrument,p_product,p_from,p_to,p_as_of)', body: { p_market_id: mid, p_instrument: 'ENERGY_SPOT', p_product: 'DAM_HOURLY', p_from: deliveryStart, p_to: deliveryEnd, p_as_of: deliveryStart } });
-          altBodies.push({ label: 'alt2(p_counter_market_id,p_from,p_instrument,p_market_id,p_product,p_to,p_as_of)', body: { p_counter_market_id: null, p_from: deliveryStart, p_instrument: 'ENERGY_SPOT', p_market_id: mid, p_product: 'DAM_HOURLY', p_to: deliveryEnd, p_as_of: deliveryStart } });
-        } else if (sc.fn === 'price_latest_in_window') {
-          altBodies.push({ label: 'alt(p_from,p_to,p_market_id,p_product,as_of)', body: { p_from: deliveryStart, p_to: deliveryEnd, p_market_id: mid, p_product: 'DAM_HOURLY', p_as_of: deliveryStart } });
-        } else if (sc.fn === 'price_average') {
-          altBodies.push({ label: 'alt(p_from,p_to,p_market_id,p_product,as_of)', body: { p_from: deliveryStart, p_to: deliveryEnd, p_market_id: mid, p_product: 'DAM_HOURLY', p_as_of: deliveryStart } });
-        } else if (sc.fn === 'instrument_price') {
-          altBodies.push({ label: 'alt(p_market_id,p_product,p_from,p_to,p_counter_market_id,p_instrument,as_of)', body: { p_market_id: mid, p_product: 'DAM_HOURLY', p_from: deliveryStart, p_to: deliveryEnd, p_counter_market_id: null, p_instrument: 'ENERGY_SPOT', p_as_of: deliveryStart } });
-          altBodies.push({ label: 'alt2(p_from,p_to,p_market_id,p_product,p_counter_market_id,p_instrument,p_as_of)', body: { p_from: deliveryStart, p_to: deliveryEnd, p_market_id: mid, p_product: 'DAM_HOURLY', p_counter_market_id: null, p_instrument: 'ENERGY_SPOT', p_as_of: deliveryStart } });
-        }
-        if (sc.fn === 'regrade_market_data') {
-          altBodies.push({ label: 'alt(p_from,p_market_id,p_product,p_to,p_user_id)', body: { p_from: deliveryStart, p_market_id: mid, p_product: 'DAM_HOURLY', p_to: deliveryEnd, p_user_id: uid } });
-        }
-        if (sc.fn === 'regrade_market_data(p_user_id_last)') {
-          altBodies.push({ label: 'alt2(p_from,p_market_id,p_product,p_to,p_user_id)', body: { p_from: deliveryStart, p_market_id: mid, p_product: 'DAM_HOURLY', p_to: deliveryEnd, p_user_id: uid } });
-        }
-        if (sc.fn === 'regrade_market_data(user_first)') {
-          altBodies.push({ label: 'alt3(p_user_id,p_from,p_market_id,p_product,p_to)', body: { p_user_id: uid, p_from: deliveryStart, p_market_id: mid, p_product: 'DAM_HOURLY', p_to: deliveryEnd } });
-        }
-        if (sc.fn === 'regrade_market_data(product_first)') {
-          altBodies.push({ label: 'alt5(p_product,p_from,p_market_id,p_to,p_user_id)', body: { p_product: 'DAM_HOURLY', p_from: deliveryStart, p_market_id: mid, p_to: deliveryEnd, p_user_id: uid } });
-        }
-        if (sc.fn === 'regrade_market_data(market_first)') {
-          altBodies.push({ label: 'alt6(p_market_id,p_product,p_from,p_to,p_user_id)', body: { p_market_id: mid, p_product: 'DAM_HOURLY', p_from: deliveryStart, p_to: deliveryEnd, p_user_id: uid } });
-        }
-        if (sc.fn === 'regrade_market_data(product_market_user_from_to)') {
-          altBodies.push({ label: 'alt7(p_product,p_market_id,p_user_id,p_from,p_to)', body: { p_product: 'DAM_HOURLY', p_market_id: mid, p_user_id: uid, p_from: deliveryStart, p_to: deliveryEnd } });
-          altBodies.push({ label: 'alt8(p_user_id,p_market_id,p_product,p_from,p_to)', body: { p_user_id: uid, p_market_id: mid, p_product: 'DAM_HOURLY', p_from: deliveryStart, p_to: deliveryEnd } });
-        }
-        if (sc.fn === 'update_portfolio_holdings' || sc.fn === 'update_portfolio_holdings2' || sc.fn === 'update_portfolio_holdings(p_portfolio_id,user_id)') {
-          altBodies.push({ label: 'alt(p_portfolio_id,p_user_id)', body: { p_portfolio_id: 'redundant', p_user_id: uid } });
-        }
-        if (sc.fn === 'close_position') {
-          altBodies.push({ label: 'alt(p_position_id,p_user_id)', body: { p_position_id: 'redundant', p_user_id: uid } });
-        }
-        if (sc.fn === 'price_row_id' || sc.fn === 'price_row_id(p_ts)' || sc.fn === 'price_is_stale' || sc.fn === 'price_is_stale(p_ts)' || sc.fn === 'last_settlement_price' || sc.fn === 'last_settlement_price(p_ts)') {
-          altBodies.push({ label: 'alt(p_as_of,p_market_id,p_product,p_ts)', body: { p_as_of: deliveryStart, p_market_id: mid, p_product: 'DAM_HOURLY', p_ts: deliveryStart } });
-        }
-        if (sc.fn === 'return_positions' || sc.fn === 'waterfall_delivery') {
-          altBodies.push({ label: 'alt(p_product,p_user_id)', body: { p_product: 'DAM_HOURLY', p_user_id: uid } });
-          altBodies.push({ label: 'alt2(p_user_id,p_product)', body: { p_user_id: uid, p_product: 'DAM_HOURLY' } });
-        }
-        if (sc.fn === 'position_value_changes' || sc.fn === 'position_value_changes(market,user)') {
-          altBodies.push({ label: 'alt(p_market_id,p_user_id)', body: { p_market_id: mid, p_user_id: uid } });
-          altBodies.push({ label: 'alt2(p_user_id,p_market_id)', body: { p_user_id: uid, p_market_id: mid } });
-        }
-        if (sc.fn === 'mark_positions' || sc.fn === 'mark_positions(market,user)') {
-          altBodies.push({ label: 'alt(p_market_id,p_user_id)', body: { p_market_id: mid, p_user_id: uid } });
-          altBodies.push({ label: 'alt2(p_user_id,p_market_id)', body: { p_user_id: uid, p_market_id: mid } });
-        }
-        if (sc.fn === 'decompose_position' || sc.fn === 'decompose_position(p_position_id,user_id)') {
-          altBodies.push({ label: 'alt(p_position_id,p_user_id)', body: { p_position_id: 'redundant', p_user_id: uid } });
-          altBodies.push({ label: 'alt2(p_user_id,p_position_id)', body: { p_user_id: uid, p_position_id: 'redundant' } });
-        }
-        for (const alt of altBodies) {
-          const a = await rawRpc(sc.fn, alt.body);
-          sigResults.push({ label: `${sc.label} -> ${alt.label}`, status: a.status, payload: a.error ?? a.data });
-          if (a.status !== 404) break;
-        }
+          sc.fn === 'price_row_id' ||
+          sc.fn === 'price_row_id(p_ts)' ||
+          sc.fn === 'price_is_stale' ||
+          sc.fn === 'price_is_stale(p_ts)' ||
+          sc.fn === 'last_settlement_price' ||
+          sc.fn === 'last_settlement_price(p_ts)' ||
+          sc.fn === 'instrument_settlement_price' ||
+          sc.fn === 'price_latest_in_window' ||
+          sc.fn === 'price_average' ||
+          sc.fn === 'instrument_price' ||
+          sc.fn === 'update_portfolio_holdings' ||
+          sc.fn === 'update_portfolio_holdings2' ||
+          sc.fn === 'update_portfolio_holdings(p_portfolio_id,user_id)' ||
+          sc.fn === 'close_position' ||
+          sc.fn === 'return_positions' ||
+          sc.fn === 'return_positions(product,user)' ||
+          sc.fn === 'waterfall_delivery' ||
+          sc.fn === 'waterfall_delivery(product,user)' ||
+          sc.fn === 'position_value_changes' ||
+          sc.fn === 'position_value_changes(market,user)' ||
+          sc.fn === 'mark_positions' ||
+          sc.fn === 'mark_positions(market,user)' ||
+          sc.fn === 'decompose_position' ||
+          sc.fn === 'decompose_position(p_position_id,user_id)'
+        ) {
+          const altBodies: Array<{ label: string; body: Record<string, unknown> }> = [];
+          const probeFn = sc.fn;
+
+          if (sc.fn === 'instrument_settlement_price') {
+            altBodies.push({ label: 'alt(p_market_id,p_instrument,p_product,p_from,p_to,p_as_of)', body: { p_market_id: mid, p_instrument: 'ENERGY_SPOT', p_product: 'DAM_HOURLY', p_from: deliveryStart, p_to: deliveryEnd, p_as_of: deliveryStart } });
+            altBodies.push({ label: 'alt2(p_counter_market_id,p_from,p_instrument,p_market_id,p_product,p_to,p_as_of)', body: { p_counter_market_id: null, p_from: deliveryStart, p_instrument: 'ENERGY_SPOT', p_market_id: mid, p_product: 'DAM_HOURLY', p_to: deliveryEnd, p_as_of: deliveryStart } });
+          } else if (sc.fn === 'price_latest_in_window') {
+            altBodies.push({ label: 'alt(p_from,p_to,p_market_id,p_product,as_of)', body: { p_from: deliveryStart, p_to: deliveryEnd, p_market_id: mid, p_product: 'DAM_HOURLY', p_as_of: deliveryStart } });
+          } else if (sc.fn === 'price_average') {
+            altBodies.push({ label: 'alt(p_from,p_to,p_market_id,p_product,as_of)', body: { p_from: deliveryStart, p_to: deliveryEnd, p_market_id: mid, p_product: 'DAM_HOURLY', p_as_of: deliveryStart } });
+          } else if (sc.fn === 'instrument_price') {
+            altBodies.push({ label: 'alt(p_market_id,p_product,p_from,p_to,p_counter_market_id,p_instrument,as_of)', body: { p_market_id: mid, p_product: 'DAM_HOURLY', p_from: deliveryStart, p_to: deliveryEnd, p_counter_market_id: null, p_instrument: 'ENERGY_SPOT', p_as_of: deliveryStart } });
+            altBodies.push({ label: 'alt2(p_from,p_to,p_market_id,p_product,p_counter_market_id,p_instrument,p_as_of)', body: { p_from: deliveryStart, p_to: deliveryEnd, p_market_id: mid, p_product: 'DAM_HOURLY', p_counter_market_id: null, p_instrument: 'ENERGY_SPOT', p_as_of: deliveryStart } });
+          }
+
+          if (sc.fn === 'update_portfolio_holdings' || sc.fn === 'update_portfolio_holdings2' || sc.fn === 'update_portfolio_holdings(p_portfolio_id,user_id)') {
+            altBodies.push({ label: 'alt(p_portfolio_id,p_user_id)', body: { p_portfolio_id: 'redundant', p_user_id: uid } });
+          }
+          if (sc.fn === 'close_position') {
+            altBodies.push({ label: 'alt(p_position_id,p_user_id)', body: { p_position_id: 'redundant', p_user_id: uid } });
+          }
+          if (sc.fn === 'price_row_id' || sc.fn === 'price_row_id(p_ts)' || sc.fn === 'price_is_stale' || sc.fn === 'price_is_stale(p_ts)' || sc.fn === 'last_settlement_price' || sc.fn === 'last_settlement_price(p_ts)') {
+            altBodies.push({ label: 'alt(p_as_of,p_market_id,p_product,p_ts)', body: { p_as_of: deliveryStart, p_market_id: mid, p_product: 'DAM_HOURLY', p_ts: deliveryStart } });
+          }
+          if (sc.fn === 'return_positions' || sc.fn === 'waterfall_delivery') {
+            altBodies.push({ label: 'alt(p_product,p_user_id)', body: { p_product: 'DAM_HOURLY', p_user_id: uid } });
+            altBodies.push({ label: 'alt2(p_user_id,p_product)', body: { p_user_id: uid, p_product: 'DAM_HOURLY' } });
+          }
+          if (sc.fn === 'position_value_changes' || sc.fn === 'position_value_changes(market,user)') {
+            altBodies.push({ label: 'alt(p_market_id,p_user_id)', body: { p_market_id: mid, p_user_id: uid } });
+            altBodies.push({ label: 'alt2(p_user_id,p_market_id)', body: { p_user_id: uid, p_market_id: mid } });
+          }
+          if (sc.fn === 'mark_positions' || sc.fn === 'mark_positions(market,user)') {
+            altBodies.push({ label: 'alt(p_market_id,p_user_id)', body: { p_market_id: mid, p_user_id: uid } });
+            altBodies.push({ label: 'alt2(p_user_id,p_market_id)', body: { p_user_id: uid, p_market_id: mid } });
+          }
+          if (sc.fn === 'decompose_position' || sc.fn === 'decompose_position(p_position_id,user_id)') {
+            altBodies.push({ label: 'alt(p_position_id,p_user_id)', body: { p_position_id: 'redundant', p_user_id: uid } });
+            altBodies.push({ label: 'alt2(p_user_id,p_position_id)', body: { p_user_id: uid, p_position_id: 'redundant' } });
+          }
+          for (const alt of altBodies) {
+            const a = await rawRpc(probeFn, alt.body);
+            sigResults.push({ label: `${sc.label} -> ${alt.label}`, status: a.status, payload: a.error ?? a.data });
+            if (a.status !== 404) break;
+          }
       }
     }
   }
+
   for (const sr of sigResults) {
     console.log('sig', sr.label, sr.status, JSON.stringify(sr.payload).slice(0, 400));
   }
@@ -296,3 +304,5 @@ async function main(deliveryStart: string, deliveryEnd: string) {
     process.exit(1);
   }
 })();
+
+

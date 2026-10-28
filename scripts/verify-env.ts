@@ -16,7 +16,7 @@ async function go() {
     limit 3;`,
   ];
   for (const sql of stmts) {
-    const { error, data } = await s.rpc<Row[]>("__sql", { sql });
+    const { error, data } = await s.rpc("__sql", { sql }) as { error: { message: string } | null; data: Row[] | null };
     console.log("\n----SQL----");
     console.log(sql.trim());
     if (error) {
