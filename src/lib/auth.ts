@@ -39,21 +39,6 @@ export async function requireUser(): Promise<User> {
  */
 export async function ensureUserRecords(user: User): Promise<void> {
   const admin = supabaseAdmin();
-
-  // Set simulation clock offset for replay mode when ERCOT_SOURCE=ERCOT_REPLAY
-  // This runs for ALL users (new and existing) to ensure they see historical data.
-  const envErcotSource = process.env.ERCOT_SOURCE ?? "ERCOT_MIS";
-  const isReplayMode = envErcotSource.toUpperCase() === "ERCOT_REPLAY";
-  if (isReplayMode) {
-    const { error: setClockError } = await admin.rpc("set_sim_clock", {
-      p_user_id: user.id,
-      p_iso: "2026-09-20T00:00:00Z", // Sept 20 fixture date
-    });
-    if (setClockError) {
-      console.error(`[auth] set_sim_clock failed for user ${user.id}: ${setClockError.message}`);
-    }
-  }
-
   const { error } = await admin.rpc("ensure_user_records", {
     p_user_id: user.id,
     p_email: user.email ?? "",

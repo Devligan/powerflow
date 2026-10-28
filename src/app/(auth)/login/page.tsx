@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { safeNextPath } from "@/lib/redirect";
-import { describeCallbackError } from "@/lib/oauth";
 import { OAuthButtons } from "@/components/oauth-buttons";
 
 export function LoginForm() {
@@ -14,19 +13,13 @@ export function LoginForm() {
   const next = safeNextPath(searchParams.get("next"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  // A failed OAuth round trip lands here as `?error=…`, and the sign-in screen
-  // used to say nothing about it. Derived rather than copied into state, so the
-  // message is there on the first render and a later attempt can supersede it.
-  const callbackError = describeCallbackError(searchParams.get("error"));
-  const error = formError ?? callbackError;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
-    setFormError(null);
+    setError(null);
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
@@ -38,7 +31,7 @@ export function LoginForm() {
       router.push(next);
       router.refresh();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Sign in failed");
+      setError(err instanceof Error ? err.message : "Sign in failed");
       setBusy(false);
     }
   }
@@ -62,17 +55,9 @@ export function LoginForm() {
           </div>
         )}
 
-        {error && (
-          <div id="login-error" role="alert" className="note note-error">
-            {error}
-          </div>
-        )}
+        {error && <div className="note note-error">{error}</div>}
 
-        <form
-          onSubmit={onSubmit}
-          className="space-y-4"
-          aria-describedby={error ? "login-error" : undefined}
-        >
+        <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="label" htmlFor="email">
               Email
@@ -82,9 +67,6 @@ export function LoginForm() {
               type="email"
               required
               autoComplete="email"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
               className="input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}

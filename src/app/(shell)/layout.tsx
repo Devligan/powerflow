@@ -1,7 +1,6 @@
 import { getSessionUser, ensureUserRecords, getUserProfile } from "@/lib/auth";
 import { Nav } from "@/components/nav";
 import { SetupBanner } from "@/components/setup-banner";
-import { AutoRefresh } from "@/components/auto-refresh";
 
 export default async function ShellLayout({
   children,
@@ -22,7 +21,6 @@ export default async function ShellLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <AutoRefresh />
       <SetupBanner />
       <Nav
         user={Boolean(user)}
@@ -37,8 +35,7 @@ export default async function ShellLayout({
             PowerFlow · paper trading desk · simulation only
           </p>
           <p className="caption">
-            All timestamps UTC · market prices are actual ERCOT MIS data,
-            trading is simulated
+            All timestamps UTC · prices are simulated, never live ERCOT data
           </p>
         </div>
       </footer>

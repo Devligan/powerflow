@@ -1,0 +1,119 @@
+import { createClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/auth";
+import { format, parseDbDec } from "@/lib/money";
+import { dateTime } from "@/lib/format";
+import { OrderCancelButton } from "@/components/order-cancel-button";
+
+export const dynamic = "force-dynamic";
+
+const STATUS_TONE: Record<string, string> = {
+  OPEN: "badge badge-green",
+  FILLED: "badge badge-neutral",
+  CANCELLED: "badge badge-neutral",
+  EXPIRED: "badge badge-amber",
+};
+
+/**
+ * The order book: working limits and their outcomes.
+ *
+ * An order is a commitment to a price, not a fill — this page is where a
+ * resting order waits visibly, and where its eventual fill (with the trade
+ * that realized it), cancellation, or expiry is recorded. Filled rows carry
+ * their trade id, tying the book to the trade history.
+ */
+export default async function OrdersPage() {
+  const user = await getSessionUser();
+  const db = await createClient();
+  const { data } = user
+    ? await db
+        .from("paper_orders")
+        .select(
+          "id, market_id, product, instrument, side, quantity_mwh, limit_price, status, delivery_start, delivery_end, filled_trade_id, created_at"
+        )
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(100)
+    : { data: [] };
+
+  const orders = data ?? [];
+  const open = orders.filter((o) => o.status === "OPEN");
+  const history = orders.filter((o) => o.status !== "OPEN");
+
+  return (
+    <div className="space-y-6">
+      <header>
+        <h1 className="font-display text-2xl font-bold">Orders</h1>
+        <p className="caption mt-1 t-mute">
+          Working limits rest until the interval&apos;s actual ERCOT print
+          crosses them. Fills execute at the print, never the limit.
+        </p>
+      </header>
+
+      {open.length > 0 && (
+        <section className="card">
+          <h2 className="card-title">Working ({open.length})</h2>
+          <div className="mt-3 space-y-2">
+            {open.map((o) => (
+              <div
+                key={o.id}
+                className="flex flex-wrap items-center justify-between gap-3 border border-white/10 px-3 py-2"
+              >
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className={o.side === "BUY" ? "mono pos" : "mono neg"}>
+                    {o.side}
+                  </span>
+                  <span className="mono">{format(parseDbDec(o.quantity_mwh), 2)} MWh</span>
+                  <span className="t-mute">@ limit</span>
+                  <span className="mono">${format(parseDbDec(o.limit_price), 2)}</span>
+                  <span className="t-mute">·</span>
+                  <span className="text-[12px]">
+                    {o.instrument} · {o.product}
+                  </span>
+                  <span className="caption t-mute">
+                    delivery {dateTime(o.delivery_start)}
+                  </span>
+                </div>
+                <OrderCancelButton orderId={o.id} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="card">
+        <h2 className="card-title">History</h2>
+        {history.length === 0 ? (
+          <p className="caption mt-2 t-mute">
+            No orders yet. Place a working limit from any market page.
+          </p>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {history.map((o) => (
+              <div
+                key={o.id}
+                className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-2"
+              >
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className={o.side === "BUY" ? "mono pos" : "mono neg"}>
+                    {o.side}
+                  </span>
+                  <span className="mono">{format(parseDbDec(o.quantity_mwh), 2)}</span>
+                  <span className="t-mute">@</span>
+                  <span className="mono">{format(parseDbDec(o.limit_price), 2)}</span>
+                  <span className="t-mute">· {o.instrument}</span>
+                  <span className="caption t-mute">
+                    placed {dateTime(o.created_at)}
+                  </span>
+                </div>
+                <span className={STATUS_TONE[o.status] ?? "badge badge-neutral"}>
+                  {o.status}
+                  {o.status === "FILLED" && o.filled_trade_id ? " · see trades" : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
