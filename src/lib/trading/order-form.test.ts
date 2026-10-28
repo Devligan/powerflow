@@ -93,7 +93,9 @@ describe("delivery window", () => {
 
 describe("product selection", () => {
   it("offers the catalog to single-leg instruments and nothing to the rest", () => {
-    expect(selectableProducts(spot)).toContain("RTM_HOURLY");
+    // Only ORDERABLE series are selectable (0025): the RT references are not.
+    expect(selectableProducts(spot)).toContain("DAM_HOURLY");
+    expect(selectableProducts(spot)).not.toContain("RTM_HOURLY");
     expect(selectableProducts(block)).toContain("DAM_HOURLY");
     // legless and path instruments settle in a market they do not choose
     expect(selectableProducts(virtual)).toEqual([]);

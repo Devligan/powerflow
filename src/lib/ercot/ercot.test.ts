@@ -9,6 +9,7 @@ import {
   PRODUCTS,
   REGIONAL_HUBS,
   RT_PRICE_FLOOR,
+  SOURCE_ERCOT_MIS,
   SOURCE_SIMULATED,
   getInstrument,
   getProduct,
@@ -26,7 +27,12 @@ import {
 import {
   ErcotMISSource,
   deliveryCentralToUtc,
+  listMisDocs,
+  parseDamSppCsv,
   parseErcotSppCsv,
+  parseMisListingJson,
+  parseMisListingPage,
+  parseRtmSppCsv,
 } from "@/lib/ercot/mis";
 import { needsBothMarkets, needsCounterPoint } from "@/lib/trading/instruments";
 
@@ -48,9 +54,12 @@ describe("product catalog", () => {
 
   it("represents the tradable energy products and the priced-only series", () => {
     const tradable = tradableProducts().map((p) => p.code);
+    // The day-ahead market is where a desk commits forward. Real-time prints
+    // exist only AFTER delivery, so the RT series are reference data — reach
+    // RT exposure through DART/VIRTUAL/PTP instruments (0025).
     expect(tradable).toContain("DAM_HOURLY");
-    expect(tradable).toContain("RTM_15MIN");
-    expect(tradable).toContain("RTM_HOURLY");
+    expect(getProduct("RTM_15MIN")?.tradable).toBe(false);
+    expect(getProduct("RTM_HOURLY")?.tradable).toBe(false);
     // Ancillary services are priced but not tradable *as a series*, and a desk
     // with no assets cannot hold one anyway — providing AS is a resource
     // obligation. CRRs are the same: the series is priced-only, while the CRR
@@ -76,12 +85,15 @@ describe("product catalog", () => {
 });
 
 describe("normalizePriceRecord", () => {
+  const PUB = "2026-09-01T13:45:00.000Z";
+
   it("accepts a valid record and derives the interval end", () => {
     const res = normalizePriceRecord(
       {
         settlementPoint: "HB_HOUSTON",
         deliveryTimestamp: "2026-09-01T14:00:00Z",
         price: "58.2312",
+        sourceTimestamp: PUB,
       },
       SOURCE_SIMULATED,
       "DAM_HOURLY"
@@ -92,27 +104,66 @@ describe("normalizePriceRecord", () => {
       expect(res.record.product).toBe("DAM_HOURLY");
       expect(res.record.deliveryTimestamp).toBe("2026-09-01T14:00:00.000Z");
       expect(res.record.deliveryEnd).toBe("2026-09-01T15:00:00.000Z");
+      // The publication time carries through as both names for the same
+      // instant — the store column is published_at.
+      expect(res.record.sourceTimestamp).toBe(PUB);
+      expect(res.record.publishedAt).toBe(PUB);
+      expect(res.record.isFinal).toBe(false);
+    }
+  });
+
+  it("rejects a record with no publication time (the look-ahead guard needs it)", () => {
+    expect(
+      normalizePriceRecord(
+        { settlementPoint: "X", deliveryTimestamp: "2026-09-01T00:00:00Z", price: "10" },
+        SOURCE_SIMULATED
+      ).ok
+    ).toBe(false);
+    expect(
+      normalizePriceRecord(
+        { settlementPoint: "X", deliveryTimestamp: "2026-09-01T00:00:00Z", price: "10", sourceTimestamp: "garbage" },
+        SOURCE_SIMULATED
+      ).ok
+    ).toBe(false);
+  });
+
+  it("accepts publishedAt as the publication field and carries isFinal", () => {
+    const res = normalizePriceRecord(
+      {
+        settlementPoint: "X",
+        deliveryTimestamp: "2026-09-01T00:00:00Z",
+        price: "10",
+        publishedAt: PUB,
+        isFinal: true,
+      },
+      SOURCE_ERCOT_MIS,
+      "DAM_HOURLY"
+    );
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.record.publishedAt).toBe(PUB);
+      expect(res.record.isFinal).toBe(true);
     }
   });
 
   it("rejects out-of-range, non-finite and missing values", () => {
     expect(
-      normalizePriceRecord({ settlementPoint: "X", deliveryTimestamp: "2026-09-01T00:00:00Z", price: "999999" }, SOURCE_SIMULATED).ok
+      normalizePriceRecord({ settlementPoint: "X", deliveryTimestamp: "2026-09-01T00:00:00Z", price: "999999", sourceTimestamp: PUB }, SOURCE_SIMULATED).ok
     ).toBe(false);
     expect(
-      normalizePriceRecord({ settlementPoint: "X", deliveryTimestamp: "2026-09-01T00:00:00Z", price: "not-a-number" }, SOURCE_SIMULATED).ok
+      normalizePriceRecord({ settlementPoint: "X", deliveryTimestamp: "2026-09-01T00:00:00Z", price: "not-a-number", sourceTimestamp: PUB }, SOURCE_SIMULATED).ok
     ).toBe(false);
     expect(
-      normalizePriceRecord({ settlementPoint: "", deliveryTimestamp: "2026-09-01T00:00:00Z", price: "10" }, SOURCE_SIMULATED).ok
+      normalizePriceRecord({ settlementPoint: "", deliveryTimestamp: "2026-09-01T00:00:00Z", price: "10", sourceTimestamp: PUB }, SOURCE_SIMULATED).ok
     ).toBe(false);
     expect(
-      normalizePriceRecord({ settlementPoint: "X", deliveryTimestamp: "garbage", price: "10" }, SOURCE_SIMULATED).ok
+      normalizePriceRecord({ settlementPoint: "X", deliveryTimestamp: "garbage", price: "10", sourceTimestamp: PUB }, SOURCE_SIMULATED).ok
     ).toBe(false);
   });
 
   it("accepts negative prices (ERCOT can go negative)", () => {
     const res = normalizePriceRecord(
-      { settlementPoint: "LZ_HOUSTON", deliveryTimestamp: "2026-09-01T00:00:00Z", price: "-8.5" },
+      { settlementPoint: "LZ_HOUSTON", deliveryTimestamp: "2026-09-01T00:00:00Z", price: "-8.5", sourceTimestamp: PUB },
       SOURCE_SIMULATED
     );
     expect(res.ok).toBe(true);
@@ -121,7 +172,7 @@ describe("normalizePriceRecord", () => {
   it("rejects an unknown product rather than coercing it", () => {
     expect(
       normalizePriceRecord(
-        { settlementPoint: "X", deliveryTimestamp: "2026-09-01T00:00:00Z", price: "10", product: "NOPE" },
+        { settlementPoint: "X", deliveryTimestamp: "2026-09-01T00:00:00Z", price: "10", product: "NOPE", sourceTimestamp: PUB },
         SOURCE_SIMULATED
       ).ok
     ).toBe(false);
@@ -131,7 +182,7 @@ describe("normalizePriceRecord", () => {
     // 15-minute product cannot start at :07
     expect(
       normalizePriceRecord(
-        { settlementPoint: "X", deliveryTimestamp: "2026-09-01T14:07:00Z", price: "10" },
+        { settlementPoint: "X", deliveryTimestamp: "2026-09-01T14:07:00Z", price: "10", sourceTimestamp: PUB },
         SOURCE_SIMULATED,
         "RTM_15MIN"
       ).ok
@@ -139,7 +190,7 @@ describe("normalizePriceRecord", () => {
     // hourly product cannot start at :15
     expect(
       normalizePriceRecord(
-        { settlementPoint: "X", deliveryTimestamp: "2026-09-01T14:15:00Z", price: "10" },
+        { settlementPoint: "X", deliveryTimestamp: "2026-09-01T14:15:00Z", price: "10", sourceTimestamp: PUB },
         SOURCE_SIMULATED,
         "DAM_HOURLY"
       ).ok
@@ -147,7 +198,7 @@ describe("normalizePriceRecord", () => {
     // ...but a quarter-hour boundary is a valid 15-minute interval start
     expect(
       normalizePriceRecord(
-        { settlementPoint: "X", deliveryTimestamp: "2026-09-01T14:15:00Z", price: "10" },
+        { settlementPoint: "X", deliveryTimestamp: "2026-09-01T14:15:00Z", price: "10", sourceTimestamp: PUB },
         SOURCE_SIMULATED,
         "RTM_15MIN"
       ).ok
@@ -241,7 +292,12 @@ describe("deterministic simulated feed", () => {
       const mins = getProduct(r.product)!.intervalMinutes;
       const start = new Date(r.deliveryTimestamp).getTime();
       expect(new Date(r.deliveryEnd).getTime() - start).toBe(mins * 60_000);
-      expect(src.sourceName).toBe("SIMULATED");
+      expect(src.sourceName).toBe("SIMULATED (GENERATED)");
+      // The generated feed's publication model: each interval publishes
+      // exactly 24h before delivery and is final, so re-ingestion is a
+      // byte-identical no-op under the observation key.
+      expect(new Date(r.publishedAt).getTime()).toBe(start - 24 * 3_600_000);
+      expect(r.isFinal).toBe(true);
     }
   });
 
@@ -291,11 +347,23 @@ describe("ERCOT MIS CSV adapter", () => {
     expect(rows[2].repeatedHour).toBe(true);
   });
 
-  it("tags the series with the product it carries", async () => {
-    const src = new ErcotMISSource("https://example.invalid", {
-      product: "DAM_HOURLY",
-    });
-    expect(await src.getProducts()).toEqual(["DAM_HOURLY"]);
+  it("exposes exactly the products ERCOT MIS publishes", async () => {
+    // The adapter is constructed directly over the public MIS reports, no
+    // gateway, no credentials: DAM clearing (final), rolling RT intervals
+    // (interim), the hourly RT settlement series, and the DAM ancillary-
+    // service clearing (report NP4-188-CD) for ERCOT's five published types.
+    const src = new ErcotMISSource();
+    expect(await src.getProducts()).toEqual([
+      "DAM_HOURLY",
+      "RTM_15MIN",
+      "RTM_HOURLY",
+      "REGUP",
+      "REGDN",
+      "RRS",
+      "NSPIN",
+      "ECRS",
+    ]);
+    expect(src.sourceName).toBe(SOURCE_ERCOT_MIS);
   });
 
   it("converts ERCOT Central delivery into UTC (winter offset)", () => {
@@ -369,53 +437,172 @@ describe("ERCOT delivery conversion across DST", () => {
     }
   });
 
-  it("maps a whole DST-end CSV into 25 distinct delivery timestamps", async () => {
-    // The adapter end of the same claim: what ERCOT actually ships is a day with
-    // the extra hour, and it must survive parsing as 25 intervals.
-    const rows = ["DeliveryDate,DeliveryHourEnding,RepeatedHourFlag,SettlementPointType,SettlementPoint,SPP"];
-    for (let he = 1; he <= 24; he++) {
-      rows.push(`11/01/2026,${he},N,HUB,HB_NORTH,${(he + 20).toFixed(2)}`);
-      if (he === 2) rows.push(`11/01/2026,${he},Y,HUB,HB_NORTH,99.99`);
-    }
-    const csv = rows.join("\n") + "\n";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(csv, { status: 200 }))
-    );
-    const src = new ErcotMISSource("https://example.invalid", { product: "RTM_HOURLY" });
-    const records = await src.getPrices(
-      new Date("2026-11-01T00:00:00Z"),
-      new Date("2026-11-02T00:00:00Z")
-    );
-    const stamps = new Set(records.map((r) => r.deliveryTimestamp));
-    expect(records).toHaveLength(25);
-    expect(stamps.size).toBe(25);
-    expect(stamps.has("2026-11-01T06:00:00.000Z")).toBe(true);
-    expect(stamps.has("2026-11-01T07:00:00.000Z")).toBe(true);
+  it("parses the rolling RT CSV (interval columns, DST flag)", () => {
+    // MIS 12301's rolling layout: hour-ending + the 1..4 interval inside it.
+    const csv = [
+      "DeliveryDate,DeliveryHour,DeliveryInterval,SettlementPointName,SettlementPointType,SettlementPointPrice,DSTFlag",
+      "09/08/2026,14,1,HB_NORTH,HUB,47.30,N",
+      "09/08/2026,14,3,LZ_HOUSTON,LZ,42.01,N",
+      "bad,row,here",
+    ].join("\n");
+    const rows = parseRtmSppCsv(csv);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      deliveryDate: "09/08/2026",
+      hourEnding: 14,
+      deliveryInterval: 1,
+      settlementPoint: "HB_NORTH",
+      price: "47.30",
+    });
+    expect(rows[1]).toMatchObject({ deliveryInterval: 3, settlementPoint: "LZ_HOUSTON" });
+    // Interval 3 of hour ending 14 starts at 13:30 Central = 18:30 UTC (DST).
+    const hourStart = deliveryCentralToUtc("09/08/2026", 14)!;
+    expect(
+      new Date(new Date(hourStart).getTime() + 2 * 15 * 60_000).toISOString()
+    ).toBe("2026-09-08T18:30:00.000Z");
   });
 
-  it("drops the skipped hour from a spring-forward CSV", async () => {
-    const rows = ["DeliveryDate,DeliveryHourEnding,RepeatedHourFlag,SettlementPointType,SettlementPoint,SPP"];
-    // All 24 endings are present, including the one that does not exist — the
-    // converter is what drops it, so the day yields 23 either way.
-    for (let he = 1; he <= 24; he++) {
-      rows.push(`03/08/2026,${he},N,HUB,HB_NORTH,${(he + 20).toFixed(2)}`);
-    }
-    const csv = rows.join("\n") + "\n";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(csv, { status: 200 }))
+  it("dedupes the report's LZ/LZEW double print to one observation", () => {
+    // MIS 12301 prints every load zone and DC tie twice per interval — once
+    // under the point's own type code (LZ/DC) and once under its EHV variant
+    // (LZEW/DCEW), prices within a rounding hair. They are ONE settlement
+    // observation; the canonical typed print survives. Hubs print once.
+    const csv = [
+      "DeliveryDate,DeliveryHour,DeliveryInterval,SettlementPointName,SettlementPointType,SettlementPointPrice,DSTFlag",
+      "09/23/2026,17,4,LZ_WEST,LZ,46.25,N",
+      "09/23/2026,17,4,LZ_WEST,LZEW,46.25,N",
+      "09/23/2026,17,4,LZ_RAYBN,LZEW,62.46,N",
+      "09/23/2026,17,4,LZ_RAYBN,LZ,62.45,N",
+      "09/23/2026,17,4,HB_NORTH,HUB,47.30,N",
+    ].join("\n");
+    const rows = parseRtmSppCsv(csv);
+    expect(rows).toHaveLength(3); // not 5
+    expect(rows.map((r) => [r.settlementPoint, r.settlementPointType, r.price]))
+      .toEqual([
+        ["LZ_WEST", "LZ", "46.25"],
+        ["LZ_RAYBN", "LZ", "62.45"], // canonical LZ row, not the LZEW twin
+        ["HB_NORTH", "HUB", "47.30"],
+      ]);
+  });
+
+  it("parses the daily DAM clearing CSV (its own column layout)", () => {
+    // MIS 12331's layout: "HH:00" hour endings, no type column, a DST flag.
+    const csv = [
+      "DeliveryDate,HourEnding,SettlementPoint,SettlementPointPrice,DSTFlag",
+      "09/23/2026,01:00,HB_NORTH, 37.87,N",
+      "09/23/2026,24:00,LZ_WEST, 51.02,N",
+    ].join("\n");
+    const rows = parseDamSppCsv(csv);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      deliveryDate: "09/23/2026",
+      hourEnding: 1,
+      settlementPoint: "HB_NORTH",
+      price: "37.87",
+    });
+    expect(deliveryCentralToUtc(rows[0].deliveryDate, rows[0].hourEnding)).toBe(
+      "2026-09-23T05:00:00.000Z"
     );
-    const src = new ErcotMISSource("https://example.invalid", { product: "RTM_HOURLY" });
-    const records = await src.getPrices(
-      new Date("2026-03-08T00:00:00Z"),
-      new Date("2026-03-09T00:00:00Z")
-    );
-    expect(records).toHaveLength(23);
-    expect(new Set(records.map((r) => r.deliveryTimestamp)).size).toBe(23);
-    expect(records.some((r) => r.deliveryTimestamp === "2026-03-08T08:00:00.000Z")).toBe(
-      true
-    );
+  });
+
+  it("pairs MIS listing documents with their download ids and posting stamps", () => {
+    // The listing API's exact shape (IceDocListJsonWS): DocID is the download
+    // key, ConstructedName carries the cdr posting stamp, PublishDate is
+    // ERCOT's own posting instant with offset.
+    const payload = {
+      ListDocsByRptTypeRes: {
+        DocumentList: [
+          {
+            Document: {
+              DocID: "1277731220",
+              ConstructedName:
+                "cdr.00012301.0000000000000000.20260922.160202477.SPPHLZNP6905_20260922_1600_csv.zip",
+              PublishDate: "2026-09-22T16:02:01-05:00",
+            },
+          },
+          { Document: { DocID: "1", ConstructedName: "not-a-cdr-name.zip" } },
+          { Document: { ConstructedName: "cdr.00012301.0.20260922.160202477.x.zip" } },
+        ],
+      },
+    };
+    const docs = parseMisListingJson(payload);
+    expect(docs).toHaveLength(2);
+    expect(docs[0]).toMatchObject({ doclookupId: "1277731220" });
+    expect(docs[0].publishDate).toBe("2026-09-22T16:02:01-05:00");
+  });
+
+  it("parses the MIS listing PAGE (scrape), pairing filenames with download links", () => {
+    // The website table pairs each document's cdr filename with its
+    // mirDownload link by proximity: every link after a filename and before
+    // the next filename belongs to it. XML/CSV rows alternate but each
+    // carries exactly one link, so the pairs stay intact. No posting stamp
+    // exists on the page — scraped docs date from the cdr name.
+    const html = [
+      // an orphan link before any filename belongs to nothing
+      "<a href='/misdownload/servlets/mirDownload?doclookupId=999'>zip</a>",
+      "<td class='labelOptional_ind'>cdr.00012301.0000000000000000.20260924.103202202.SPPHLZNP6905_20260924_1030_csv.zip</td>",
+      "<a href='/misdownload/servlets/mirDownload?mimic_duns=000000000&doclookupId=1278443703'>zip</a>",
+      "<td class='labelOptional_ind'>cdr.00012301.0000000000000000.20260924.103202106.SPPHLZNP6905_20260924_1030_xml.zip</td>",
+      "<a href='/misdownload/servlets/mirDownload?mimic_duns=000000000&doclookupId=1278443702'>zip</a>",
+      // a different report's document pairs within its own row, not against
+      // the previous filename's slot
+      "<td class='labelOptional_ind'>cdr.00012331.0000000000000000.20260924.123501123.DAMSPNP4190_csv.zip</td>",
+      "<a href='/misdownload/servlets/mirDownload?doclookupId=555'>zip</a>",
+      // a trailing filename with no link is dropped rather than left dangling
+      "<td class='labelOptional_ind'>cdr.00012301.0000000000000000.20260924.104701111.SPPHLZNP6905_20260924_1045_csv.zip</td>",
+    ].join("\n");
+    const docs = parseMisListingPage(html);
+    expect(docs).toHaveLength(3); // orphan and trailing filename excluded
+    expect(docs[0]).toEqual({
+      doclookupId: "1278443703",
+      filename: "cdr.00012301.0000000000000000.20260924.103202202.SPPHLZNP6905_20260924_1030_csv.zip",
+    });
+    expect(docs[1].doclookupId).toBe("1278443702");
+    expect(docs[2].doclookupId).toBe("555"); // the DAM doc, from its own row
+    expect(docs[2].filename).toContain("DAMSPNP4190");
+    expect(docs.every((d) => d.publishDate === undefined)).toBe(true);
+  });
+
+  it("prefers the JSON API and falls back to the website listing page", async () => {
+    // Measured on 2026-09-24: the API surfaced two consecutive RT postings
+    // 23s and 35s before the page did, and costs ~30ms of JSON vs ~2s of
+    // 600KB HTML — so the API goes first; the page is the fallback for the
+    // day that ordering reverses or the API fails.
+    const pageDoc = {
+      doclookupId: "1278443703",
+      filename: "cdr.00012301.0000000000000000.20260924.103202202.SPPHLZNP6905_20260924_1030_csv.zip",
+    };
+    const apiDoc = { ...pageDoc, publishDate: "2026-09-24T10:32:01-05:00" };
+
+    const fetchMockFallback = vi.fn(async (url: string | URL) => {
+      const u = String(url);
+      if (u.includes("IceDocListJsonWS")) return new Response("boom", { status: 503 });
+      return new Response(
+        `<td>cdr.00012301.0000000000000000.20260924.103202202.SPPHLZNP6905_20260924_1030_csv.zip</td>
+         <a href="mirDownload?doclookupId=1278443703">zip</a>`,
+        { status: 200 }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMockFallback);
+    expect(await listMisDocs(12301)).toEqual([pageDoc]);
+
+    // API healthy → page never called.
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const u = String(url);
+      if (u.includes("IceDocListJsonWS")) {
+        return Response.json({
+          ListDocsByRptTypeRes: {
+            DocumentList: [
+              { Document: { DocID: "1278443703", ConstructedName: pageDoc.filename, PublishDate: "2026-09-24T10:32:01-05:00" } },
+            ],
+          },
+        });
+      }
+      throw new Error(`unexpected fetch: ${u}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await listMisDocs(12301)).toEqual([apiDoc]);
+    expect(fetchMock).toHaveBeenCalledTimes(1); // page never called
   });
 
   afterEach(() => {

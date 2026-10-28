@@ -1,13 +1,13 @@
 import { runMarketDataIngestion } from "@/lib/ingestion";
-import { safeEqual, ok, fail } from "@/lib/api";
-
-export const dynamic = "force-dynamic";
-
-export const maxDuration = 60;
+import { safeEqual, ok, fail } from "@/lib/api";export const dynamic = "force-dynamic";
+export const maxDuration = 10;
 
 /**
- * Vercel Cron / manual trigger target. Guarded by CRON_SECRET so random
- * callers cannot provoke ingestion load.
+ * Vercel Cron / manual trigger target. Vercel invokes cron paths with GET.
+ * Guarded by CRON_SECRET so random callers cannot provoke ingestion load.
+ * On Vercel free tier, maxDuration is limited to ~10s, so ingestion must
+ * complete within that window (bounded by INGEST_WINDOW_HOURS and
+ * INGEST_MAX_RECORDS).
  *
  * Exported for GET as well as POST, because Vercel Cron invokes a cron path
  * with GET — a POST-only export left the schedule in `vercel.json` answering

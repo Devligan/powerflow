@@ -1,14 +1,16 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { ok, fail } from "@/lib/api";
+import { resolveMarketDataMode } from "@/lib/ercot/types";
 
 export const dynamic = "force-dynamic";
 
-export const maxDuration = 30;
+export const maxDuration = 10;
 
 /**
  * Public status of the market-data pipeline: last ingestion run, price
  * coverage and provenance. Presence/labels only — never synthesized into
- * a false "live ERCOT" claim.
+ * a false "live ERCOT" claim. The mode label comes from the same resolver
+ * the adapters use, so this status can never name a feed the app cannot run.
  */
 export async function GET() {
   const admin = supabaseAdmin();
@@ -34,11 +36,13 @@ export async function GET() {
 
   const runs = runsRes.data ?? [];
 
+  const mode = resolveMarketDataMode();
+
   return ok({
     latestRuns: runs,
     latestPriceAt,
     latestPriceSource,
-    mode: process.env.ERCOT_SOURCE ?? "GENERATED",
-    generated: (process.env.ERCOT_SOURCE ?? "GENERATED") === "GENERATED",
+    mode,
+    generated: mode === "GENERATED",
   });
 }

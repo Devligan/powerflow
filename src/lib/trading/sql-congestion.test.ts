@@ -1,28 +1,35 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { admin, createTestUser, dbTestsEnabled, userClient } from "@/lib/testing/db";
-import { INSTRUMENTS, PRODUCTS } from "@/lib/ercot/types";
+import { loadFixturePoint } from "@/lib/testing/ercot-fixture";
+import { PRODUCTS, INSTRUMENTS } from "@/lib/ercot/types";
 
 /**
- * Congestion settlement, and the catalog itself, against the real database.
+ * Congestion: day-ahead PTP and CRR, against ACTUAL ERCOT data.
  *
- * Two things here can only be checked in Postgres:
+ * A path instrument has two legs, so it needs a pair of points whose series
+ * both exist for the delivery interval. Under real ERCOT publication the
+ * real-time series only exists for hours that have already been printed —
+ * a future hour never carries an RTM price — so the legs and intervals come
+ * from the actual-ERCOT corpus (`fixtures/ercot/replay-2026-09-20.json`,
+ * built by `scripts/build-history-fixture.ts` from ERCOT MIS reports),
+ * ingested through the production observation key. Every price a case
+ * asserts on is read from the fixture; nothing is injected.
  *
- *   1. `instrument_price` is the authoritative price reduction. The TypeScript
- *      mirror in `instruments.ts` is a convenience for the ticket, so asserting
- *      the mirror against itself proves nothing about what prices a real fill.
- *      These tests trade through the deployed function and check the rows.
+ * §12 and §16 of the product audit are the reason this suite exists:
+ * a day-ahead PTP obligation is ENTERED at the day-ahead spread (what the
+ * DAM clears it at) and SETTLED at the real-time spread; an auctioned CRR
+ * is entered AND settled on day-ahead congestion alone. Two different
+ * ERCOT products that share one path.
  *
- *   2. The live catalog. Migration 0017 corrected a mislabelled product by
- *      aiming an UPDATE at `instruments` for a code that lived in `products`.
- *      It matched zero rows and reported success. Nothing caught it, because
- *      the TypeScript catalog and the deployed tables were never compared — so
- *      they are compared here. That is the test that would have caught it.
- *
- * Opt in with `RUN_DB_TESTS=1`: it creates real users in the configured project.
+ * Opt in with `RUN_DB_TESTS=1`, since it creates real users in the configured
+ * Supabase project.
  */
 describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () => {
   const HOUR = 3600_000;
+
+  const shift = (ts: string, hours: number) =>
+    new Date(new Date(ts).getTime() + hours * HOUR).toISOString();
 
   let db: SupabaseClient;
   let user: Awaited<ReturnType<typeof createTestUser>>;
@@ -48,14 +55,15 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
     position_average_entry_price: number;
   }
 
-  /**
-   * A day-ahead PTP instrument is bought at the day-ahead congestion across the
-   * path and settled at the real-time congestion across the same path, so it
-   * carries the convergence of the two. Computed here from the published price
-   * rows rather than taken from the engine, which is the whole point.
-   */
+  /** The day-ahead congestion spread across the path: what a PTP clears at in
+   *  the DAM, and therefore what a PTP position is ENTERED at. The engine's
+   *  DIFFERENCE composition is sink minus source — counter leg first. */
+  const daSpread = (da_a: number, da_b: number) => da_b - da_a;
+  /** The real-time congestion spread across the path: what a PTP SETTLES at. */
+  const rtSpread = (a: number, b: number) => b - a;
+  /** The DA→RT convergence of congestion: the position's P&L per MWh. */
   const convergence = (a: number, b: number, da_a: number, da_b: number) =>
-    b - a - (da_b - da_a);
+    rtSpread(a, b) - daSpread(da_a, da_b);
 
   const trade = (over: Record<string, unknown> = {}) => ({
     p_user_id: user.id,
@@ -89,72 +97,50 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
     user = await createTestUser("sql-congestion");
     client = await userClient(user);
 
-    // A path needs one hour priced on both legs, in both markets. The pair is
-    // discovered rather than hard-coded, so a thinner feed narrows the test
-    // instead of breaking it.
-    const { data: hubs } = await db
-      .from("markets")
-      .select("id")
-      .in("settlement_point", [
-        "HB_NORTH",
-        "HB_SOUTH",
-        "HB_HOUSTON",
-        "HB_WEST",
-        "HB_PAN",
-      ])
-      .eq("active", true);
-    const hubIds = (hubs ?? []).map((h) => h.id as string);
+    // The path and its prices come from the corpus, not from a discovery
+    // heuristic over the live feed: every hub in the fixture carries a
+    // complete day of day-ahead clearings and real-time finals.
+    const a = await loadFixturePoint(db, "HB_NORTH");
+    const b = await loadFixturePoint(db, "HB_WEST");
+    legA = a.marketId;
+    legB = b.marketId;
 
-    const { data: rows } = await db
-      .from("market_prices")
-      .select("market_id, product, delivery_timestamp, price")
-      .in("market_id", hubIds)
-      .in("product", ["DAM_HOURLY", "RTM_HOURLY"])
-      .gt("delivery_timestamp", new Date().toISOString())
-      .order("delivery_timestamp", { ascending: true })
-      .limit(4000);
+    const daHours = [...a.dam.keys()].filter((h) => a.dam.has(h) && b.dam.has(h)).sort();
+    const rtHours = [...a.rtHour.keys()].filter((h) => a.rtHour.has(h) && b.rtHour.has(h)).sort();
+    expect(daHours.length, "fixture carries a full day of day-ahead clearings").toBe(24);
+    expect(rtHours.length, "fixture carries a full day of real-time finals").toBe(24);
 
-    type Legs = { DAM_HOURLY?: number; RTM_HOURLY?: number };
-    const byInterval = new Map<string, Map<string, Legs>>();
-    for (const r of rows ?? []) {
-      const ts = r.delivery_timestamp as string;
-      const perMarket = byInterval.get(ts) ?? new Map<string, Legs>();
-      const leg = perMarket.get(r.market_id as string) ?? {};
-      leg[r.product as "DAM_HOURLY" | "RTM_HOURLY"] = Number(r.price);
-      perMarket.set(r.market_id as string, leg);
-      byInterval.set(ts, perMarket);
-    }
-
-    let found: { ts: string; a: string; b: string } | null = null;
-    for (const [ts, perMarket] of byInterval) {
-      const complete = [...perMarket.entries()].filter(
-        ([, l]) => l.DAM_HOURLY !== undefined && l.RTM_HOURLY !== undefined
-      );
-      if (complete.length >= 2) {
-        found = { ts, a: complete[0][0], b: complete[1][0] };
-        break;
-      }
-    }
-    expect(found, "no future hour is priced in both markets on two hubs").not.toBeNull();
-
-    interval = found!.ts;
+    // Interval 0 drives the entry-economics cases: the day-ahead spread is
+    // tradable at that instant, the real-time outcome is not visible.
+    interval = daHours[0];
     intervalEnd = new Date(new Date(interval).getTime() + HOUR).toISOString();
-    legA = found!.a;
-    legB = found!.b;
-    const perMarket = byInterval.get(interval)!;
-    rtA = perMarket.get(legA)!.RTM_HOURLY!;
-    rtB = perMarket.get(legB)!.RTM_HOURLY!;
-    daA = perMarket.get(legA)!.DAM_HOURLY!;
-    daB = perMarket.get(legB)!.DAM_HOURLY!;
-  }, 120_000);
+    daA = Number(a.dam.get(interval)!.price);
+    daB = Number(b.dam.get(interval)!.price);
+    rtA = Number(a.rtHour.get(interval)!.price);
+    rtB = Number(b.rtHour.get(interval)!.price);
+    void rtHours;
 
-  it("fills a day-ahead PTP obligation at the convergence of congestion", async () => {
+    // The desk sits just before the delivery hour: the day-ahead clearings
+    // that price the path are visible (ERCOT posted them the day before),
+    // the real-time outcome is not. Without the clock these fixture intervals
+    // are historical and every fill would be refused as past delivery.
+    const { error: clockErr } = await client.rpc("set_sim_clock", {
+      p_user_id: user.id,
+      p_iso: shift(interval, -1),
+    });
+    expect(clockErr).toBeNull();
+  }, 240_000);
+
+  it("enters a day-ahead PTP obligation at the day-ahead spread, not a known outcome", async () => {
     const { data, error } = await client.rpc("execute_trade", trade());
     expect(error).toBeNull();
     const result = data as Execution;
 
     expect(result.settlement_rule).toBe("CONGESTION_CONVERGENCE");
-    near(result.execution_price, convergence(rtA, rtB, daA, daB));
+    // Entry economics (§12): a PTP is bought at the day-ahead spread in the
+    // DAM. The real-time spread it settles against does not exist yet, so a
+    // fill computed from it would be trading a known outcome.
+    near(result.execution_price, daSpread(daA, daB));
     // Leg B is part of the position identity, so this is a path position.
     expect(result.counter_market_id).toBe(legB);
 
@@ -172,7 +158,7 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
     // it clears in — so its product is derived rather than caller-chosen. That
     // is what keeps two fills on one path from landing in two positions.
     expect(pos!.product).toBe("DAM_HOURLY");
-    near(Number(pos!.average_entry_price), convergence(rtA, rtB, daA, daB));
+    near(Number(pos!.average_entry_price), daSpread(daA, daB));
   }, 60_000);
 
   it("fills an auctioned CRR on the same path at the day-ahead spread instead", async () => {
@@ -207,16 +193,16 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
   it("refuses a second point on an instrument that settles one", async () => {
     const { error } = await client.rpc(
       "execute_trade",
-      trade({ p_instrument: "ENERGY_SPOT", p_product: "RTM_HOURLY" })
+      trade({ p_instrument: "ENERGY_SPOT", p_product: "DAM_HOURLY" })
     );
     expect(error).not.toBeNull();
     expect(error!.message).toContain("COUNTER_POINT_INVALID");
   }, 60_000);
 
   it("floors a losing day-ahead PTP option at zero but not the obligation", async () => {
-    // Reverse the path if needed so the convergence is negative either way, then
-    // the obligation is two-way and the option can only pay out.
-    const forward = convergence(rtA, rtB, daA, daB);
+    // Reverse the path if needed so the day-ahead spread is negative either
+    // way; then the obligation is two-way and the option can only pay out.
+    const forward = daSpread(daA, daB);
     const src = forward > 0 ? legB : legA;
     const sink = forward > 0 ? legA : legB;
 

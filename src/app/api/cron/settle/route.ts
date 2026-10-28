@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { runAutoSettlement, settlementEnabled } from "@/lib/settlement";
-import { safeEqual, ok, fail } from "@/lib/api";
-
-export const dynamic = "force-dynamic";
-
-export const maxDuration = 60;
+import { safeEqual, ok, fail } from "@/lib/api";export const dynamic = "force-dynamic";
+export const maxDuration = 10;
 
 /**
  * Vercel Cron / manual trigger target for automatic settlement. Guarded by
  * CRON_SECRET so random callers cannot provoke a settlement sweep.
+ * On Vercel free tier, maxDuration is limited to ~10s, so settlement must
+ * complete within that window (bounded position count).
  *
  * Settlement is a service-role job over every user's book, so this route is
  * the only way to reach it — the RPC refuses any caller that is not

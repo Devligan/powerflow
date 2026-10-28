@@ -31,7 +31,7 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "PowerFlow — ERCOT paper trading desk",
   description:
-    "Paper-trade ERCOT hub and load-zone power: hourly day-ahead and real-time series, 15-minute intervals, spreads and block forwards, settled by a real matching engine against simulated prices.",
+    "Paper-trade ERCOT hub and load-zone power: hourly day-ahead and real-time series, 15-minute intervals, spreads and block forwards, settled by a real matching engine against actual ERCOT prices.",
 };
 
 export default function RootLayout({

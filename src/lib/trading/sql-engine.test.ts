@@ -16,7 +16,13 @@ import { admin, createTestUser, dbTestsEnabled, userClient } from "@/lib/testing
  * Supabase project.
  */
 describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
-  const PRODUCT = "RTM_HOURLY";
+  // The engine mechanics run on the DAY-AHEAD market: tomorrow's clearing is
+  // published by ERCOT the day before delivery, so a forward fill through
+  // the real user path prices against an actual ERCOT observation — the
+  // genuine live-desk workflow. (The real-time series only exists after
+  // delivery — that is ERCOT's own publication order — so it belongs to the
+  // replay suites, where the clock drives delivery.)
+  const PRODUCT = "DAM_HOURLY";
   const MARKET = "HB_NORTH";
   const HOUR = 3600_000;
 
@@ -27,7 +33,19 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
   let price: number;
   let interval: string;
   let intervalEnd: string;
-  const originalPrices = new Map<string, number>();
+  /** Revision rows this suite published, removed at teardown. */
+  const revisionIds: string[] = [];
+  /** This run's start instant: the teardown sweep horizon. */
+  let suiteStartedAt = new Date().toISOString();
+  /** Monotonic stamp for revision publication times: the engine resolves
+   *  visibility with the DATABASE's clock, so a revision stamped at the
+   *  client's "now" can land in the DB's future when the two clocks skew —
+   *  and the next fill would silently price at the previous observation.
+   *  Stamping a margin behind the client clock keeps every revision visible
+   *  immediately and in order. */
+  let pubSeq = 0;
+  const revisionInstant = () =>
+    new Date(Date.now() - 10_000 + ++pubSeq).toISOString();
 
   // Tolerance rather than an exact round-trip: `Number(n.toFixed(6))` yields
   // `-0` for a tiny negative residue, and `toBe(-0)` fails against `0` — an
@@ -62,16 +80,43 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
       realized: Number(data.realized_pnl),
     };
   };
-  /** Republish an interval at a new price — in a feed-driven system that is
-   *  what "the market moved" means for an already-published interval. */
+  /** "The market moved": a NEW publication of the interval at a later
+   *  instant — the same mechanism production ingestion writes when ERCOT
+   *  revises a price. The original observation is never edited; the as-of
+   *  engine resolves the latest publication, which is now the revision. */
   const republish = async (newPrice: number) => {
-    const { error } = await db
+    const { data: orig } = await db
       .from("market_prices")
-      .update({ price: String(newPrice) })
+      .select("id, source, venue, delivery_end")
       .eq("market_id", marketId)
       .eq("product", PRODUCT)
-      .eq("delivery_timestamp", interval);
+      .eq("delivery_timestamp", interval)
+      // The interval this suite picked is the latest VISIBLE one; among its
+      // observations the engine resolves the latest publication, which is
+      // the row a revision must anchor to.
+      .lte("published_at", new Date().toISOString())
+      .order("published_at", { ascending: false })
+      .limit(1)
+      .single();
+    expect(orig).not.toBeNull();
+    const { data: rev, error } = await db
+      .from("market_prices")
+      .insert({
+        market_id: marketId,
+        product: PRODUCT,
+        delivery_timestamp: interval,
+        delivery_end: orig!.delivery_end,
+        price: String(newPrice),
+        source: orig!.source,
+        venue: orig!.venue,
+        source_timestamp: revisionInstant(),
+        published_at: revisionInstant(),
+        is_final: true,
+      })
+      .select("id")
+      .single();
     expect(error).toBeNull();
+    revisionIds.push(rev!.id as string);
   };
 
   const trade = (over: Record<string, unknown> = {}) => ({
@@ -91,6 +136,14 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
   beforeAll(async () => {
     db = admin();
     user = await createTestUser("sql-engine");
+
+    // Self-healing against a crashed predecessor: revision rows from a run
+    // whose afterAll never executed (killed battery, dropped connection)
+    // would otherwise hijack the interval picker and every fill price in
+    // this run. This suite's own revisions are what it can clean up
+    // reliably — sweep any that predate this run's start.
+    const startedAt = new Date().toISOString();
+    suiteStartedAt = startedAt;
     client = await userClient(user);
 
     const { data: market } = await db
@@ -100,29 +153,40 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
       .single();
     marketId = market!.id as string;
 
+    // Pick the interval the way the engine prices: an observation is only
+    // real to a live-mode account once its publication instant has passed.
+    // DAM clears publish the day BEFORE delivery, so the newest published
+    // clearing is a genuinely tradable forward interval. Within the
+    // interval, latest publication wins (the revision rule).
     const { data: rows } = await db
       .from("market_prices")
       .select("delivery_timestamp, price")
       .eq("market_id", marketId)
       .eq("product", PRODUCT)
+      .lte("published_at", new Date().toISOString())
       .order("delivery_timestamp", { ascending: false })
+      .order("published_at", { ascending: false })
       .limit(1);
     interval = rows![0].delivery_timestamp as string;
     price = Number(rows![0].price);
     intervalEnd = new Date(new Date(interval).getTime() + HOUR).toISOString();
-    originalPrices.set(interval, price);
   }, 120_000);
 
-  // These tests revise the published price of one interval to exercise realized
-  // P&L; leave the store as it was found.
+  // The original observations were never edited: removing this suite's
+  // revisions restores the series exactly as it was found. The sweep by
+  // run-start time also catches rows from a run whose teardown never ran
+  // (killed battery, dropped connection) and would otherwise poison the
+  // next run's interval picker.
   afterAll(async () => {
-    for (const [ts, p] of originalPrices) {
-      await db
-        .from("market_prices")
-        .update({ price: String(p) })
-        .eq("market_id", marketId)
-        .eq("product", PRODUCT)
-        .eq("delivery_timestamp", ts);
+    await db
+      .from("market_prices")
+      .delete()
+      .eq("market_id", marketId)
+      .eq("product", PRODUCT)
+      .gte("published_at", new Date(new Date(suiteStartedAt).getTime() - 60_000).toISOString())
+      .neq("source", "ERCOT_MIS_HISTORY");
+    for (const id of revisionIds) {
+      await db.from("market_prices").delete().eq("id", id);
     }
   }, 60_000);
 
@@ -220,6 +284,11 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
         .eq("market_id", pos.market_id)
         .eq("product", pos.product)
         .eq("delivery_timestamp", pos.delivery_start)
+        // Several observations of one interval coexist under the revision
+        // store (original + this suite's republishes); resolve the price the
+        // way the engine does — latest publication wins.
+        .order("published_at", { ascending: false })
+        .limit(1)
         .single();
       near(Number(m.mark_price), Number(px!.price));
       marked += Number(pos.quantity_mwh) * Number(m.mark_price);

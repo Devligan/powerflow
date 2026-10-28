@@ -15,19 +15,24 @@ function SignupForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  // Two channels on purpose: a problem with the password fields belongs *on*
+  // those fields for a screen reader (aria-invalid + a described-by), while a
+  // rejection from the server belongs to the form as a whole.
   const [error, setError] = useState<string | null>(null);
+  const [passwordProblem, setPasswordProblem] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setPasswordProblem(null);
     if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+      setPasswordProblem("Password must be at least 8 characters.");
       return;
     }
     if (password !== confirm) {
-      setError("Passwords do not match.");
+      setPasswordProblem("Passwords do not match.");
       return;
     }
     setBusy(true);
@@ -75,10 +80,22 @@ function SignupForm() {
           </div>
         )}
 
-        {error && <div className="note note-error">{error}</div>}
-        {message && <div className="note note-ok">{message}</div>}
+        {error && (
+          <div id="signup-error" role="alert" className="note note-error">
+            {error}
+          </div>
+        )}
+        {message && (
+          <div role="status" className="note note-ok">
+            {message}
+          </div>
+        )}
 
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form
+          onSubmit={onSubmit}
+          className="space-y-4"
+          aria-describedby={error ? "signup-error" : undefined}
+        >
           <div>
             <label className="label" htmlFor="email">
               Email
@@ -88,6 +105,9 @@ function SignupForm() {
               type="email"
               required
               autoComplete="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               className="input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -108,6 +128,8 @@ function SignupForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="At least 8 characters"
+              aria-invalid={passwordProblem ? true : undefined}
+              aria-describedby={passwordProblem ? "password-error" : undefined}
             />
           </div>
           <div>
@@ -123,7 +145,14 @@ function SignupForm() {
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               placeholder="Repeat your password"
+              aria-invalid={passwordProblem ? true : undefined}
+              aria-describedby={passwordProblem ? "password-error" : undefined}
             />
+            {passwordProblem && (
+              <p id="password-error" role="alert" className="note note-error mt-2">
+                {passwordProblem}
+              </p>
+            )}
           </div>
           <button type="submit" disabled={busy} className="btn btn-primary w-full">
             {busy ? "Creating account" : "Create account"}

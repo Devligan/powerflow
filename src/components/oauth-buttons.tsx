@@ -1,46 +1,58 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { OAuthProviderGlyph } from "@/components/oauth-provider-glyph";
 import {
-  configuredOAuthProviders,
-  OAUTH_LABELS,
+  fetchEnabledProviders,
+  oauthLabel,
+  oauthScopes,
   type OAuthProviderId,
 } from "@/lib/oauth";
 
-function ProviderGlyph({ provider }: { provider: OAuthProviderId }) {
-  if (provider === "google") {
-    return (
-      <svg viewBox="0 0 48 48" className="h-4 w-4" aria-hidden="true">
-        <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z" />
-        <path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
-        <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C28.8 35.2 26.5 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />
-        <path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.1 5.7l6.2 5.2C36.9 40.2 44 35 44 24c0-1.3-.1-2.6-.4-3.9z" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 16 16" className="h-4 w-4 fill-current" aria-hidden="true">
-      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
-    </svg>
-  );
-}
-
+/**
+ * "Continue with …" for every provider the Supabase project has enabled.
+ *
+ * The list arrives from the project's own settings, so this component renders
+ * nothing while it is in flight and nothing if the answer never comes. That is
+ * deliberate: a provider button is a promise that a round trip will work.
+ *
+ * Accessibility notes, since this sits on the first screen anyone sees:
+ *
+ *   - the buttons are a labelled `group`, so they are announced as one cluster
+ *     rather than as orphans next to the email form;
+ *   - the clicked button carries `aria-busy`, and the redirect is announced in
+ *     a live region, because focus follows the user into the redirect and the
+ *     changed button label alone is not read out;
+ *   - a failure is `role="alert"` — the same text is visible and spoken.
+ */
 export function OAuthButtons({ next = "/dashboard" }: { next?: string }) {
+  const [providers, setProviders] = useState<OAuthProviderId[] | null>(null);
   const [busy, setBusy] = useState<OAuthProviderId | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const providers = configuredOAuthProviders();
 
-  if (providers.length === 0) return null;
+  useEffect(() => {
+    let live = true;
+    fetchEnabledProviders().then((enabled) => {
+      if (live) setProviders(enabled);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  if (!providers || providers.length === 0) return null;
 
   async function signIn(provider: OAuthProviderId) {
     setBusy(provider);
     setError(null);
     try {
       const supabase = createClient();
+      const scopes = oauthScopes(provider);
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
+          ...(scopes ? { scopes } : {}),
           redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
         },
       });
@@ -49,34 +61,55 @@ export function OAuthButtons({ next = "/dashboard" }: { next?: string }) {
       setError(
         err instanceof Error
           ? err.message
-          : `${OAUTH_LABELS[provider]} sign in failed`
+          : `${oauthLabel(provider)} sign in failed`
       );
       setBusy(null);
     }
   }
 
   return (
-    <>
+    <div className="space-y-4">
       <div className="flex items-center gap-3">
         <div className="h-px flex-1 bg-white/10" />
         <span className="caption">Or</span>
         <div className="h-px flex-1 bg-white/10" />
       </div>
-      <div className="space-y-2">
-        {providers.map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => signIn(p)}
-            disabled={busy !== null}
-            className="btn w-full"
-          >
-            <ProviderGlyph provider={p} />
-            {busy === p ? "Redirecting" : `Continue with ${OAUTH_LABELS[p]}`}
-          </button>
-        ))}
+
+      <div
+        role="group"
+        aria-label="Continue with a provider"
+        className="space-y-2"
+      >
+        {providers.map((provider) => {
+          const label = oauthLabel(provider);
+          const pending = busy === provider;
+          return (
+            <button
+              key={provider}
+              type="button"
+              onClick={() => signIn(provider)}
+              disabled={busy !== null}
+              aria-busy={pending}
+              className="btn w-full"
+            >
+              <OAuthProviderGlyph provider={provider} />
+              {pending ? `Redirecting to ${label}` : `Continue with ${label}`}
+            </button>
+          );
+        })}
       </div>
-      {error && <div className="note note-error">{error}</div>}
-    </>
+
+      {/* The button label changes but focus stays put, so the redirect is
+          announced here rather than relied on to be re-read. */}
+      <p role="status" className="sr-only">
+        {busy ? `Redirecting to ${oauthLabel(busy)}` : ""}
+      </p>
+
+      {error && (
+        <div role="alert" className="note note-error">
+          {error}
+        </div>
+      )}
+    </div>
   );
 }
