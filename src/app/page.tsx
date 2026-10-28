@@ -59,7 +59,7 @@ const SPEC: Array<{ term: string; detail: string }> = [
   {
     term: "Data source",
     detail:
-      "Actual ERCOT MIS publications — the same reports a real desk reads, never a synthetic feed. Only the clock, orders and accounts are simulated.",
+      "A deterministic simulated generator, labelled on every screen. This is never presented as live ERCOT data.",
   },
 ];
 
@@ -227,7 +227,7 @@ export default async function Home() {
             PowerFlow · for education only · not investment advice
           </p>
           <p className="caption">
-            All timestamps UTC · actual ERCOT market data, simulated trading
+            All timestamps UTC · market data is simulated and labelled as such
           </p>
         </div>
       </footer>

@@ -1,17 +1,12 @@
 # PowerFlow — ERCOT Paper Trading
 
 A secure, multi-user paper-trading platform for ERCOT electricity (Next.js +
-Supabase + Vercel). Trade actual ERCOT hub and load-zone prices — day-ahead
-clearing, 15-minute real-time settlement, and the hourly settlement series —
-with virtual cash, a full risk engine, immutable audit trail, and analytics.
+Supabase + Vercel). Trade simulated ERCOT hub and load-zone hourly prices with
+virtual cash, a full risk engine, immutable audit trail, and analytics.
 
-> **Where the prices come from**: ERCOT provides the market, PowerFlow provides
-> the trading. Every price row is ingested from ERCOT's own MIS reports
-> (`ERCOT_MIS`, the default) and carries its true publication stamp; the
-> simulator controls only the clock, the orders, and the accounts. Historical
-> replay runs over actual ERCOT archives via the same adapter. There is no
-> synthetic price feed; `GENERATED` remains only as a labeled development
-> fallback and is never presented as ERCOT data.
+> **Important**: All market data is **simulated** by default and clearly
+> labeled in the UI. It is never presented as live ERCOT data. This is a
+> paper-trading sandbox, not a trading desk.
 
 ## Features
 
@@ -21,19 +16,6 @@ with virtual cash, a full risk engine, immutable audit trail, and analytics.
   zones, with server-authoritative execution prices taken from the persisted
   price *for the interval and market actually traded* — never from the client
   and never from an unrelated series.
-- **Working limit orders**: commit to a price and let the book work — an
-  order fills through the instant engine when the interval's actual ERCOT
-  print crosses it (buy at/below the limit, sell at/above, ties fill), at
-  the print itself, never the limit. Cancel any open order; unfilled orders
-  expire after 7 days. Every fill, cancel and placement is audited.
-- Day-ahead **ancillary-service clearing prices** (REGUP, REGDN, RRS, NSPIN,
-  ECRS) ingested from ERCOT's NP4-188-CD report — system-wide MCPC series,
-  final on arrival. AS capacity remains a resource obligation (no assets on
-  a paper desk), so the series are reference data, not orderable.
-- Live settlement: the hourly RT series for a delivery day whose last hour
-  has fully elapsed is promoted to its final settlement value — live
-  positions settle, margin releases, and later ERCOT corrections still take
-  over as new observations.
 - Weighted-average, signed-quantity position accounting with realized P&L on
   closes; exact `bigint` money math on the client matching the database engine.
 - Immutable `trades` and `audit_events` (trigger-enforced, no UPDATE/DELETE),
@@ -59,8 +41,7 @@ with virtual cash, a full risk engine, immutable audit trail, and analytics.
 - **Data**: Supabase Postgres (RLS, triggers, SECURITY DEFINER functions),
   `@supabase/ssr` for sessions, `@supabase/supabase-js` service role for
   ingestion/analytics
-- **Testing**: Vitest (exact accounting engine + deterministic feed + CSV parser),
-  plus a dependency-free Chrome check of the sign-in screens
+- **Testing**: Vitest (exact accounting engine + deterministic feed + CSV parser)
 - **Deploy**: Vercel (cron, `proxy.ts` route protection)
 
 ## Getting started
@@ -78,20 +59,14 @@ Required env values (see `.env.example`):
 | `SUPABASE_SERVICE_ROLE_KEY` | server-only; ingestion, bootstrapping, analytics |
 | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_REF` | Supabase CLI (migrations/types) |
 | `CRON_SECRET` | guard for `/api/cron/ingest` |
-| `ERCOT_SOURCE` | `ERCOT_MIS` (default, direct MIS reports) or `ERCOT_REPLAY` (historical replay corpus); anything else is a configuration error — synthetic feeds are not available |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, `NEXT_PUBLIC_GITHUB_CLIENT_ID` | enable the corresponding "Continue with Google/GitHub" button |
+| `ERCOT_SOURCE` | `GENERATED` (default) or `ERCOT_MIS` |
 
-Social sign-in needs no variables: the buttons on `/login` and `/signup` are
-read from the project's own configuration (`GET /auth/v1/settings`, public and
-anon-key readable), so the list can never drift from what the project actually
-supports. To turn a provider on, enable it in Supabase →
-Authentication → Sign In / Providers, paste its client id and secret, and add
-`https://<ref>.supabase.co/auth/v1/callback` to that provider's authorized
-redirect URLs — its button appears on the next page load. Google, GitHub,
-Microsoft, Apple, Discord, GitLab, LinkedIn, Slack, Facebook, Notion, Spotify,
-Twitch, X, Bitbucket, Figma, Kakao, Keycloak and Zoom are all wired up; the
-client id and secret stay in the Supabase dashboard and never reach the app.
-The public landing page at `/` describes the platform; signed-in users land on
-`/dashboard`.
+Social sign-in is opt-in: set a `NEXT_PUBLIC_*_CLIENT_ID` for each provider
+you want to show, then enable that provider in Supabase →
+Authentication → Providers and add `https://<ref>.supabase.co/auth/v1/callback`
+to its redirect URLs. The public landing page at `/` describes the platform;
+signed-in users land on `/dashboard`.
 
 ### Database
 
@@ -115,7 +90,6 @@ npx tsx scripts/seed.ts
 npm run dev          # http://localhost:3000
 npm test             # exact accounting + feed tests (offline)
 npm run test:db      # the database-backed suites (see below)
-npm run test:browser # the auth pages in a real browser (needs a build first)
 npm run typecheck
 npm run lint
 npm run build        # production build + type-check of pages
@@ -154,42 +128,6 @@ These suites share one database, so each claims a market no other one writes —
 two of them reprice intervals and the settlement sweep settles delivered
 positions, either of which will fail a suite that pins an assertion to a series
 it does not own. Respect that when adding one.
-
-### The browser check
-
-Unit tests cannot tell you whether a page *renders*. `npm run test:browser`
-drives a real Chrome — the one already on the machine — over the DevTools
-Protocol and checks that `/login` and `/signup` render, that their fields are
-labelled and autofillable, that a failed OAuth round trip is announced, and that
-the provider buttons the Supabase project reports as enabled exist, are named by
-the catalogue, and are grouped and announced properly:
-
-```bash
-npm run build && npm run test:browser
-npm run test:browser -- --url http://localhost:3000   # against a running server
-npm run test:browser -- --headed                       # watch it, for debugging
-npm run test:browser -- --signed-in                    # adds the desk, positions and rank pages
-```
-
-The signed-in pages need an account, so `--signed-in` creates one throwaway
-user (as the database suites do), signs in **through the form**, places one real
-trade through the app's own HTTP API and deletes the account afterwards — the
-cascade takes its position and fill. It is therefore opt-in for the same reason
-the database suites are: it writes to whatever project `.env` points at. What it
-checks on those pages: the nav marks the current section for assistive tech, the
-desk's readouts are real money rather than placeholders, a fresh account's equity
-equals its cash, an empty book is an empty state rather than a blank table, the
-fill appears as a row with the quantity that was filled and moves cash, and the
-standings render without exposing an email address or a raw `user_id`.
-
-It is deliberately not Playwright: Chrome is already installed, and Node has
-spoken the debugging protocol over a WebSocket since v22, so the check costs no
-dependency, no install step and no lockfile entry. The one branch that cannot be
-reached without real OAuth credentials — providers enabled — is exercised by
-answering the settings request with a stubbed payload, injected through the
-protocol for a single page load, so nothing is rebuilt and the project's own
-Auth configuration is untouched. It needs Node 22+ and Chrome or Chromium; with
-no browser present it reports that it skipped rather than failing.
 
 ## How trading works
 
@@ -311,33 +249,12 @@ deficit is a standing liability the account works off from later receipts.
 
 ## Market data
 
-- `ERCOT_MIS` (default): `src/lib/ercot/mis.ts` reads ERCOT's MIS archive
-  **directly** — no gateway, no credentials. Report enumeration queries the
-  JSON listing API first (measured to surface new RT postings 23–35s before
-  the website's page, at ~30ms of JSON vs ~2s of 600KB HTML) and keeps the
-  website listing page as a scrape fallback:
-  - MIS 12331 (`NP4-190-CD`, DAM Settlement Point Prices) — the daily
-    day-ahead clearing for every hub and load zone, posted once the day
-    before delivery (~12:35 Central). Final on arrival.
-  - MIS 12301 (`SPPHLZNP6905`) — the rolling 15-minute real-time
-    settlement points, a new file every 15 minutes, published ~2 minutes
-    after each interval ends; and the **hourly settlement series**
-    aggregated per ERCOT's equal-time rule (the mean of the four 15-minute
-    settlement intervals in the hour), emitted only when all four intervals
-    exist. One report serves both: MIS publishes no separate hourly report.
-  - Every record's `published_at` comes from ERCOT's own posting stamp
-    (the listing API's `PublishDate`), so look-ahead protection filters on
-    real publication time, not delivery time.
-  - ERCOT prints every load zone and DC tie **twice** per interval — once
-    under its own type code (`LZ`/`DC`) and once under an EHV variant
-    (`LZEW`/`DCEW`), prices within a rounding hair. The parser dedupes to
-    the canonical typed print: they are one settlement observation, and an
-    undeduped print corrupts the hourly average (a two-interval hour looks
-    complete) while hubs, which print once, stay clean.
-- `ERCOT_REPLAY`: drive the same adapter over a historical MIS corpus for
-  replay trading — `npm run load:history` and `scripts/build-history-fixture.ts`.
-- `GENERATED`: labeled deterministic simulated prices, kept only for offline
-  tests and UI development. Never shown as ERCOT data.
+- `GENERATED` (default): deterministic simulated prices keyed by
+  `(product, settlement point, interval)` — idempotent by construction,
+  labeled "Simulated feed". Seed data is labeled "Historical seed".
+- `ERCOT_MIS`: `src/lib/ercot/mis.ts` provides a CSV adapter. Enable with
+  `ERCOT_SOURCE=ERCOT_MIS` and `ERCOT_MIS_API_BASE_URL`; the product the
+  report carries is set by `ERCOT_MIS_PRODUCT` (default `RTM_HOURLY`).
 
 Ingestion fetches each product independently (its own interval length) and
 resumes **each (market, product) series from its own last published
@@ -345,11 +262,7 @@ interval**, so a market that fell behind is backfilled rather than being
 skipped to match whichever market is furthest ahead. `INGEST_PRODUCTS`
 overrides the set, defaulting to everything the source publishes;
 `INGEST_MAX_RECORDS` bounds a run, and rows left for the next run are reported
-as `recordsDeferred`/`truncated` rather than as success. Because MIS keeps
-every daily report downloadable, past windows can always be re-resolved from
-ERCOT's own files: `scripts/ingest-history.ts --gateway --from <ISO> --to <ISO>`
-backfills mid-series gaps (a bounded run's revision policy deliberately leaves
-rows below a series' cursor to it).
+as `recordsDeferred`/`truncated` rather than as success.
 
 #### US/Central DST
 
@@ -585,6 +498,5 @@ supabase/migrations/   # 0001 schema · 0002 execute_trade · 0003 leaderboard
                        # 0018 ancillary-service catalog
                        # 0019 anon EXECUTE grants revoked
 scripts/seed.ts        # historical simulated prices + markets
-scripts/browser-check.ts  # the sign-in screens, in a real browser
 vercel.json            # cron schedule
 ```

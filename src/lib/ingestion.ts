@@ -19,23 +19,8 @@ export interface IngestionResult {
   recordsDeferred: number;
   /** Whether this run stopped early with work remaining. */
   truncated: boolean;
-  /** RTM_HOURLY observations whose Central delivery day has fully elapsed
-   *  and were promoted to final settlement values this run (0024). */
-  finalsPromoted: number;
-  /** Age of the newest real-time interval in the store (seconds since its
-   *  delivery start). A healthy 5-minute cadence keeps this under ~20 min;
-   *  anything beyond means postings stopped landing. */
-  newestIntervalAgeSeconds: number | null;
-  /** True when the newest interval is older than the staleness threshold. */
-  feedStale: boolean;
-  /** Limit orders filled by this run's sweep (0026). */
-  ordersFilled: number;
-  /** Limit orders expired by this run's sweep. */
-  ordersExpired: number;
   failed: boolean;
   error?: string;
-  /** Set when the run was intentionally skipped (e.g. an archive source). */
-  skippedReason?: string;
 }
 
 interface MarketRow {
@@ -62,52 +47,15 @@ function resolveProducts(published: string[]): string[] {
 }
 
 /**
- * Idempotent market-data ingestion over the observation store.
- *
- * One row per (market, product, delivery interval, PUBLICATION instant): a
- * correction ERCOT publishes later is another row, not an overwrite, so the
- * revision history survives re-ingestion. The unique key is the final
- * duplicate guard; `ignoreDuplicates` makes re-runs and concurrent runs safe.
- *
- * The resume cursor is read from the FINAL series (latest_final_price_
- * timestamps): an interim observation must not advance the cursor past its
- * interval, or the final value published later would fall behind it and never
- * be fetched. The fetch window starts AT the any-observation cursor rather
- * than after it, because a later publication for an already-stored interval
- * (a correction) is exactly the row this pipeline exists to keep.
+ * Idempotent market-data ingestion. Safe to run repeatedly and concurrently
+ * (last writer wins on identical keys; the unique constraint
+ * (market_id, delivery_timestamp, product) is the final duplicate guard).
  */
 export async function runMarketDataIngestion(
-  opts: { dryRun?: boolean; source?: ErcotSource } = {}
+  opts: { dryRun?: boolean } = {}
 ): Promise<IngestionResult> {
   const admin = supabaseAdmin();
-  // Production resolves the configured ERCOT source (always actual ERCOT
-  // data). The injection seam exists so tests can drive the pipeline with a
-  // deterministic source without any global synthetic configuration.
-  const source = opts.source ?? getErcotSource();
-
-  // Archive-mode sources (historical replay corpora) are driven explicitly,
-  // epoch by epoch, by scripts/ingest-history.ts. Letting the incremental cron
-  // point at one would re-walk the whole corpus on every tick.
-  if (source.publicationMode === "archive") {
-    return {
-      runId: null,
-      source: source.sourceName,
-      marketsSynced: 0,
-      recordsReceived: 0,
-      recordsInserted: 0,
-      recordsSkipped: 0,
-      recordsDeferred: 0,
-      truncated: false,
-      finalsPromoted: 0,
-      newestIntervalAgeSeconds: null,
-      feedStale: false,
-      ordersFilled: 0,
-      ordersExpired: 0,
-      failed: false,
-      skippedReason:
-        "archive source: run scripts/ingest-history.ts instead of the incremental cron",
-    };
-  }
+  const source = getErcotSource();
 
   // Observability: open an ingestion_runs row up front.
   let runId: string | null = null;
@@ -131,18 +79,6 @@ export async function runMarketDataIngestion(
   let recordsInserted = 0;
   let recordsSkipped = 0;
   let recordsDeferred = 0;
-  // RTM_HOURLY observations promoted to final by this run (0024).
-  let finalsPromoted = 0;
-  // Age of the newest RTM_15MIN interval (seconds) and whether it exceeds
-  // the staleness threshold — the cron's own health signal.
-  let newestIntervalAgeSeconds: number | null = null;
-  let feedStale = false;
-  // Limit-order sweep results from this run (0026).
-  let ordersFilled = 0;
-  let ordersExpired = 0;
-  // The products this run covered (resolved in the try body; recorded on
-  // the run row's detail at the tail).
-  let products: string[] = [];
   let marketsSynced = 0;
   let failed = false;
   let error: string | undefined;
@@ -170,26 +106,20 @@ export async function runMarketDataIngestion(
       marketsSynced++;
     }
 
-    // 2. Resume points: the latest stored delivery timestamp per
-    //    (market, product), over all observations and over finals.
-    products = resolveProducts(await source.getProducts());
-    const marketIds = [...marketById.values()].map((m) => m.id);
-    const [latestRes, latestFinalRes] = await Promise.all([
-      admin.rpc("latest_price_timestamps", { p_market_ids: marketIds }),
-      admin.rpc("latest_final_price_timestamps", { p_market_ids: marketIds }),
-    ]);
-    if (latestRes.error) {
-      throw new Error(
-        `could not read ingestion resume points: ${latestRes.error.message}`
-      );
-    }
-    if (latestFinalRes.error) {
-      throw new Error(
-        `could not read final-series resume points: ${latestFinalRes.error.message}`
-      );
+    // 2. Latest persisted delivery timestamp per (market, product).
+    const products = resolveProducts(await source.getProducts());
+    const { data: latests, error: latestErr } = await admin.rpc(
+      "latest_price_timestamps",
+      { p_market_ids: [...marketById.values()].map((m) => m.id) }
+    );
+    if (latestErr) {
+      // Not something to shrug off: falling back to "assume nothing is stored"
+      // would silently refetch the whole horizon for every market and report a
+      // clean run, so a genuine failure here is raised instead.
+      throw new Error(`could not read ingestion resume points: ${latestErr.message}`);
     }
     const latestByKey = new Map<string, string>();
-    for (const row of (latestRes.data ?? []) as Array<{
+    for (const row of (latests ?? []) as Array<{
       market_id: string;
       product: string;
       delivery_timestamp: string;
@@ -199,22 +129,8 @@ export async function runMarketDataIngestion(
         row.delivery_timestamp
       );
     }
-    const latestFinalByKey = new Map<string, string>();
-    for (const row of (latestFinalRes.data ?? []) as Array<{
-      market_id: string;
-      product: string;
-      delivery_timestamp: string;
-    }>) {
-      latestFinalByKey.set(
-        `${row.market_id}::${row.product}`,
-        row.delivery_timestamp
-      );
-    }
 
-    // 3. Horizon (bounded per run) plus the earliest resume point. The window
-    //    opens AT the cursor, not after it: a new publication for an interval
-    //    already stored is a revision, and the store's key makes re-inserting
-    //    it a no-op rather than a duplicate.
+    // 3. Horizon (bounded per run) plus each series' own resume point.
     const now = new Date();
     const horizon = new Date(
       now.getTime() + Number(process.env.INGEST_WINDOW_HOURS ?? 72) * HOUR_MS
@@ -229,41 +145,37 @@ export async function runMarketDataIngestion(
       venue: string;
       source: string;
       source_timestamp: string;
-      published_at: string;
-      is_final: boolean;
     }> = [];
 
     for (const product of products) {
       const def = requireProduct(product);
 
-      // 4. The earliest gap any market has for this product: the older of the
-      //    all-observations cursor and the final-series cursor (a series whose
-      //    final lags its interim tail must keep being fetched).
+      // 4. Resume point per market, for this product. Previously this was a
+      //    single `from` taken as the *maximum* last-known timestamp across all
+      //    markets, so one market that was current dragged every lagging market
+      //    up to its own position and the lagging ones were never backfilled —
+      //    their gap was simply skipped, run after run. Each series now resumes
+      //    from its own last published interval.
+      const resumeAt = new Map<string, number>();
       let earliest = Number.POSITIVE_INFINITY;
       for (const row of marketById.values()) {
         const known = latestByKey.get(`${row.id}::${product}`);
-        const knownFinal = latestFinalByKey.get(`${row.id}::${product}`);
-        const candidate = [known, knownFinal]
-          .filter((v): v is string => Boolean(v))
-          .map((v) => new Date(v).getTime());
-        const from = candidate.length
-          ? Math.min(...candidate)
+        const from = known
+          ? new Date(known).getTime() + 1000
           : now.getTime() - OVERLAP_MS; // no history: a bounded overlap buffer
+        resumeAt.set(row.id, from);
         if (from < earliest) earliest = from;
       }
+      // One fetch per product, from the earliest gap any market has. Rows that
+      // do not advance a market's own series are dropped below, so fetching
+      // wide cannot double-write the markets that are already current.
       if (!Number.isFinite(earliest) || earliest >= horizon.getTime()) continue;
 
-      const records = await source.getPrices(
-        new Date(earliest),
-        horizon,
-        [product]
-      );
+      const records = await source.getPrices(new Date(earliest), horizon, [product]);
       recordsReceived += records.length;
 
-      // 5. Validate + normalize, keep only rows for known markets. Dedupe is
-      //    the store's job (the observation key), so rows below a market's own
-      //    cursor are NOT dropped here: a correction to an old interval is a
-      //    new observation and must survive.
+      // 5. Validate + normalize, retain only rows for known markets that are
+      //    genuinely missing from that market's own series.
       for (const rec of records) {
         const market = marketById.get(rec.settlementPoint);
         if (!market) {
@@ -275,22 +187,8 @@ export async function runMarketDataIngestion(
           recordsSkipped++;
           continue;
         }
-        // Revision-pickup policy: the fetch window opens AT a market's
-        // cursor, so each run re-offers the boundary interval (where a
-        // live correction would land) plus every interval a LAGGING
-        // market is missing. Rows strictly below a market's own cursor
-        // are dropped here rather than capped later: they are either
-        // already stored (the observation key makes the insert a no-op)
-        // or historical corrections, which belong to the history loader
-        // (scripts/ingest-history.ts), which has no record budget. Letting
-        // them ride in the capped payload would let a feed's re-offered
-        // rows crowd real gaps out of the budget and strand lagging
-        // markets below the horizon their peers reached.
-        const knownAt = latestByKey.get(`${market.id}::${product}`);
-        if (
-          knownAt &&
-          new Date(check.record.deliveryTimestamp) < new Date(knownAt)
-        ) {
+        const from = resumeAt.get(market.id) ?? 0;
+        if (new Date(check.record.deliveryTimestamp).getTime() < from) {
           recordsSkipped++;
           continue;
         }
@@ -303,86 +201,9 @@ export async function runMarketDataIngestion(
           venue: def.venue,
           source: source.sourceName,
           source_timestamp: check.record.sourceTimestamp,
-          published_at: check.record.publishedAt,
-          is_final: check.record.isFinal,
         });
       }
     }
-
-    // 5b. Finality promotion (0024): hourly SPP observations whose Central
-    // delivery day has fully elapsed become the settlement values. Every
-    // run promotes — including no-op runs — so a live position settles at
-    // most one cron tick + one settle sweep after its day ends. Later ERCOT
-    // corrections arrive as new interim observations and are promoted on a
-    // later run the same way (price_final prefers the latest final row).
-    try {
-      const { data: promoted, error: promoteErr } = await admin.rpc(
-        "promote_rtm_finals"
-      );
-      if (promoteErr) throw new Error(promoteErr.message);
-      finalsPromoted = Number(promoted ?? 0);
-    } catch (e) {
-      // Promotion failing must not fail the ingestion (data landed fine);
-      // settlement self-heals on the next run.
-      console.warn(
-        "[ingestion] finality promotion failed:",
-        e instanceof Error ? e.message : e
-      );
-    }
-
-    // 5d. Limit-order sweep: fill open orders whose interval now has a
-    // crossing print. Runs from the same cron tail as promotion so an order
-    // fills within one tick of its price publishing. The sweep is the
-    // service role (same trust tier as settlement); fills go through
-    // execute_trade so every engine guarantee applies unchanged.
-    try {
-      const { data: sweep, error: sweepErr } = await admin.rpc(
-        "fill_crossing_limit_orders"
-      );
-      if (sweepErr) throw new Error(sweepErr.message);
-      const s = (sweep ?? {}) as { filled?: number; expired?: number };
-      ordersFilled = Number(s.filled ?? 0);
-      ordersExpired = Number(s.expired ?? 0);
-    } catch (e) {
-      // The book surviving an ingestion problem matters more than one sweep;
-      // the next tick retries, and expired orders are re-expired there.
-      console.warn(
-        "[ingestion] limit-order sweep failed:",
-        e instanceof Error ? e.message : e
-      );
-    }
-
-    // 5c. Feed staleness: how old is the newest real-time interval in the
-    // store? Calibrated against healthy operation: interval [T, T+15)
-    // posts at ~T+17, so at any instant the newest POSTED interval started
-    // 17–32 minutes ago (starts are on a 15-minute grid). Healthy age
-    // therefore cycles 17→32 minutes; a 35-minute threshold sits just
-    // above that ceiling, and a genuinely stuck feed grows past it
-    // without bound.
-    try {
-      const { data: newestRow, error: newestErr } = await admin
-        .from("market_prices")
-        .select("delivery_timestamp")
-        .eq("product", "RTM_15MIN")
-        .order("delivery_timestamp", { ascending: false })
-        .limit(1);
-      if (newestErr) throw new Error(newestErr.message);
-      const newest = (newestRow?.[0]?.delivery_timestamp as string | undefined) ?? null;
-      if (newest) {
-        newestIntervalAgeSeconds = Math.max(
-          0,
-          Math.round((Date.now() - new Date(newest).getTime()) / 1000)
-        );
-      }
-    } catch (e) {
-      // Observability failing must not fail ingestion.
-      console.warn(
-        "[ingestion] staleness check failed:",
-        e instanceof Error ? e.message : e
-      );
-    }
-    feedStale =
-      newestIntervalAgeSeconds != null && newestIntervalAgeSeconds > 35 * 60;
 
     if (rowsToInsert.length === 0) {
       // Nothing new to fetch (already current for every product).
@@ -393,38 +214,36 @@ export async function runMarketDataIngestion(
         recordsReceived,
         recordsInserted,
         recordsSkipped,
-      recordsDeferred: 0,
-      truncated: false,
-      finalsPromoted,
-      newestIntervalAgeSeconds,
-      feedStale,
-      ordersFilled,
-      ordersExpired,
-      failed,
-    };
+        recordsDeferred: 0,
+        truncated: false,
+        failed,
+      };
     }
 
-    // 6. Persist with ON CONFLICT DO NOTHING on the observation key
-    //    (idempotent by construction). Bounded chunks per run keep serverless
-    //    executions well-scoped.
+    // 6. Persist with ON CONFLICT DO NOTHING (idempotent by construction).
+    //    Bounded chunks per run keep serverless executions well-scoped.
     const maxRecords = Math.max(
       1,
       Number(process.env.INGEST_MAX_RECORDS ?? 2000)
     );
     const rowsToInsertCapped = rowsToInsert.slice(0, maxRecords);
     // Deferred is not the same as skipped: these rows are real gaps left for
-    // the next bounded run.
+    // the next bounded run, and reporting them as "skipped" (or as an out-and
+    // -out success with everything accounted for) is how a truncated run used
+    // to look identical to a complete one.
     recordsDeferred = rowsToInsert.length - rowsToInsertCapped.length;
 
     for (let i = 0; i < rowsToInsertCapped.length; i += BATCH_SIZE) {
       const chunk = rowsToInsertCapped.slice(i, i + BATCH_SIZE);
       // With ignoreDuplicates the response carries exactly the rows that were
       // inserted, and `count` is always null — so the row count is the honest
-      // measure. (Summing `count` reported 0 for every run; see 0009-era fix.)
+      // measure. Summing `count` reported 0 inserted for every run while the
+      // rows were in fact being written, and then counted every one of them as
+      // skipped.
       const { data: inserted, error: err } = await admin
         .from("market_prices")
         .upsert(chunk, {
-          onConflict: "market_id,product,delivery_timestamp,published_at",
+          onConflict: "market_id,delivery_timestamp,product",
           ignoreDuplicates: true,
         })
         .select("id");
@@ -443,6 +262,8 @@ export async function runMarketDataIngestion(
       records_skipped: recordsSkipped,
       detail: {
         products: products,
+        // Non-zero means the run hit INGEST_MAX_RECORDS and left real gaps for
+        // the next run rather than finishing the horizon.
         records_deferred: recordsDeferred,
         truncated: recordsDeferred > 0,
       },
@@ -462,19 +283,6 @@ export async function runMarketDataIngestion(
     }
   }
 
-  // Record the staleness metric on the run row, then return.
-  await finalize(runId, {
-    detail: {
-      records_deferred: recordsDeferred,
-      truncated: recordsDeferred > 0,
-      finals_promoted: finalsPromoted,
-      newest_interval_age_seconds: newestIntervalAgeSeconds,
-      feed_stale: feedStale,
-      orders_filled: ordersFilled,
-      orders_expired: ordersExpired,
-    },
-  });
-
   return {
     runId,
     source: source.sourceName,
@@ -484,11 +292,6 @@ export async function runMarketDataIngestion(
     recordsSkipped,
     recordsDeferred,
     truncated: recordsDeferred > 0,
-    finalsPromoted,
-    newestIntervalAgeSeconds,
-    feedStale,
-    ordersFilled,
-    ordersExpired,
     failed,
     error,
   };

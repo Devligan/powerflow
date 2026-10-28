@@ -2,19 +2,15 @@ import Link from "next/link";
 import { listMarkets } from "@/lib/markets";
 import { usd, timeAgo, sourceInfo } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
-import { requireUser } from "@/lib/auth";
-import { getSimClock } from "@/lib/sim-clock";
 
 export const dynamic = "force-dynamic";
 
 export default async function MarketsPage() {
-  const user = await requireUser();
-  const clock = await getSimClock(user.id).catch(() => null);
-  const asOf = clock && clock.mode === "REPLAY" ? new Date(clock.now) : null;
-  const markets = await listMarkets(asOf).catch(() => []);
-  type Market = { settlementPoint: string; price: string | null; deliveryTimestamp: string | null; source: string | null; product: string; type: string; description: string | null };
+  const markets = await listMarkets().catch(() => []);
+  const hubs = markets.filter((m) => m.type === "HUB");
+  const zones = markets.filter((m) => m.type === "LOAD_ZONE");
 
-  function table(title: string, note: string, rows: Market[]) {
+  function table(title: string, note: string, rows: typeof markets) {
     return (
       <section className="card p-0">
         <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-white/10 px-4 py-3">
@@ -36,10 +32,10 @@ export default async function MarketsPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((m: Market) => {
+              {rows.map((m) => {
                 const sr = sourceInfo(m.source);
                 return (
-                  <tr key={m.settlementPoint}>
+                  <tr key={m.id}>
                     <td className="mono font-medium">{m.settlementPoint}</td>
                     <td className="t-dim">{m.description}</td>
                     <td className="mono text-right">
@@ -85,29 +81,28 @@ export default async function MarketsPage() {
       <PageHeader
         kicker="Market data"
         title="Settlement points"
-        aside={(
+        aside={
           <>
             <span className="badge badge-neutral">{markets.length} active</span>
             <Link href="/positions" className="btn btn-sm">
               Positions
             </Link>
           </>
-        )}
+        }
       >
-        ERCOT trading hubs and load zones. In replay mode every row is priced
-        at the desk's simulation clock; simulated sources are labelled as such
-        on every row.
+        ERCOT trading hubs and load zones. Prices come from a deterministic
+        simulated generator and are labelled as such on every row.
       </PageHeader>
 
       {table(
         "Trading hubs",
         "Hubs are the liquid reference points and the cleaner leg of a basis trade.",
-        markets.filter((m) => m.type === "HUB")
+        hubs
       )}
       {table(
         "Load zones",
         "Zonal products carry local congestion, so they trade at a basis to the hub.",
-        markets.filter((m) => m.type === "LOAD_ZONE")
+        zones
       )}
     </div>
   );

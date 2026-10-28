@@ -72,36 +72,8 @@ export function MarketsStrip() {
     );
   }
 
-  // Feed staleness: the newest hourly observation should be the current
-  // (running) hour; with the 5-minute ingest cron it lands within minutes of
-  // its ~HH:02 posting. Older than that means the desk is looking at a
-  // frozen feed — say so instead of leaving live-looking numbers.
-  const newestDeliveryMs = items.reduce((max, it) => {
-    const t = it.deliveryTimestamp ? Date.parse(it.deliveryTimestamp) : NaN;
-    return Number.isNaN(t) ? max : Math.max(max, t);
-  }, Number.NEGATIVE_INFINITY);
-  const feedAgeMs =
-    Number.isFinite(newestDeliveryMs) && ts != null
-      ? ts - (newestDeliveryMs + 3_600_000)
-      : null;
-  const feedStale = feedAgeMs != null && feedAgeMs > 10 * 60_000;
-  const feedAgeLabel =
-    feedAgeMs == null
-      ? null
-      : feedAgeMs < 60_000
-        ? "just now"
-        : feedAgeMs < 3_600_000
-          ? `${Math.floor(feedAgeMs / 60_000)} min ago`
-          : `${Math.floor(feedAgeMs / 3_600_000)} h ago`;
-
   return (
     <div className="space-y-2">
-      {feedAgeLabel && (
-        <div className="flex items-center gap-2">
-          <span className="caption t-mute">ERCOT hourly feed · {feedAgeLabel}</span>
-          {feedStale && <span className="badge badge-amber">feed lagging</span>}
-        </div>
-      )}
       <div className="scroll-thin flex gap-3 overflow-x-auto pb-1">
         {items.map((it) => {
           const sr = sourceInfo(it.source);

@@ -3,7 +3,6 @@ import { requireUser } from "@/lib/auth";
 import { getPortfolioSnapshot } from "@/lib/queries";
 import { getMarketStatus } from "@/lib/markets";
 import { MarketsStrip } from "@/components/markets-strip";
-import { SimClockWidget } from "@/components/sim-clock-widget";
 import { InstrumentBreakdownTable } from "@/components/instrument-breakdown";
 import { MarginSummary } from "@/components/margin-summary";
 import { PageHeader } from "@/components/ui/page-header";
@@ -60,9 +59,11 @@ export default async function DashboardPage() {
         aside={
           <>
             {status && (
-              <span className="badge badge-green">
-                <Lamp pulse={status.dataMode === "ERCOT_LIVE"} />
-                {status.dataMode === "ERCOT_REPLAY" ? "ERCOT (history)" : "ERCOT MIS"}
+              <span
+                className={`badge ${status.generated ? "badge-amber" : "badge-green"}`}
+              >
+                <Lamp pulse={status.generated} />
+                {status.generated ? "Simulated feed" : status.mode}
               </span>
             )}
             <Link href="/portfolio" className="btn btn-sm">
@@ -71,14 +72,9 @@ export default async function DashboardPage() {
           </>
         }
       >
-        Marked to the desk&apos;s simulation clock and recomputed from executed
-        trades. Every price is actual ERCOT MIS data, labelled with its report
-        source and publication time.
+        Marked to the latest published interval and recomputed from executed
+        trades. Simulated ERCOT hub and load-zone products only.
       </PageHeader>
-
-      {/* The clock: what "now" means for this desk. Every mark, fill and
-          settlement resolves through it. */}
-      <SimClockWidget />
 
       {/* Bank of readouts. */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">

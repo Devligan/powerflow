@@ -31,7 +31,6 @@ import {
   windowIntervals,
   type SeriesPoint,
 } from "@/lib/trading/order-form";
-import { liveDeliveryDefault } from "@/lib/trading/live-defaults";
 
 /**
  * The order ticket.
@@ -54,7 +53,6 @@ export function TradePanel({
   pricedThrough,
   markets,
   series,
-  simNowMs,
 }: {
   marketId: string;
   settlementPoint: string;
@@ -71,34 +69,16 @@ export function TradePanel({
   markets: Array<{ id: string; settlementPoint: string }>;
   /** Leg A's prices for the product on this page, for previews. */
   series: SeriesPoint[];
-  /** The desk's simulation time (ms). In replay the ticket's horizon checks
-   *  run against this — the engine validates against the same clock. */
-  simNowMs?: number;
 }) {
   const router = useRouter();
   const [instrumentCode, setInstrumentCode] = useState(DEFAULT_INSTRUMENT);
-  // The page's series anchors the ticket, but only an orderable series can be
-  // traded (0025: the RT references are not). Snap the initial choice into
-  // the selectable set so the displayed option is always the submitted one;
-  // the reference note below explains the page's own series.
-  const [chosenProduct, setChosenProduct] = useState(() => {
-    const options = selectableProducts(getInstrument(DEFAULT_INSTRUMENT)!);
-    return options.includes(product) ? product : (options[0] ?? product);
-  });
+  const [chosenProduct, setChosenProduct] = useState(product);
   const [counterMarketId, setCounterMarketId] = useState<string | null>(null);
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [quantity, setQuantity] = useState("10");
-  const [dateStr, setDateStr] = useState(() => liveDeliveryDefault(product).date);
-  const [hour, setHour] = useState(() => liveDeliveryDefault(product).hour);
-  const [referenceNote, setReferenceNote] = useState<string | null>(
-    () => liveDeliveryDefault(product).note
-  );
+  const [dateStr, setDateStr] = useState(() => defaultDate());
+  const [hour, setHour] = useState(() => defaultHour());
   const [windowLength, setWindowLength] = useState(DEFAULT_WINDOW_INTERVALS);
-  // Execution mode: fill now at the interval's actual print, or work a
-  // resting limit that the sweep fills when the print crosses.
-  const [executionMode, setExecutionMode] = useState<"MARKET" | "LIMIT">("MARKET");
-  const [limitPrice, setLimitPrice] = useState("");
-  const [placed, setPlaced] = useState<null | { orderId: string; limitPrice: string; side: string }>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fill, setFill] = useState<null | {
@@ -158,19 +138,13 @@ export function TradePanel({
         delivery,
         intervalMinutes,
         priceProbe: probe,
-        now: simNowMs,
       })
     : { ok: false as const, message: "That delivery date is not valid." };
 
-  // The series horizon the page was rendered with: in replay it is bounded by
-  // the reader's clock (the page passes the as-of series), so an order beyond
-  // it would promise a price nobody has seen. The wall clock is never read
-  // during render; the ticket's own time check lives in checkOrderForm.
-  const pricedThroughMs = pricedThrough ? new Date(pricedThrough).getTime() : null;
   const beyondHorizon =
     delivery != null &&
-    pricedThroughMs != null &&
-    delivery.endMs > pricedThroughMs;
+    pricedThrough != null &&
+    delivery.endMs > new Date(pricedThrough).getTime();
 
   // A stable id per intent, rotated after a fill: a retry of the order in the
   // box cannot double-fill, while deliberately repeating it still executes.
@@ -191,14 +165,6 @@ export function TradePanel({
       setChosenProduct(options[0]);
     }
     if (!needsCounterPoint(next.settlementRule)) setCounterMarketId(null);
-    // The traded product changes what the default delivery means: a legless
-    // or path instrument clears in the day-ahead market even from an RT
-    // page, so the default re-solves for the product actually traded.
-    const nextProduct = options.length > 0 ? options[0] : tradedProduct;
-    const def = liveDeliveryDefault(nextProduct);
-    setDateStr(def.date);
-    setHour(def.hour);
-    setReferenceNote(def.note);
   }
 
   async function onSubmit(e: FormEvent) {
@@ -207,38 +173,10 @@ export function TradePanel({
       setError(check.ok ? "That delivery date is not valid." : check.message);
       return;
     }
-    if (executionMode === "LIMIT" && !/^\d+(\.\d{1,6})?$/.test(limitPrice)) {
-      setError("Limit price must be a positive number.");
-      return;
-    }
     setBusy(true);
     setError(null);
     setFill(null);
-    setPlaced(null);
     try {
-      if (executionMode === "LIMIT") {
-        const res = await fetch("/api/orders", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            marketId,
-            instrument: instrument.code,
-            product: tradedProduct,
-            counterMarketId,
-            side,
-            quantityMwh: quantity,
-            limitPrice,
-            deliveryStart: delivery.start,
-            deliveryEnd: delivery.end,
-          }),
-        });
-        const body = await res.json();
-        if (!res.ok) throw new Error(body?.error ?? "Order failed");
-        setPlaced({ orderId: body.orderId, limitPrice, side });
-        setOrderNonce((n) => n + 1);
-        router.refresh();
-        return;
-      }
       const res = await fetch("/api/trades", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -321,9 +259,6 @@ export function TradePanel({
               {ruleHint(instrument)}
             </span>
           </p>
-          {referenceNote && (
-            <p className="note mt-2">{referenceNote}</p>
-          )}
         </div>
 
         {/* Legs: leg A is this page; a spread needs a sink */}
@@ -363,13 +298,7 @@ export function TradePanel({
               id="product"
               className="input"
               value={chosenProduct}
-              onChange={(e) => {
-                setChosenProduct(e.target.value);
-                const def = liveDeliveryDefault(e.target.value);
-                setDateStr(def.date);
-                setHour(def.hour);
-                setReferenceNote(def.note);
-              }}
+              onChange={(e) => setChosenProduct(e.target.value)}
             >
               {productOptions.map((p) => (
                 <option key={p} value={p}>
@@ -432,60 +361,6 @@ export function TradePanel({
             onChange={(e) => setQuantity(e.target.value)}
             placeholder="10"
           />
-        </div>
-
-        {/* Execution mode: fill now at the print, or rest a working limit */}
-        <div className="border-t border-white/10 pt-4">
-          <span className="label">Execution</span>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              aria-pressed={executionMode === "MARKET"}
-              onClick={() => setExecutionMode("MARKET")}
-              className={`border px-2 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors ${
-                executionMode === "MARKET"
-                  ? "border-white/40 bg-white/10 text-white"
-                  : "border-white/15 t-mute hover:text-white/80"
-              }`}
-            >
-              Fill now
-            </button>
-            <button
-              type="button"
-              aria-pressed={executionMode === "LIMIT"}
-              onClick={() => setExecutionMode("LIMIT")}
-              className={`border px-2 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors ${
-                executionMode === "LIMIT"
-                  ? "border-white/40 bg-white/10 text-white"
-                  : "border-white/15 t-mute hover:text-white/80"
-              }`}
-            >
-              Working limit
-            </button>
-          </div>
-          {executionMode === "LIMIT" && (
-            <div className="mt-3">
-              <label className="label" htmlFor="limit-price">
-                Limit price · $/MWh
-              </label>
-              <input
-                id="limit-price"
-                type="text"
-                inputMode="decimal"
-                required
-                className="input mono"
-                value={limitPrice}
-                onChange={(e) => setLimitPrice(e.target.value)}
-                placeholder="35.00"
-              />
-              <p className="mt-2 text-[11px] leading-relaxed t-mute">
-                Rests on the book until the interval&apos;s actual ERCOT print
-                crosses it — a buy fills at or below your limit, a sell at or
-                above (ties fill). The fill price is the print itself, never
-                your limit. Unfilled orders expire after 7 days.
-              </p>
-            </div>
-          )}
         </div>
 
         {/* Delivery */}
@@ -628,28 +503,16 @@ export function TradePanel({
           </div>
         )}
 
-        {placed && (
-          <div className="note note-ok">
-            Working {placed.side === "BUY" ? "buy" : "sell"} for{" "}
-            <span className="mono">{placed.limitPrice}</span> — resting until the
-            print crosses. View it under <span className="mono">Orders</span>.
-          </div>
-        )}
-
         <button
           type="submit"
           disabled={busy || !check.ok}
           className="btn btn-primary w-full"
         >
           {busy
-            ? executionMode === "LIMIT"
-              ? "Placing"
-              : "Executing"
-            : executionMode === "LIMIT"
-              ? `Work ${isBuy ? "buy" : "sell"} ${quantity || "0"} ${unit} @ ${limitPrice || "—"}`
-              : `${isBuy ? "Buy" : "Sell"} ${quantity || "0"} ${unit} · ${
-                  info?.shortLabel ?? instrument.label
-                }`}
+            ? "Executing"
+            : `${isBuy ? "Buy" : "Sell"} ${quantity || "0"} ${unit} · ${
+                info?.shortLabel ?? instrument.label
+              }`}
         </button>
 
         {Number(quantity) > MAX_QUANTITY && (
@@ -686,4 +549,14 @@ function newOrderId(): string {
     return crypto.randomUUID();
   }
   return `ord-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function defaultDate(): string {
+  const d = new Date(Date.now() + 3600_000);
+  return d.toISOString().slice(0, 10);
+}
+
+function defaultHour(): number {
+  const d = new Date(Date.now() + 3600_000);
+  return d.getUTCHours();
 }

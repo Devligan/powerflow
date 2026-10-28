@@ -5,8 +5,6 @@ import { TradePanel } from "@/components/trade-panel";
 import { PriceChart } from "@/components/price-chart";
 import { dateTime, sourceInfo } from "@/lib/format";
 import { Lamp } from "@/components/ui/lamp";
-import { requireUser } from "@/lib/auth";
-import { getSimClock } from "@/lib/sim-clock";
 
 export const dynamic = "force-dynamic";
 
@@ -15,10 +13,7 @@ export default async function MarketDetailPage({
 }: {
   params: Promise<{ settlementPoint: string }>;
 }) {
-  const user = await requireUser();
   const { settlementPoint } = await params;
-  const clock = await getSimClock(user.id).catch(() => null);
-  const asOf = clock && clock.mode === "REPLAY" ? new Date(clock.now) : null;
 
   let data: Awaited<ReturnType<typeof getMarketPrices>>;
   let marketOptions: Awaited<ReturnType<typeof listMarketOptions>> = [];
@@ -26,7 +21,7 @@ export default async function MarketDetailPage({
     // The point list feeds the ticket's second leg, so a spread can be placed
     // without leaving the page.
     [data, marketOptions] = await Promise.all([
-      getMarketPrices(settlementPoint, undefined, asOf),
+      getMarketPrices(settlementPoint),
       listMarketOptions(),
     ]);
   } catch {
@@ -64,20 +59,10 @@ export default async function MarketDetailPage({
         </span>
       </header>
 
-      {asOf && (
-        <p className="note">
-          Replay · showing only observations ERCOT had published by
-          <span className="moni">
-            {clock!.now.slice(0, 19).replace("T", " ")}Z</span
-          >
-          .
-        </p>
-      )}
-
       {market.type === "LOAD_ZONE" && (
         <p className="note">
           Load-zone products trade at the zonal price with local congestion
-            embedded. Hubs are the cleaner benchmark for a basis trade.
+          embedded. Hubs are the cleaner benchmark for a basis trade.
         </p>
       )}
 
@@ -94,7 +79,7 @@ export default async function MarketDetailPage({
           <PriceChart points={series} />
           {latest && (
             <p className="caption mt-3">
-              Latest delivery {dateTime(latest.deliveryTimestamp)} ·
+              Latest delivery {dateTime(latest.deliveryTimestamp)} ·{" "}
               {sourceInfo(latest.source).label}
             </p>
           )}
@@ -108,7 +93,6 @@ export default async function MarketDetailPage({
           pricedThrough={latest?.deliveryTimestamp ?? null}
           markets={marketOptions}
           series={series}
-          simNowMs={asOf ? asOf.getTime() : undefined}
         />
       </div>
     </div>
