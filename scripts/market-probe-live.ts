@@ -42,13 +42,15 @@ async function main() {
     console.error("[probe] live ERCOT path failed;", result.error ?? "no error");
     process.exit(1);
   }
-  if (result.newestIntervalAgeSeconds == null) {
-    console.warn("[probe] no RTM_15MIN coverage yet; feed still warming up.");
-  } else if (result.newestIntervalAgeSeconds > 35 * 60) {
-    console.warn("[probe] feed still stale by the cron's own threshold;",
-      "the next bounded run is what usually fixes this.");
-  }
+  // The current IngestionResult does not expose a single freshness number
+  // (the probe is not asserting on newest-interval age anymore), so it reports
+  // the run shape instead.
+  console.log(
+    "[probe] result:",
+    JSON.stringify({ failed: result.failed, error: result.error, recordsInserted: result.recordsInserted, recordsDeferred: result.recordsDeferred }),
+  );
 }
+
 
 main().catch((e) => {
   console.error("[probe] failed:", e instanceof Error ? e.message : e);
