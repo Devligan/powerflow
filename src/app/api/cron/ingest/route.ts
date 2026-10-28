@@ -3,7 +3,7 @@ import { safeEqual, ok, fail } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-export const maxDuration = 60;
+
 
 /**
  * Vercel Cron / manual trigger target. Guarded by CRON_SECRET so random
