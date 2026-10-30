@@ -48,6 +48,8 @@ const HOUR_MS = 3600 * 1000;
 /** Overlap re-fetched for a series with no stored history, so a source that
  *  publishes slightly behind its own clock still lands on the grid. */
 const OVERLAP_MS = 6 * HOUR_MS;
+/** Covers a full next operating day from the moment its clearing posts. */
+const DAY_AHEAD_HORIZON_MS = 48 * HOUR_MS;
 
 /** Products to ingest: an explicit INGEST_PRODUCTS override, else everything
  *  the source publishes. */
@@ -299,11 +301,19 @@ export async function runMarketDataIngestion(
       // inside one invocation, so the series never advanced at all. Older
       // gaps belong to scripts/ingest-history.ts, which has no time budget.
       earliest = Math.max(earliest, now.getTime() - maxLookbackMs);
-      if (!Number.isFinite(earliest) || earliest >= horizon.getTime()) continue;
+      // The day-ahead clearing (energy and AS) publishes a WHOLE operating day
+      // at once, up to ~36h ahead. A shorter window would take the clearing a
+      // few hours at a time over the next day, so tomorrow's evening hours
+      // could not trade until hours after ERCOT had published them.
+      const productHorizon =
+        def.venue === "DAM" || def.venue === "AS"
+          ? new Date(Math.max(horizon.getTime(), now.getTime() + DAY_AHEAD_HORIZON_MS))
+          : horizon;
+      if (!Number.isFinite(earliest) || earliest >= productHorizon.getTime()) continue;
 
       const records = await source.getPrices(
         new Date(earliest),
-        horizon,
+        productHorizon,
         [product]
       );
       recordsReceived += records.length;
