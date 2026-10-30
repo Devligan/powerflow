@@ -173,15 +173,20 @@ export interface SourceInfo {
   tone: "live" | "sim" | "seed";
 }
 
+/**
+ * How a data source is presented. The GENERATED token decides the tone: any
+ * generated source is labelled as generated wherever it surfaces, per the
+ * rule that invented prices must never wear ERCOT's name. ERCOT sources are
+ * distinguished by whether they are the live feed or the historical corpus.
+ */
 export function sourceInfo(source: string | null | undefined): SourceInfo {
-  switch (source) {
-    case "ERCOT_MIS":
-      return { label: "ERCOT MIS", tone: "live" };
-    case "SIMULATED":
-      return { label: "Simulated feed", tone: "sim" };
-    case "SEEDED":
-      return { label: "Historical seed", tone: "seed" };
-    default:
-      return { label: "No data", tone: "seed" };
-  }
+  if (source === "ERCOT_MIS") return { label: "ERCOT MIS", tone: "live" };
+  if (source === "ERCOT_MIS_HISTORY")
+    return { label: "ERCOT (history)", tone: "live" };
+  if (source === "SEEDED (GENERATED)")
+    return { label: "Retired synthetic seed (not ERCOT)", tone: "sim" };
+  if (source && source.includes("GENERATED"))
+    return { label: "Synthetic feed (not ERCOT)", tone: "sim" };
+  if (source) return { label: source, tone: "live" };
+  return { label: "No data", tone: "seed" };
 }

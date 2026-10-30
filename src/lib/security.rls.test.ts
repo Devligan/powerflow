@@ -16,7 +16,9 @@ import { admin, createTestUser, dbTestsEnabled, loadTestEnv, userClient } from "
  * role are the control: they must see what the attacker cannot.
  */
 describe.skipIf(!dbTestsEnabled())("authorization boundary (live database)", () => {
-  const PRODUCT = "RTM_HOURLY";
+  // The day-ahead market: tomorrow's clearing is published by ERCOT the day
+  // before delivery, so a forward fill prices against an actual observation.
+  const PRODUCT = "DAM_HOURLY";
   /**
    * This suite's own market. It pins the victim's cash to the price it reads
    * from the market's latest interval, so any suite that *republishes* that
@@ -63,12 +65,19 @@ describe.skipIf(!dbTestsEnabled())("authorization boundary (live database)", () 
       .single();
     marketId = market!.id as string;
 
+    // Pick the interval the way the engine prices: latest delivery whose
+    // publication instant has passed, latest publication within it — and
+    // still ahead of delivery, since a real-time hour is not tradable after
+    // it has delivered. See the trading-engine suite for the full rationale.
     const { data: rows } = await db
       .from("market_prices")
       .select("delivery_timestamp, price")
       .eq("market_id", marketId)
       .eq("product", PRODUCT)
+      .gt("delivery_timestamp", new Date().toISOString())
+      .lte("published_at", new Date().toISOString())
       .order("delivery_timestamp", { ascending: false })
+      .order("published_at", { ascending: false })
       .limit(1);
     interval = rows![0].delivery_timestamp as string;
     victimPrice = Number(rows![0].price);

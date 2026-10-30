@@ -1,9 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { admin, createTestUser, dbTestsEnabled, userClient } from "@/lib/testing/db";
+import { loadFixturePoint } from "@/lib/testing/ercot-fixture";
 
 /**
- * Automatic settlement, against the real database (migration 0013).
+ * Automatic settlement, against the real database (migration 0013) on
+ * ACTUAL ERCOT data.
  *
  * `src/lib/settlement.test.ts` tests the TypeScript mirror of the settlement
  * rules. This file tests the SQL that actually moves the money: the
@@ -12,32 +14,49 @@ import { admin, createTestUser, dbTestsEnabled, userClient } from "@/lib/testing
  * source of truth; a shared TypeScript implementation agreeing with itself
  * proves nothing about the deployed function.
  *
- * Settlement is time-gated: only positions whose delivery window has passed are
- * eligible, and `execute_trade` refuses a past delivery. So each case fills a
- * position normally (a real, priced, future interval — the genuine user path)
- * and then runs the sweep with `p_as_of` at that window's end. The RPC takes
- * `p_as_of` precisely so this is deterministic. The application never passes it
- * — a client that could would force-settle its own undelivered positions — and
- * the function is service-role only regardless.
+ * The suite trades as a REPLAY DESK. ERCOT's own publication order makes a
+ * live forward fill of a real-time hour impossible — a real-time settlement
+ * price only exists after the hour — so each case enters at the day-ahead
+ * clearing for a historical operating day and settles at that day's actual
+ * real-time hourly settlement value: the DA→RT lifecycle a desk lives
+ * through. Every expected price is read from the fixture (actual ERCOT MIS
+ * data, built by scripts/build-history-fixture.ts); nothing is injected.
  *
- * Prices are read off the *fill* rather than assumed to be the base interval's
- * price: every interval has its own price, so a case computes its move relative
- * to what it actually paid.
+ * Instruments follow ERCOT's own economics: a day-ahead ENERGY_SPOT held to
+ * delivery settles at its own clearing — flat, because the DA price IS its
+ * settlement — so every case that carries DA→RT P&L trades DART_SPREAD
+ * (CONVERGENCE: enter at the day-ahead leg, settle at the real-time final).
+ * A basis settles as the difference of its two legs' day-ahead finals, and
+ * a block settles at the average of its window's day-ahead clearings.
+ *
+ * The clock is set once, before the trading day, and every entry fills at
+ * that simulated instant — the day-ahead clearings are visible (ERCOT posted
+ * them the day before), the real-time outcomes are not (§7's look-ahead
+ * rule). The sweep advances time by being called with `p_as_of` at each
+ * case's delivery end, which is what makes that position due. Cases occupy
+ * distinct hours of the day, so one case's sweep never reaches a later
+ * case's position; the one position that must survive every sweep is closed
+ * explicitly once its assertion has been made.
  *
  * Opt in with `RUN_DB_TESTS=1`, since it creates real users in the configured
  * Supabase project.
  */
 describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () => {
-  // HB_WEST/HB_PAN: the other database suites republish HB_NORTH and
-  // HB_HOUSTON, so moving a price there could race them.
-  const MARKET = "HB_WEST";
+  // Hubs of its own: the live suites (engine, concurrency, immutability,
+  // RLS) trade their own points, and this suite reads the fixture rather
+  // than writing prices, so nothing here can collide with them.
+  const POINT = "HB_WEST";
   const COUNTER = "HB_PAN";
-  const PRODUCT = "RTM_HOURLY";
+  /** The entry market: the day-ahead clearing, published before delivery. */
+  const PRODUCT = "DAM_HOURLY";
   /** A product whose series starts mid-day, so an earlier interval is
    *  guaranteed to have no price at all — used for the unpriced-settlement
    *  case. */
   const UNPRICED_PRODUCT = "RTM_15MIN";
   const HOUR = 3600_000;
+  /** The day's early hours go to the replay and engine suites' eyes; this
+   *  desk starts a little into the day. */
+  const FIRST = 2;
 
   let db: SupabaseClient;
   let user: Awaited<ReturnType<typeof createTestUser>>;
@@ -45,14 +64,15 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
   let marketId: string;
   let counterId: string;
 
-  /** Base interval: the earliest RTM_HOURLY interval that has not started yet,
-   *  so it is priced and `execute_trade` accepts it. Every case offsets from
-   *  here, which keeps each window inside the published horizon and apart from
-   *  the others. */
-  let base: string;
+  /** Fixture series (actual ERCOT data) for the point and the counter point. */
+  let dam: Map<string, { price: string }>;
+  let rtHour: Map<string, { price: string }>;
+  let damCounter: Map<string, { price: string }>;
+  /** Every delivery hour of the operating day, in order. */
+  let hours: string[];
 
-  /** Prices this suite republished, restored in afterAll. */
-  const republished = new Map<string, number>();
+  /** Each case trades its own hour: `slot(k)` = hours[FIRST + k]. */
+  const slot = (k: number) => hours[FIRST + k];
 
   const near = (actual: number, expected: number) =>
     expect(Math.abs(actual - expected)).toBeLessThan(1e-6);
@@ -60,34 +80,23 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
   const shift = (ts: string, hours: number) =>
     new Date(new Date(ts).getTime() + hours * HOUR).toISOString();
 
-  const key = (market: string, product: string, ts: string) => `${market}|${product}|${ts}`;
-
-  /**
-   * Scoped to this suite's own account. The sweep is global by default — which
-   * is how the cron job calls it — but every database suite shares one
-   * database, and an unscoped sweep at `p_as_of` settles *every* delivered
-   * position in it, including the desks the margin suite is mid-way through
-   * funding. That made these suites order-dependent. Scoping costs no coverage
-   * of the production path: the unscoped call is exercised by the cron route,
-   * and the ACL test below calls it unscoped from a user session (and is
-   * refused).
-   */
-  const settle = async (asOf: string, limit = 500) => {
-    const { data, error } = await db.rpc("settle_delivered_positions", {
-      p_as_of: asOf,
-      p_limit: limit,
-      p_user_id: user.id,
-    });
-    expect(error).toBeNull();
-    return data as {
-      considered: number;
-      settled: number;
-      deferred: number;
-      failed: number;
-      settlement_due_remaining: number;
-      deferred_position_ids: string[];
-      errors: Array<{ position_id?: string; error: string }>;
-    };
+  /** The actual ERCOT real-time settlement value of a delivery hour. */
+  const rtFinal = (start: string): number => {
+    const row = rtHour.get(start);
+    expect(row, `fixture carries no RT hourly final for ${start}`).toBeTruthy();
+    return Number(row!.price);
+  };
+  /** The actual ERCOT day-ahead clearing at the counter point. */
+  const daClearingCounter = (start: string): number => {
+    const row = damCounter.get(start);
+    expect(row, `fixture carries no counter day-ahead clearing for ${start}`).toBeTruthy();
+    return Number(row!.price);
+  };
+  /** The actual ERCOT day-ahead clearing of a delivery hour. */
+  const daClearing = (start: string): number => {
+    const row = dam.get(start);
+    expect(row, `fixture carries no day-ahead clearing for ${start}`).toBeTruthy();
+    return Number(row!.price);
   };
 
   const cash = async (): Promise<number> => {
@@ -184,10 +193,44 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     return Number(acct.data!.cash_balance) + marked;
   };
 
-  /** Fill a position through the real user path, returning what was paid. */
+  /**
+   * Scoped to this suite's own account. The sweep is global by default — which
+   * is how the cron job calls it — but every database suite shares one
+   * database, and an unscoped sweep at `p_as_of` settles *every* delivered
+   * position in it, including the desks the margin suite is mid-way through
+   * funding. That made these suites order-dependent. Scoping costs no coverage
+   * of the production path: the unscoped call is exercised by the cron route,
+   * and the ACL test below calls it unscoped from a user session (and is
+   * refused).
+   */
+  const settle = async (asOf: string, limit = 500) => {
+    const { data, error } = await db.rpc("settle_delivered_positions", {
+      p_as_of: asOf,
+      p_limit: limit,
+      p_user_id: user.id,
+    });
+    expect(error).toBeNull();
+    return data as {
+      considered: number;
+      settled: number;
+      deferred: number;
+      failed: number;
+      settlement_due_remaining: number;
+      deferred_position_ids: string[];
+      errors: Array<{ position_id?: string; error: string }>;
+    };
+  };
+
+  /** Fill a position through the real user path, returning what was paid.
+   *  A point entry is asserted to cost exactly the fixture's actual day-ahead
+   *  clearing for its interval — the statement that the engine, the catalog
+   *  and ERCOT's published data agree. */
   const fill = async (
     over: Record<string, unknown> = {}
   ): Promise<{ entryPrice: number; quantity: number }> => {
+    const start = over.p_delivery_start as string;
+    const end =
+      (over.p_delivery_end as string | undefined) ?? shift(start, 1);
     const { data, error } = await client.rpc("execute_trade", {
       p_user_id: user.id,
       p_market_id: marketId,
@@ -196,42 +239,24 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
       p_product: PRODUCT,
       p_side: "BUY",
       p_quantity_mwh: 10,
-      p_delivery_start: base,
-      p_delivery_end: shift(base, 1),
+      p_delivery_start: start,
+      p_delivery_end: end,
       p_client_order_id: crypto.randomUUID(),
       ...over,
     });
-    if (error) throw new Error(`fill failed: ${error.message}`);
+    expect(error, `fill failed: ${error?.message}`).toBeNull();
     const result = data as { execution_price: string; quantity_mwh: string };
-    return {
-      entryPrice: Number(result.execution_price),
-      quantity: Number(result.quantity_mwh),
-    };
-  };
-
-  /** Move a published price, remembering the original for restoration.
-   *  Takes the market **id** — filtering `market_id` by a settlement point's
-   *  ticker silently matches nothing. */
-  const republish = async (marketIdArg: string, ts: string, price: number) => {
-    const k = key(marketIdArg, PRODUCT, ts);
-    if (!republished.has(k)) {
-      const { data } = await db
-        .from("market_prices")
-        .select("price")
-        .eq("market_id", marketIdArg)
-        .eq("product", PRODUCT)
-        .eq("delivery_timestamp", ts)
-        .single();
-      expect(data).not.toBeNull();
-      republished.set(k, Number(data!.price));
+    const entryPrice = Number(result.execution_price);
+    // ENERGY_SPOT and DART_SPREAD both enter at the day-ahead leg — the
+    // clearing itself for a spot fill, the DA leg of the convergence for
+    // the virtual. Anything composed (a basis) prices by its own rule.
+    if (
+      over.p_counter_market_id === undefined &&
+      (over.p_instrument === undefined || over.p_instrument === "DART_SPREAD")
+    ) {
+      near(entryPrice, daClearing(start));
     }
-    const { error } = await db
-      .from("market_prices")
-      .update({ price: String(price) })
-      .eq("market_id", marketIdArg)
-      .eq("product", PRODUCT)
-      .eq("delivery_timestamp", ts);
-    expect(error).toBeNull();
+    return { entryPrice, quantity: Number(result.quantity_mwh) };
   };
 
   beforeAll(async () => {
@@ -239,66 +264,63 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     user = await createTestUser("sql-settlement");
     client = await userClient(user);
 
-    const { data: m } = await db.from("markets").select("id").eq("settlement_point", MARKET).single();
-    marketId = m!.id as string;
-    const { data: c } = await db.from("markets").select("id").eq("settlement_point", COUNTER).single();
-    counterId = c!.id as string;
+    const point = await loadFixturePoint(db, POINT);
+    const counter = await loadFixturePoint(db, COUNTER);
+    marketId = point.marketId;
+    counterId = counter.marketId;
+    dam = point.dam;
+    rtHour = point.rtHour;
+    damCounter = counter.dam;
 
-    const { data: rows } = await db
-      .from("market_prices")
-      .select("delivery_timestamp")
-      .eq("market_id", marketId)
-      .eq("product", PRODUCT)
-      .gt("delivery_timestamp", new Date().toISOString())
-      .order("delivery_timestamp", { ascending: true })
-      .limit(1);
-    base = rows![0].delivery_timestamp as string;
-  }, 120_000);
-
-  // Restore everything this suite moved, so the shared feed is left as found.
-  afterAll(async () => {
-    for (const [k, price] of republished) {
-      const [market, product, ts] = k.split("|");
-      await db
-        .from("market_prices")
-        .update({ price: String(price) })
-        .eq("market_id", market)
-        .eq("product", product)
-        .eq("delivery_timestamp", ts);
+    hours = [...dam.keys()].sort();
+    expect(hours.length).toBe(24);
+    // Every hour this desk trades must carry an actual RT settlement final —
+    // the whole point of the replay desk.
+    for (let k = FIRST; k <= FIRST + 21; k++) {
+      expect(rtHour.has(hours[k]), `missing RT final at ${hours[k]}`).toBe(true);
     }
-  }, 120_000);
+
+    // The desk sits just before the trading day: clearings visible, outcomes
+    // not yet. Every entry below fills at this simulated instant.
+    const { error: clockErr } = await client.rpc("set_sim_clock", {
+      p_user_id: user.id,
+      p_iso: shift(hours[FIRST], -1),
+    });
+    expect(clockErr).toBeNull();
+  }, 240_000);
 
   it("leaves a position that has not delivered untouched", async () => {
-    // Deliberately past every `p_as_of` this suite uses, so it is never swept
-    // by a later case and cannot move that case's cash. An earlier case that
-    // left an in-range position open did exactly that: the next sweep settled
-    // both, and the cash delta read as two settlements.
-    const start = shift(base, 40);
-    const end = shift(base, 41);
+    // The day's last hour: every sweep this suite runs, at an earlier case's
+    // delivery end, predates this window, so it is never swept by them.
+    const start = hours[23];
+    const end = shift(start, 1);
     await fill({ p_side: "BUY", p_delivery_start: start, p_delivery_end: end });
 
     // Sweep as of a time that predates this window: it is not delivered.
-    const summary = await settle(shift(base, 1));
+    const summary = await settle(shift(slot(FIRST), 1));
     expect(summary.failed).toBe(0);
 
     const pos = await positionAt(marketId, start, "ENERGY_SPOT");
     expect(pos!.qty).toBe(10);
     expect(pos!.settledAt).toBeNull();
+
+    // The assertion is made; now close the position so no later sweep can
+    // move this desk's cash underneath a later case's expectations.
+    await fill({ p_side: "SELL", p_delivery_start: start, p_delivery_end: end });
   });
 
-  it("settles a long at a higher price, banking the gain and leaving equity unchanged", async () => {
-    const start = shift(base, 4);
-    const end = shift(base, 5);
+  it("settles a long at the actual real-time price, banking the result and leaving equity unchanged", async () => {
+    const start = slot(2);
+    const end = shift(start, 1);
     const { entryPrice } = await fill({
+      p_instrument: "DART_SPREAD",
       p_side: "BUY",
       p_delivery_start: start,
       p_delivery_end: end,
     });
-
-    // The market moves after the fill: that is what makes settlement
-    // interesting — unrealized P&L has to become realized.
-    const settlementPrice = entryPrice + 5;
-    await republish(marketId, start, settlementPrice);
+    // The real-time settlement of this hour, from ERCOT's own data.
+    const settlementPrice = rtFinal(start);
+    expect(Math.abs(settlementPrice - entryPrice)).toBeGreaterThan(0.25);
 
     const cashBefore = await cash();
     const equityBefore = await openEquity();
@@ -307,19 +329,20 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     expect(summary.failed).toBe(0);
     expect(summary.settled).toBeGreaterThanOrEqual(1);
 
-    const pos = await positionAt(marketId, start, "ENERGY_SPOT");
+
+    const pos = await positionAt(marketId, start, "DART_SPREAD");
     expect(pos!.qty).toBe(0);
     expect(pos!.avg).toBeCloseTo(entryPrice, 6);
     expect(pos!.settledAt).not.toBeNull();
     expect(pos!.settlementTradeId).not.toBeNull();
-    near(pos!.realized, 5 * 10);
+    near(pos!.realized, (settlementPrice - entryPrice) * 10);
 
     // A long is sold at settlement.
     near((await cash()) - cashBefore, settlementPrice * 10);
 
-    // Settlement converts unrealized into realized; it must not create or
-    // destroy equity.
-    near(await openEquity(), equityBefore);
+    // Settlement moves equity by exactly the realized P&L — the DA→RT basis
+    // jump — and by nothing else: no double-counted mark, no leaked cash.
+    near((await openEquity()) - equityBefore, (settlementPrice - entryPrice) * 10);
 
     const mine = await settledTradesAt(start);
     expect(mine).toHaveLength(1);
@@ -334,20 +357,19 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     expect(forThis[0].entity_type).toBe("position");
     const meta = forThis[0].metadata as Record<string, unknown>;
     near(Number(meta.settlement_price), settlementPrice);
-    near(Number(meta.realized_delta), 50);
+    near(Number(meta.realized_delta), (settlementPrice - entryPrice) * 10);
   });
 
-  it("settles a short at a lower price, banking the gain", async () => {
-    const start = shift(base, 6);
-    const end = shift(base, 7);
+  it("settles a short at the actual real-time price, banking the result", async () => {
+    const start = slot(3);
+    const end = shift(start, 1);
     const { entryPrice } = await fill({
+      p_instrument: "DART_SPREAD",
       p_side: "SELL",
       p_delivery_start: start,
       p_delivery_end: end,
     });
-
-    const settlementPrice = entryPrice - 4;
-    await republish(marketId, start, settlementPrice);
+    const settlementPrice = rtFinal(start);
 
     const cashBefore = await cash();
     const equityBefore = await openEquity();
@@ -355,15 +377,16 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     const summary = await settle(end);
     expect(summary.failed).toBe(0);
 
-    const pos = await positionAt(marketId, start, "ENERGY_SPOT");
+    const pos = await positionAt(marketId, start, "DART_SPREAD");
     expect(pos!.qty).toBe(0);
-    // A short profits as the price falls: (avg − p) × |q|, which is the same
-    // signed expression (p − avg) × q with q negative.
-    near(pos!.realized, 4 * 10);
+    // A short profits as the price falls. The engine realizes the signed
+    // expression (settlement − avg) × qty, so with qty = −10 a rising RT
+    // price realizes negative P&L for the short.
+    near(pos!.realized, (settlementPrice - entryPrice) * -10);
 
-    // Buying the short back costs cash.
+    // Buying the short back settles in cash at the real-time price.
     near((await cash()) - cashBefore, settlementPrice * -10);
-    near(await openEquity(), equityBefore);
+    near((await openEquity()) - equityBefore, (entryPrice - settlementPrice) * 10);
 
     const mine = await settledTradesAt(start);
     expect(mine).toHaveLength(1);
@@ -371,9 +394,9 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     near(Number(mine[0].execution_price), settlementPrice);
   });
 
-  it("settles a two-sided spread at the composed price, not a point price", async () => {
-    const start = shift(base, 8);
-    const end = shift(base, 9);
+  it("settles a two-sided spread at the composed actual price, not a point price", async () => {
+    const start = slot(4);
+    const end = shift(start, 1);
     const { entryPrice: entrySpread } = await fill({
       p_instrument: "BASIS_SPREAD",
       p_counter_market_id: counterId,
@@ -382,30 +405,36 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
       p_delivery_end: end,
     });
 
-    // Move only the counter leg, so the spread itself moves by the same amount.
-    const { data: counterRow } = await db
-      .from("market_prices")
-      .select("price")
-      .eq("market_id", counterId)
-      .eq("product", PRODUCT)
-      .eq("delivery_timestamp", start)
-      .single();
-    await republish(counterId, start, Number(counterRow!.price) + 7);
+    // Both legs settle at their actual day-ahead finals; the spread's
+    // settlement is the DIFFERENCE composition the engine settles:
+    // sink minus source — the counter point's clearing minus this point's.
+    const settlementSpread = daClearingCounter(start) - daClearing(start);
+    // And the entry was that same composition at the same instant's
+    // clearings — what the desk paid is exactly what it will settle at,
+    // because a day-ahead basis has no second market to converge to.
+    near(entrySpread, daClearingCounter(start) - daClearing(start));
+
+    const cashBefore = await cash();
+    const equityBefore = await openEquity();
 
     await settle(end);
 
     const pos = await positionAt(marketId, start, "BASIS_SPREAD", PRODUCT, counterId);
     expect(pos!.qty).toBe(0);
     near(pos!.avg, entrySpread);
-    near(pos!.realized, 7 * 10);
+    near(pos!.realized, (settlementSpread - entrySpread) * 10);
+    // Equity moves by the realized spread, and nothing else.
+    near((await openEquity()) - equityBefore, (settlementSpread - entrySpread) * 10);
 
     const mine = await settledTradesAt(start);
     expect(mine).toHaveLength(1);
     expect(mine[0].instrument).toBe("BASIS_SPREAD");
     expect(mine[0].counter_market_id).toBe(counterId);
-    near(Number(mine[0].execution_price), entrySpread + 7);
+    near(Number(mine[0].execution_price), settlementSpread);
     // A composed instrument has no single price row behind it.
     expect(mine[0].market_price_id).toBeNull();
+    // Cash settled at the composed price.
+    near((await cash()) - cashBefore, settlementSpread * 10);
   });
 
   it("does not carry one settlement's price row onto the next position's trade", async () => {
@@ -417,17 +446,17 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     // reset, the spread's trade names a price row for an interval it does not
     // settle against, and the test above passes only because its sweep happens
     // to hold a single position.
-    const pointStart = shift(base, 28);
-    const pointEnd = shift(base, 29);
-    const point = await fill({
+    const pointStart = slot(5);
+    const pointEnd = shift(pointStart, 1);
+    await fill({
+      p_instrument: "DART_SPREAD",
       p_side: "BUY",
       p_delivery_start: pointStart,
       p_delivery_end: pointEnd,
     });
-    await republish(marketId, pointStart, point.entryPrice + 3);
 
-    const spreadStart = shift(base, 30);
-    const spreadEnd = shift(base, 31);
+    const spreadStart = slot(6);
+    const spreadEnd = shift(spreadStart, 1);
     const spread = await fill({
       p_instrument: "BASIS_SPREAD",
       p_counter_market_id: counterId,
@@ -435,14 +464,7 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
       p_delivery_start: spreadStart,
       p_delivery_end: spreadEnd,
     });
-    const { data: counterRow } = await db
-      .from("market_prices")
-      .select("price")
-      .eq("market_id", counterId)
-      .eq("product", PRODUCT)
-      .eq("delivery_timestamp", spreadStart)
-      .single();
-    await republish(counterId, spreadStart, Number(counterRow!.price) + 5);
+    const spreadSettlement = daClearingCounter(spreadStart) - daClearing(spreadStart);
 
     // One sweep, both positions, point position first.
     const summary = await settle(spreadEnd);
@@ -454,22 +476,22 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
 
     // A single-interval leg names the price row it settled against...
     expect(pointTrade.market_price_id).not.toBeNull();
-    near(Number(pointTrade.execution_price), point.entryPrice + 3);
+    near(Number(pointTrade.execution_price), rtFinal(pointStart));
 
     // ...and the composed one must not, even though a point position settled
     // immediately before it in the same sweep.
     expect(spreadTrade.instrument).toBe("BASIS_SPREAD");
     expect(spreadTrade.market_price_id).toBeNull();
-    near(Number(spreadTrade.execution_price), spread.entryPrice + 5);
+    near(Number(spreadTrade.execution_price), spreadSettlement);
     near(
       (await positionAt(marketId, spreadStart, "BASIS_SPREAD", PRODUCT, counterId))!.realized,
-      5 * 10
+      (spreadSettlement - spread.entryPrice) * 10
     );
   });
 
-  it("settles a block forward at its window average", async () => {
-    const start = shift(base, 10);
-    const end = shift(base, 14); // a 4-interval window
+  it("settles a block forward at its actual window average", async () => {
+    const start = slot(8);
+    const end = shift(start, 4); // a 4-interval window
     const { entryPrice: entryAvg } = await fill({
       p_instrument: "BLOCK_FORWARD",
       p_side: "BUY",
@@ -477,35 +499,28 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
       p_delivery_end: end,
     });
 
-    // Lift one of the four intervals by 8: the window average moves by exactly
-    // a quarter of that, whatever the other three intervals happen to be.
-    // (Pricing it *at* entryAvg + 8 would only shift the average by 2 if that
-    // interval already happened to equal the average.)
-    const { data: inner } = await db
-      .from("market_prices")
-      .select("price")
-      .eq("market_id", marketId)
-      .eq("product", PRODUCT)
-      .eq("delivery_timestamp", shift(base, 11))
-      .single();
-    await republish(marketId, shift(base, 11), Number(inner!.price) + 8);
+    // The actual day-ahead settlement of the whole window, per ERCOT's
+    // equal-time rule over its four hours.
+    let settleSum = 0;
+    for (let i = 0; i < 4; i++) settleSum += daClearing(shift(start, i));
+    const settlementAvg = settleSum / 4;
 
     await settle(end);
 
     const pos = await positionAt(marketId, start, "BLOCK_FORWARD");
     expect(pos!.qty).toBe(0);
     near(pos!.avg, entryAvg);
-    near(pos!.realized, 2 * 10);
+    near(pos!.realized, (settlementAvg - entryAvg) * 10);
 
     const mine = await settledTradesAt(start);
     expect(mine).toHaveLength(1);
-    near(Number(mine[0].execution_price), entryAvg + 2);
+    near(Number(mine[0].execution_price), settlementAvg);
     expect(isAt(mine[0].delivery_end, end)).toBe(true);
   });
 
   it("does not settle a position the user already closed", async () => {
-    const start = shift(base, 16);
-    const end = shift(base, 17);
+    const start = slot(12);
+    const end = shift(start, 1);
     await fill({ p_side: "BUY", p_delivery_start: start, p_delivery_end: end });
     await fill({ p_side: "SELL", p_delivery_start: start, p_delivery_end: end });
 
@@ -520,8 +535,8 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
   });
 
   it("is idempotent: a second sweep over the same instant settles nothing", async () => {
-    const start = shift(base, 18);
-    const end = shift(base, 19);
+    const start = slot(14);
+    const end = shift(start, 1);
     await fill({ p_side: "BUY", p_delivery_start: start, p_delivery_end: end });
 
     const first = await settle(end);
@@ -544,14 +559,16 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
   });
 
   it("settles exactly once when two sweeps run concurrently", async () => {
-    const start = shift(base, 20);
-    const end = shift(base, 21);
-    const { entryPrice } = await fill({
+    const start = slot(16);
+    const end = shift(start, 1);
+    await fill({
+      p_instrument: "DART_SPREAD",
       p_side: "BUY",
       p_delivery_start: start,
       p_delivery_end: end,
     });
 
+    const settlementPrice = rtFinal(start);
     const cashBefore = await cash();
     const [a, b] = await Promise.all([settle(end), settle(end)]);
 
@@ -559,11 +576,11 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     // `settled_at is null` predicate is what makes that so.
     expect(a.settled + b.settled).toBe(1);
 
-    const pos = await positionAt(marketId, start, "ENERGY_SPOT");
+    const pos = await positionAt(marketId, start, "DART_SPREAD");
     expect(pos!.settledAt).not.toBeNull();
     expect(await settledTradesAt(start)).toHaveLength(1);
     // Cash moved once, for the closing side only.
-    near((await cash()) - cashBefore, entryPrice * 10);
+    near((await cash()) - cashBefore, settlementPrice * 10);
   });
 
   it("leaves a delivered position open and reports it when its interval is unpriced", async () => {
@@ -650,8 +667,10 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
       .update({ cash_balance: String(cashBefore - 400) })
       .eq("user_id", user.id);
 
-    // Delivered as of now, and unpriced: due, but not settleable.
-    const summary = await settle(new Date().toISOString());
+    // Delivered as of a mid-day instant (before the final cases' windows), and
+    // unpriced: due, but not settleable. The instant is deliberately before
+    // the day's last hour so this sweep cannot reach the surviving position.
+    const summary = await settle(shift(slot(12), 1));
     expect(summary.failed).toBe(0);
     expect(summary.deferred).toBeGreaterThanOrEqual(1);
     expect(summary.deferred_position_ids).toContain(positionId);
@@ -668,8 +687,8 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
   });
 
   it("refuses a settlement state that is not fully applied", async () => {
-    const start = shift(base, 24);
-    const end = shift(base, 25);
+    const start = slot(18);
+    const end = shift(start, 1);
     await fill({ p_side: "BUY", p_delivery_start: start, p_delivery_end: end });
     const pos = await positionAt(marketId, start, "ENERGY_SPOT");
 
@@ -699,8 +718,8 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
   });
 
   it("is not callable by an authenticated user", async () => {
-    const start = shift(base, 26);
-    const end = shift(base, 27);
+    const start = slot(20);
+    const end = shift(start, 1);
     await fill({ p_side: "BUY", p_delivery_start: start, p_delivery_end: end });
 
     // Reachable with the anon key as a signed-in user, but the ACL denies it —

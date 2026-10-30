@@ -33,7 +33,9 @@ import { admin, createTestUser, dbTestsEnabled, userClient } from "@/lib/testing
  */
 describe.skipIf(!dbTestsEnabled())("trades and audit events are immutable (live database)", () => {
   const MARKET = "HB_HUBAVG";
-  const PRODUCT = "RTM_HOURLY";
+  // The day-ahead market: tomorrow's clearing is published by ERCOT the day
+  // before delivery, so a forward fill prices against an actual observation.
+  const PRODUCT = "DAM_HOURLY";
   const HOUR = 3600_000;
 
   let db: SupabaseClient;
@@ -78,6 +80,8 @@ describe.skipIf(!dbTestsEnabled())("trades and audit events are immutable (live 
       .single();
     marketId = m!.id as string;
 
+    // The earliest clearing that has not delivered yet: genuinely tradable
+    // under the engine's horizon rule, priced by an actual ERCOT observation.
     const { data: rows } = await db
       .from("market_prices")
       .select("delivery_timestamp")

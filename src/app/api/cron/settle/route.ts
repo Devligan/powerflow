@@ -3,8 +3,7 @@ import { runAutoSettlement, settlementEnabled } from "@/lib/settlement";
 import { safeEqual, ok, fail } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
-
-
+export const maxDuration = 300;
 
 /**
  * Vercel Cron / manual trigger target for automatic settlement. Guarded by

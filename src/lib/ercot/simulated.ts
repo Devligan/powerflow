@@ -13,11 +13,13 @@ import {
 } from "@/lib/ercot/types";
 
 /**
- * Deterministic simulated ERCOT feed.
+ * A deterministic synthetic series for the OFFLINE TEST SUITE ONLY.
  *
- * This is the default data source. It produces plausible, reproducible prices
- * keyed by (product, settlement point, delivery interval) — the same interval
- * always yields the same price, which makes ingestion idempotent.
+ * PowerFlow is an ERCOT paper-trading engine: production market data is
+ * always actual ERCOT MIS data (src/lib/ercot/mis.ts), and no production
+ * path — resolver, seed, cron — can ingest this feed. The engine unit tests
+ * use it because a test needs prices that are exactly reproducible, which
+ * is a property actual ERCOT data cannot offer.
  *
  * It models ERCOT's *two* energy markets rather than one generic curve:
  *   - DAM_HOURLY: a smoother day-ahead forward clearing, floored at the
@@ -32,15 +34,6 @@ import {
  *
  * The location universe covers the published hubs, the hub averages, the four
  * competitive and four non-opt-in load zones, and resource nodes.
- *
- * Zone levels follow the IMM's 2024–2025 load-weighted real-time averages —
- * West is the rich zone and Houston the cheap one, the opposite of the folk
- * wisdom the earlier generator encoded. Panhandle is modelled cheap and
- * volatile, as an export-constrained wind-heavy hub.
- *
- * Records are labeled SOURCE_SIMULATED and the UI always shows them as
- * "Simulated", never as live ERCOT data. Point the app at a real adapter
- * (ERCOT_MIS) for live production data.
  */
 
 export interface SimulatedMarketDef {
@@ -145,9 +138,13 @@ export const SIMULATED_PRODUCTS: readonly string[] = [
   "DAM_HOURLY",
   "RTM_15MIN",
   "RTM_HOURLY",
+  // AS series exist in the catalog but the synthetic source does not
+  // generate them: the MIS adapter is their only (actual-data) publisher.
 ];
 
 const QUARTER_MINUTES = 15;
+/** One day in ms — the generated feed's publication lead time. */
+const HOUR_MS_PUB = 3_600_000;
 
 // ── tiny deterministic PRNG (mulberry32) ──────────────────────────────
 function hashString(s: string): number {
@@ -316,15 +313,31 @@ export function generateMarketPrices(
     const end = truncateToInterval(to, def.intervalMinutes);
 
     for (const market of markets) {
-      for (let t = start.getTime(); t < end.getTime(); t += stepMs) {
+      for (
+        let t = start.getTime();
+        t < end.getTime();
+        t += stepMs
+      ) {
         const intervalStart = new Date(t);
+        // Publication model for generated data: each interval's price is
+        // published exactly 24h before delivery (the day-ahead pattern) and
+        // is final. The function of the interval alone — never the wall
+        // clock — so re-ingesting the same window produces identical rows
+        // and the observation key makes the re-run a no-op. Publication
+        // always precedes delivery, so generated data can never leak an
+        // observation ahead of its own publication time.
+        const publishedAt = new Date(
+          t - 24 * HOUR_MS_PUB
+        ).toISOString();
         records.push({
           settlementPoint: market.settlementPoint,
           deliveryTimestamp: intervalStart.toISOString(),
           deliveryEnd: new Date(t + stepMs).toISOString(),
           price: simulatedPrice(market, intervalStart, source, def.code),
           product: def.code,
-          sourceTimestamp: new Date().toISOString(),
+          sourceTimestamp: publishedAt,
+          publishedAt,
+          isFinal: true,
         });
       }
     }
@@ -334,7 +347,14 @@ export function generateMarketPrices(
 }
 
 export class SimulatedErcotSource implements ErcotSource {
-  readonly sourceName = "SIMULATED";
+  /** Kept solely for the OFFLINE test suite, which builds a deterministic
+   *  synthetic series to exercise the engines. This series is never
+   *  ingested, seeded, or shown as ERCOT data anywhere in production. */
+  readonly sourceName = "SIMULATED (GENERATED)";
+  /** Deterministic generation publishes the whole horizon at once. Test
+   *  harnesses advance it like a live feed. Never labelled as ERCOT data. */
+  readonly publicationMode = "live" as const;
+  readonly canServeHistory = false;
 
   constructor(
     private markets: SimulatedMarketDef[] = SIMULATED_MARKETS,

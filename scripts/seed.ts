@@ -1,14 +1,7 @@
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { supabaseAdmin } from "../src/lib/supabase/admin";
-import {
-  SIMULATED_MARKETS,
-  generateMarketPrices,
-} from "../src/lib/ercot/simulated";
-import {
-  SOURCE_SEEDED,
-  requireProduct,
-  truncateToHour,
-} from "../src/lib/ercot/types";
+import type { SettlementPointType } from "../src/lib/ercot/types";
 
 // Lightweight .env loader (scripts run outside Next, which normally loads
 // the env file for us). Does not overwrite values already in the environment.
@@ -28,104 +21,101 @@ import {
 /**
  * PowerFlow database seed.
  *
- * Inserts:
- *   - the standard ERCOT hubs + load zones (markets)
- *   - ~45 days of deterministic historical hourly prices labeled SEEDED
+ * The seed carries NO price data. PowerFlow is an ERCOT paper-trading
+ * engine: market truth is actual ERCOT MIS data, ingested live by the cron
+ * (or, for a historical replay, by scripts/ingest-history.ts from a real
+ * MIS corpus). Seeding synthetic prices here would poison every fill, mark
+ * and settlement with invented numbers, so it is gone.
  *
- * The data is a reproducible simulation, never presented as live ERCOT.
+ * What the seed does:
+ *   1. Syncs the traded settlement-point catalog — the ERCOT hubs and load
+ *      zones, taken from the historical MIS fixture so the offline DB
+ *      matches the points ERCOT actually publishes.
+ *   2. Verifies the data source configuration is an ERCOT one.
+ *
+ * Optional: `npx tsx scripts/seed.ts --load-history [fixture.json]`
+ * also loads an actual-ERCOT MIS replay corpus (built with
+ * scripts/build-history-fixture.ts) through the same loader the replay
+ * workflow uses — useful to bring a fresh environment to life with a real
+ * day of ERCOT data.
+ *
  * Run after migrations:  npx tsx scripts/seed.ts
  */
-const HISTORY_DAYS = 45;
+
+const HISTORY_FIXTURE = "fixtures/ercot/replay-2026-09-20.json";
 const BATCH = 250;
 
-async function main() {
-  const admin = supabaseAdmin();
+interface CorpusMarket {
+  settlementPoint: string;
+  settlementPointType: string;
+  description?: string;
+}
 
-  // 1. Markets
-  for (const m of SIMULATED_MARKETS) {
+function loadCatalogMarkets(): CorpusMarket[] {
+  const corpus = JSON.parse(readFileSync(HISTORY_FIXTURE, "utf8")) as {
+    markets: CorpusMarket[];
+  };
+  if (!Array.isArray(corpus.markets) || corpus.markets.length === 0) {
+    throw new Error(`${HISTORY_FIXTURE} carries no market catalog`);
+  }
+  return corpus.markets;
+}
+
+async function seedMarkets(markets: CorpusMarket[]): Promise<number> {
+  const admin = supabaseAdmin();
+  for (let i = 0; i < markets.length; i += BATCH) {
+    const chunk = markets.slice(i, i + BATCH).map((m) => ({
+      settlement_point: m.settlementPoint,
+      settlement_point_type: m.settlementPointType as SettlementPointType,
+      description: m.description ?? `${m.settlementPoint} (ERCOT settlement point)`,
+      active: true,
+    }));
     const { error } = await admin
       .from("markets")
-      .upsert(
-        {
-          settlement_point: m.settlementPoint,
-          settlement_point_type: m.settlementPointType,
-          description: m.description,
-          active: true,
-        },
-        { onConflict: "settlement_point" }
-      );
+      .upsert(chunk, { onConflict: "settlement_point", ignoreDuplicates: false });
     if (error) throw error;
   }
-  console.log(`[seed] synced ${SIMULATED_MARKETS.length} markets`);
+  return markets.length;
+}
 
-  const { data: marketRows } = await admin
-    .from("markets")
-    .select("id, settlement_point");
-  const marketIdByPoint = new Map<string, string>();
-  for (const r of marketRows ?? []) {
-    marketIdByPoint.set(r.settlement_point, r.id);
+function checkSourceConfig(): void {
+  const mode = (process.env.ERCOT_SOURCE ?? "ERCOT_MIS").toUpperCase();
+  if (mode !== "ERCOT_MIS" && mode !== "ERCOT_REPLAY") {
+    throw new Error(
+      `ERCOT_SOURCE=${mode} is not supported: PowerFlow runs on actual ` +
+        `ERCOT MIS data. Set ERCOT_SOURCE=ERCOT_MIS (or ERCOT_REPLAY for a ` +
+        `historical replay corpus).`
+    );
   }
+}
 
-  // 2. Historical prices (deterministic, SOURCE_SEEDED)
-  const now = new Date();
-  const from = new Date(now);
-  from.setUTCDate(from.getUTCDate() - HISTORY_DAYS);
-  const to = new Date(now);
-  to.setUTCHours(to.getUTCHours() + 1);
+async function main() {
+  const loadHistory = process.argv.includes("--load-history");
+  const fixtureArg = process.argv[process.argv.indexOf("--load-history") + 1];
 
-  const generated = generateMarketPrices(
-    SIMULATED_MARKETS,
-    truncateToHour(from),
-    truncateToHour(to),
-    SOURCE_SEEDED
-  );
+  checkSourceConfig();
 
-  const rows = generated.map((r) => ({
-    market_id: marketIdByPoint.get(r.settlementPoint)!,
-    delivery_timestamp: r.deliveryTimestamp,
-    delivery_end: r.deliveryEnd,
-    price: r.price,
-    product: r.product,
-    venue: requireProduct(r.product).venue,
-    source: SOURCE_SEEDED,
-    source_timestamp: new Date().toISOString(),
-  }));
+  const markets = loadCatalogMarkets();
+  const synced = await seedMarkets(markets);
+  console.log(`[seed] synced ${synced} ERCOT settlement points (hubs + load zones)`);
 
-  const { count: before } = await admin
-    .from("market_prices")
-    .select("id", { count: "exact", head: true });
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const chunk = rows.slice(i, i + BATCH);
-    const { error } = await admin
-      .from("market_prices")
-      .upsert(chunk, {
-        onConflict: "market_id,delivery_timestamp,product",
-        ignoreDuplicates: true,
-      })
-      .select();
-    if (error) throw error;
+  if (loadHistory) {
+    const fixture = fixtureArg && !fixtureArg.startsWith("-") ? fixtureArg : HISTORY_FIXTURE;
+    console.log(`[seed] loading actual ERCOT MIS corpus ${fixture} …`);
+    const r = spawnSync(
+      process.execPath,
+      ["node_modules/tsx/dist/cli.mjs", "scripts/ingest-history.ts", "--fixture", fixture],
+      { stdio: "inherit" }
+    );
+    if (r.status !== 0) {
+      throw new Error(`history load failed (exit ${r.status})`);
+    }
+  } else {
+    console.log(
+      "[seed] no price data seeded — actual ERCOT MIS data arrives via the " +
+        "ingestion cron, or via `npm run load:history` for a replay day."
+    );
   }
-  const { count: after } = await admin
-    .from("market_prices")
-    .select("id", { count: "exact", head: true });
-  const inserted = Math.max(0, (after ?? 0) - (before ?? 0));
-  console.log(
-    `[seed] ${inserted}/${rows.length} historical price records inserted (${SOURCE_SEEDED})`
-  );
-
-  // 3. Record the seed transaction in ingestion_runs for observability.
-  await admin.from("ingestion_runs").insert({
-    source: SOURCE_SEEDED,
-    status: "SUCCESS",
-    records_received: generated.length,
-    records_inserted: inserted,
-    records_skipped: rows.length - inserted,
-    detail: {
-      kind: "initial_seed",
-      history_days: HISTORY_DAYS,
-      products: [...new Set(generated.map((r) => r.product))],
-    },
-  });
 
   console.log("[seed] done");
 }

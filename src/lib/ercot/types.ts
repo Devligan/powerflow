@@ -141,13 +141,17 @@ export const PRODUCTS: readonly ProductDef[] = [
     tradable: true,
   },
   {
+    // Real time is the SETTLEMENT market: its prints exist only after
+    // delivery, so the series cannot be forward-traded. Reach RT exposure
+    // through the DART/VIRTUAL/PTP instruments; these series are reference
+    // data (charts, marks, settlement).
     code: "RTM_15MIN",
     label: "Real-time 15-minute energy",
     kind: "ENERGY",
     venue: "RTM",
     intervalMinutes: 15,
     pricedPer: "MWH",
-    tradable: true,
+    tradable: false,
   },
   {
     code: "RTM_HOURLY",
@@ -156,7 +160,7 @@ export const PRODUCTS: readonly ProductDef[] = [
     venue: "RTM",
     intervalMinutes: 60,
     pricedPer: "MWH",
-    tradable: true,
+    tradable: false,
   },
   // ── Ancillary services ───────────────────────────────────────────────
   // ERCOT's published ancillary-service price series are exactly five: ECRS,
@@ -459,14 +463,70 @@ export interface NormalizedPriceRecord {
   price: string;
   /** Product code this price belongs to (see PRODUCTS). */
   product: string;
-  /** When the source published this record (ISO-8601 UTC). */
+  /** When the source published this record (ISO-8601 UTC).
+   *
+   *  This is the publication instant of *this observation of the interval* —
+   *  not the delivery time and not the fetch time. It is the field the
+   *  look-ahead guard filters on (`published_at <= sim_clock`), so adapters
+   *  must set it from the report's own publication timestamp wherever the
+   *  source carries one. MIS `cdr.*` filenames embed it to the second; the
+   *  5-minute SPP report publishes each interval roughly two minutes after
+   *  the interval ends.
+   */
   sourceTimestamp: string;
+  /** Alias of `sourceTimestamp` — the two must be equal; the shorter name
+   *  is what the store column (`market_prices.published_at`) means. */
+  publishedAt: string;
+  /** Whether this observation is the final ERCOT settlement value for its
+   *  delivery interval: the delivery day is complete and corrections are in.
+   *  Set by sources that know it (MIS daily/monthly reports: true; a live
+   *  rolling report that may still be corrected: false). Settlement waits
+   *  for a final observation; marks and fills do not. */
+  isFinal: boolean;
+}
+
+/** Where a market-data observation came from, at the resolution the audit
+ *  trail needs. Persisted on market_prices provenance columns and in
+ *  ingestion-run detail. */
+export interface PriceProvenance {
+  /** The market's settlement point as the source names it. */
+  settlementPoint: string;
+  /** Product code (see PRODUCTS). */
+  product: string;
+  /** ISO-8601 UTC delivery interval start. */
+  deliveryTimestamp: string;
+  /** ISO-8601 UTC delivery interval end. */
+  deliveryEnd: string;
+  /** The observed price, exact decimal string. */
+  price: string;
+  /** When the source published this observation. */
+  publishedAt: string;
+  /** Final settlement value for the interval, as far as the source knows. */
+  isFinal: boolean;
+  /** Logical source name (see the SOURCE_* constants). */
+  source: string;
+  /** ERCOT report identity, e.g. "NP4-190-CD" for DAM SPP (report 12331). */
+  reportId?: string;
+  /** MIS document id / URL fragment the observation was parsed from. */
+  docId?: string;
 }
 
 /** Every ingestion source must implement this. */
 export interface ErcotSource {
   /** Logical source name persisted on market_prices / ingestion_runs. */
   sourceName: string;
+  /** How the source publishes, which decides who drives it:
+   *  live    — the incremental ingestion cron advances through publication
+   *            time; records carry their true publication instants.
+   *  archive — a historical replay corpus, driven epoch by epoch by
+   *            scripts/ingest-history.ts against the simulation clock; the
+   *            incremental cron must not point at it. */
+  publicationMode: "live" | "archive";
+  /** Whether the source can resolve PAST delivery windows on demand (ERCOT's
+   *  MIS archive can: every daily report remains downloadable). A live source
+   *  with history capability can be walked day by day by the history loader
+   *  to backfill gaps, without being usable as a forward (sim-future) feed. */
+  readonly canServeHistory: boolean;
   getMarkets(): Promise<NormalizedMarket[]>;
   /** Products this source can publish. */
   getProducts(): Promise<string[]>;
@@ -481,9 +541,41 @@ export interface ErcotSource {
  *  Real-time hourly is the series the desk trades and values against. */
 export const DEFAULT_MARKET_PRODUCT = "RTM_HOURLY";
 
-export const SOURCE_SIMULATED = "SIMULATED";
-export const SOURCE_SEEDED = "SEEDED";
+/**
+ * Logical source names, persisted on market_prices.source and
+ * ingestion_runs.source.
+ *
+ * Generated sources carry the literal token GENERATED so no presentation
+ * layer can mistake them for ERCOT data, per the source-labelling rule:
+ * ERCOT data is market truth; PowerFlow is the trading simulation and must
+ * never present invented prices as if they were actual ERCOT prices.
+ */
+export const SOURCE_SIMULATED = "SIMULATED (GENERATED)";
+export const SOURCE_SEEDED = "SEEDED (GENERATED)";
 export const SOURCE_ERCOT_MIS = "ERCOT_MIS";
+/** Historical ERCOT archive ingested as a timestamped replay corpus. */
+export const SOURCE_ERCOT_HISTORY = "ERCOT_MIS_HISTORY";
+
+/** The three kinds of market data the platform can hold, which must never be
+ *  confused with one another. */
+export type MarketDataMode =
+  /** Actual historical ERCOT data, replayed against the simulation clock. */
+  | "ERCOT_REPLAY"
+  /** Current ERCOT data, consumed at ERCOT's publication latency. */
+  | "ERCOT_LIVE"
+  /** Explicitly generated data — tests, demos, development. */
+  | "GENERATED";
+
+/** Resolve the market-data mode the process is configured for, mirroring
+ *  getErcotSource()'s switch. UI and API layers label feeds from this.
+ *  Production data is always actual ERCOT data; unknown configurations
+ *  resolve to the live adapter (which ingestion_runs will fail visibly if
+ *  ERCOT is unreachable). */
+export function resolveMarketDataMode(env = process.env): MarketDataMode {
+  const mode = (env.ERCOT_SOURCE ?? "ERCOT_MIS").toUpperCase();
+  if (mode === "ERCOT_REPLAY") return "ERCOT_REPLAY";
+  return "ERCOT_LIVE";
+}
 
 /** Back-compat aliases for the pre-product-model names. */
 export const MIN_PRICE = MIN_REPRESENTABLE_PRICE;
@@ -546,12 +638,21 @@ export function normalizePriceRecord(
     return { ok: false, reason: "price out of range or invalid" };
   }
 
-  let sourceTimestamp = source;
-  const st = parseIsoUtc(
-    typeof rec.sourceTimestamp === "string" ? rec.sourceTimestamp : ""
+  // Publication time of this observation. A record without one is rejected:
+  // the look-ahead guard filters on it, so "unknown" would mean either
+  // inventing a time (possibly leaking the future) or dropping the row. We
+  // drop the row and let the source be fixed.
+  const pub = parseIsoUtc(
+    typeof rec.sourceTimestamp === "string"
+      ? rec.sourceTimestamp
+      : typeof (rec as Record<string, unknown>).publishedAt === "string"
+        ? String((rec as Record<string, unknown>).publishedAt)
+        : ""
   );
-  if (st) sourceTimestamp = st.toISOString();
-  else sourceTimestamp = new Date().toISOString();
+  if (!pub) return { ok: false, reason: "missing sourceTimestamp (publication time)" };
+  const sourceTimestamp = pub.toISOString();
+
+  const isFinal = (rec as Record<string, unknown>).isFinal === true;
 
   return {
     ok: true,
@@ -564,6 +665,8 @@ export function normalizePriceRecord(
       price: price.toFixed(4),
       product: product.code,
       sourceTimestamp,
+      publishedAt: sourceTimestamp,
+      isFinal,
     },
   };
 }

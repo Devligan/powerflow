@@ -2,12 +2,14 @@ import { runMarketDataIngestion } from "@/lib/ingestion";
 import { safeEqual, ok, fail } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
-
-
+// Fluid Compute allows 300s on every plan. A catch-up run after downtime
+// downloads up to INGEST_MAX_LOOKBACK_HOURS of 15-minute MIS files, which does
+// not fit the old 10s ceiling; steady-state runs finish in seconds.
+export const maxDuration = 300;
 
 /**
- * Vercel Cron / manual trigger target. Guarded by CRON_SECRET so random
- * callers cannot provoke ingestion load.
+ * Vercel Cron / manual trigger target. Vercel invokes cron paths with GET.
+ * Guarded by CRON_SECRET so random callers cannot provoke ingestion load.
  *
  * Exported for GET as well as POST, because Vercel Cron invokes a cron path
  * with GET — a POST-only export left the schedule in `vercel.json` answering

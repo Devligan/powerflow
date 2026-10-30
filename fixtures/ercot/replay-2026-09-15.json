@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "name": "ERCOT 2026-09-15 (actual MIS data)",
+    "source": "ERCOT_MIS_HISTORY",
+    "ercotReports": [],
+    "notes": "Observations are actual ERCOT MIS data. publishedAt is the MIS posting instant (US/Central converted to UTC). DAM_HOURLY rows are final day-ahead clearing values; RTM_15MIN rows are interim real-time settlement values subject to ERCOT correction."
+  },
+  "markets": [],
+  "observations": []
+}

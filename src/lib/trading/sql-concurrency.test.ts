@@ -26,9 +26,11 @@ import { admin, createTestUser, dbTestsEnabled, userClient } from "@/lib/testing
  * Opt in with `RUN_DB_TESTS=1`.
  */
 describe.skipIf(!dbTestsEnabled())("cash and exposure under contention (live database)", () => {
-  // Deliberately not HB_NORTH/RTM_HOURLY: `sql-engine.test.ts` republishes that
-  // interval's price, and vitest runs files concurrently.
-  const PRODUCT = "RTM_HOURLY";
+  // The day-ahead market: tomorrow's clearing is published by ERCOT the day
+  // before delivery, so forward fills price against actual observations.
+  // Deliberately not HB_NORTH: `sql-engine.test.ts` republishes that
+  // interval's price.
+  const PRODUCT = "DAM_HOURLY";
   const MARKET = "HB_HOUSTON";
   const HOUR = 3600_000;
 
@@ -111,12 +113,17 @@ describe.skipIf(!dbTestsEnabled())("cash and exposure under contention (live dat
       .single();
     marketId = market!.id as string;
 
+    // Pick the interval the way the engine prices: latest delivery whose
+    // publication instant has passed, latest publication within it. See the
+    // trading-engine suite for the full rationale.
     const { data: rows } = await db
       .from("market_prices")
       .select("delivery_timestamp, price")
       .eq("market_id", marketId)
       .eq("product", PRODUCT)
+      .lte("published_at", new Date().toISOString())
       .order("delivery_timestamp", { ascending: false })
+      .order("published_at", { ascending: false })
       .limit(1);
     interval = rows![0].delivery_timestamp as string;
     price = Number(rows![0].price);
