@@ -20,11 +20,12 @@ const SPEC: Array<{ term: string; detail: string }> = [
   {
     term: "Market",
     detail:
-      "ERCOT hubs, load zones and resource nodes, priced forward across the curve.",
+      "All seven ERCOT trading hubs and eight load zones, with the day-ahead curve through the next operating day.",
   },
   {
     term: "Series",
-    detail: "DAM_HOURLY, RTM_HOURLY and RTM_15MIN settlement intervals.",
+    detail:
+      "Day-ahead hourly clearing, real-time hourly and 15-minute settlement prices, and the five day-ahead ancillary-service prices — continuous since September 20, refreshed every 15 minutes.",
   },
   {
     term: "Instruments",
@@ -66,7 +67,7 @@ const SPEC: Array<{ term: string; detail: string }> = [
 const SEQUENCE: Array<{ title: string; body: string }> = [
   {
     title: "Fund the desk",
-    body: "Sign in with email, Google or GitHub. The account bootstraps itself with virtual cash and an exposure limit.",
+    body: "Sign up with an email address. The account bootstraps itself with virtual cash and an exposure limit.",
   },
   {
     title: "Pick a point and an interval",
