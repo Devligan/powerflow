@@ -1,13 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useState, type FormEvent } from "react";
+import { Suspense, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { safeNextPath } from "@/lib/redirect";
 import { OAuthButtons } from "@/components/oauth-buttons";
-import { parseEnabledProviders } from "@/lib/oauth";
 
 function SignupForm() {
   const router = useRouter();
@@ -19,8 +18,6 @@ function SignupForm() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [providers, setProviders] = useState<Array<{provider: string; label: string}>>([]);
-  const [providersLoaded, setProvidersLoaded] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -58,16 +55,6 @@ function SignupForm() {
       setBusy(false);
     }
   }
-
-  useEffect(() => {
-    const labels: Record<string, string> = { google: "Google", github: "GitHub", microsoft: "Microsoft", apple: "Apple", discord: "Discord", gitlab: "GitLab", bitbucket: "Bitbucket" };
-    const load = () => {
-      const parsed = parseEnabledProviders(process.env.NEXT_PUBLIC_ENABLED_OAUTH_PROVIDERS ?? '[]');
-      setProviders(parsed.map((p) => ({ provider: p, label: labels[p] || p })));
-      setProvidersLoaded(true);
-    };
-    load();
-  }, []);
 
   return (
     <div className="card p-0">
