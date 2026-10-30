@@ -52,8 +52,11 @@ export function AnalyticsCharts({
     let lo = Math.min(0, ...values);
     let hi = Math.max(0, ...values);
     if (lo === hi) {
-      lo = -1;
-      hi = 1;
+      // A flat (often all-zero) curve still needs a readable band. Values are
+      // fixed-point (1e6 per dollar), so ±$100 — not ±1, which is a millionth
+      // of a dollar and labelled the axis "0 / 0 / -0".
+      lo -= 100_000_000;
+      hi += 100_000_000;
     }
     const pad = (hi - lo) * 0.12;
     const yLo = lo - pad;
@@ -146,7 +149,8 @@ export function AnalyticsCharts({
                     fill="var(--text-mute)"
                     className="mono"
                   >
-                    {format(BigInt(Math.round(v)), 0)}
+                    {/* Whole dollars: rounding first keeps a small negative from printing "-0". */}
+                    {format(BigInt(Math.round(v / 1e6)) * 1_000_000n, 0)}
                   </text>
                 </g>
               );

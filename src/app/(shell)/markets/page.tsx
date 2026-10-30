@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { listMarkets } from "@/lib/markets";
-import { usd, timeAgo, sourceInfo } from "@/lib/format";
+import { usd, signedUsd, timeAgo, sourceInfo } from "@/lib/format";
 import { parseDec } from "@/lib/money";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/lib/auth";
@@ -59,7 +59,7 @@ export default async function MarketsPage() {
                     <td
                       className={`mono text-right ${dart == null ? "t-mute" : dart > 0n ? "pos" : dart < 0n ? "neg" : ""}`}
                     >
-                      {dart == null ? "—" : `${dart > 0n ? "+" : ""}${usd(dart)}`}
+                      {dart == null ? "—" : signedUsd(dart)}
                     </td>
                     <td className="mono text-right">
                       {m.dayAheadNextDayAvg != null ? usd(m.dayAheadNextDayAvg) : "—"}

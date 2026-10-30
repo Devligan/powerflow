@@ -11,6 +11,14 @@ export function usd(v: string | number | bigint, places = 2): string {
   return `$${formatGrouped(parseDec(v), places)}`;
 }
 
+/** +$1,234.56 / −$1,234.56 — the sign ahead of the currency symbol, for
+ *  spreads and P&L where direction is the point. Zero is unsigned. */
+export function signedUsd(v: string | number | bigint, places = 2): string {
+  const n = parseDec(v);
+  const body = usd(n < 0n ? -n : n, places);
+  return n > 0n ? `+${body}` : n < 0n ? `−${body}` : body;
+}
+
 /** 1,234.56 (no currency symbol) */
 export function num(v: string | number | bigint, places = 2): string {
   return formatGrouped(parseDec(v), places);

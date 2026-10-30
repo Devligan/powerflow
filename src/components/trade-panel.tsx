@@ -8,6 +8,9 @@ import {
   volumeUnitLabel,
   positionUnit,
   instrumentInfo,
+  usd,
+  num,
+  signedUsd,
 } from "@/lib/format";
 import {
   DEFAULT_INSTRUMENT,
@@ -614,15 +617,13 @@ export function TradePanel({
               </span>
             )}
             Filled {instrumentInfo(fill.instrument)?.shortLabel ?? fill.instrument}{" "}
-            at <span className="mono">{fill.executionPrice}</span>, notional $
-            {format(parseDec(fill.notional), 2)}. Cash now $
-            {format(parseDec(fill.cashBalance), 2)} · position{" "}
-            <span className="mono">{fill.positionQuantity}</span> {unit}
-            {fill.realizedDelta !== "0" && (
+            at <span className="mono">{usd(fill.executionPrice)}</span>, notional{" "}
+            {usd(fill.notional)}. Cash now {usd(fill.cashBalance)} · position{" "}
+            <span className="mono">{num(fill.positionQuantity, 3)}</span> {unit}
+            {parseDec(fill.realizedDelta) !== 0n && (
               <span className={parseDec(fill.realizedDelta) > 0n ? " pos" : " neg"}>
                 {" "}
-                · realized {parseDec(fill.realizedDelta) > 0n ? "+" : ""}
-                {format(parseDec(fill.realizedDelta), 2)}
+                · realized {signedUsd(fill.realizedDelta)}
               </span>
             )}
           </div>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { getPortfolioSnapshot } from "@/lib/queries";
 import { usd, sign, bpsToPercent, num, volumeUnitLabel } from "@/lib/format";
+import { parseDec } from "@/lib/money";
 import {
   InstrumentBreakdownTable,
   PositionAllocationTable,
@@ -18,11 +19,12 @@ export default async function PortfolioPage() {
 
   const met = snapshot.metrics;
   const openPositions = snapshot.positions.filter((p) => p.isOpen);
-  const exposureLimit = parseFloat(snapshot.account.maxGrossNotional || "0");
-  const exposurePct =
-    exposureLimit > 0
-      ? Math.round((Number(met.grossNotional) / exposureLimit) * 100)
-      : 0;
+  // Both sides in the same fixed-point scale: grossNotional is already scaled,
+  // so dividing it by the limit in plain dollars read a million times too high.
+  const exposureLimit = parseDec(snapshot.account.maxGrossNotional || "0");
+  const exposureBps =
+    exposureLimit > 0n ? Number((parseDec(met.grossNotional) * 10_000n) / exposureLimit) : 0;
+  const exposurePct = exposureBps / 100;
   const exposureTone =
     exposurePct > 85 ? "var(--short)" : exposurePct > 70 ? "var(--accent)" : "var(--long)";
 
@@ -118,7 +120,7 @@ export default async function PortfolioPage() {
             Buys must be fully covered by cash; gross exposure is capped per
             account.
           </p>
-          <span className="mono text-[12px] t-dim">{exposurePct}%</span>
+          <span className="mono text-[12px] t-dim">{exposurePct.toFixed(2)}%</span>
         </div>
       </section>
 

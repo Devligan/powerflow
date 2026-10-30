@@ -3,9 +3,18 @@ import {
   instrumentInfo,
   legsLabel,
   positionUnit,
+  signedUsd,
   volumeUnitLabel,
 } from "@/lib/format";
 import { INSTRUMENTS, PRODUCTS } from "@/lib/ercot/types";
+
+describe("signedUsd", () => {
+  it("puts the sign ahead of the currency symbol", () => {
+    expect(signedUsd("-6.01")).toBe("−$6.01");
+    expect(signedUsd("1234.5")).toBe("+$1,234.5");
+    expect(signedUsd("0")).toBe("$0");
+  });
+});
 
 describe("instrument display", () => {
   it("describes every catalogued instrument", () => {

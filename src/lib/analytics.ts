@@ -17,7 +17,8 @@ export interface AnalyticsResult {
   realizedPnl: string;
   unrealizedPnl: string;
   totalTrades: number;
-  winRatePercent: number;
+  /** Share of realizing trades that made money; null until one has. */
+  winRatePercent: number | null;
   avgTradePnl: string;
   bestTradePnl: string;
   worstTradePnl: string;
@@ -128,16 +129,20 @@ export async function getAnalytics(userId: string): Promise<AnalyticsResult> {
 
   const perTrade = replay.trades.map((t) => t.realizedPnL);
   const totalTrades = perTrade.length;
-  const wins = perTrade.filter((v) => v > 0n).length;
+  // Only trades that realized something (closes and settlements) win or lose.
+  // Counting opening trades as zero-P&L "losses" read a fresh long as a 0% win
+  // rate and diluted the average toward zero.
+  const decided = perTrade.filter((v) => v !== 0n);
+  const wins = decided.filter((v) => v > 0n).length;
   const winRatePercent =
-    totalTrades === 0 ? 0 : Math.round((wins / totalTrades) * 100);
+    decided.length === 0 ? null : Math.round((wins / decided.length) * 100);
 
-  const best = perTrade.length ? perTrade.reduce((a, b) => (a > b ? a : b)) : 0n;
-  const worst = perTrade.length ? perTrade.reduce((a, b) => (a < b ? a : b)) : 0n;
+  const best = decided.length ? decided.reduce((a, b) => (a > b ? a : b)) : 0n;
+  const worst = decided.length ? decided.reduce((a, b) => (a < b ? a : b)) : 0n;
   const avg =
-    totalTrades === 0
+    decided.length === 0
       ? 0n
-      : replay.cumulativeRealized / BigInt(totalTrades);
+      : replay.cumulativeRealized / BigInt(decided.length);
 
   // P&L over time (daily) = end-of-day cumulated realized P&L.
   const byDay = new Map<string, bigint>();

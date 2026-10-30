@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { parseDec, format } from "@/lib/money";
-import { sourceInfo } from "@/lib/format";
+import { sourceInfo, usd, signedUsd } from "@/lib/format";
 import { Lamp } from "@/components/ui/lamp";
 import { FlashValue } from "@/components/ui/flash-value";
 
@@ -163,10 +163,9 @@ export function MarketsStrip() {
                 const dart = price - parseDec(it.dayAheadPrice);
                 return (
                   <div className="mt-1 mono text-[10.5px] t-mute">
-                    DA ${format(parseDec(it.dayAheadPrice), 2)} · DART{" "}
+                    DA {usd(it.dayAheadPrice)} · DART{" "}
                     <span className={dart > 0n ? "pos" : dart < 0n ? "neg" : ""}>
-                      {dart > 0n ? "+" : ""}
-                      {format(dart, 2)}
+                      {signedUsd(dart)}
                     </span>
                   </div>
                 );

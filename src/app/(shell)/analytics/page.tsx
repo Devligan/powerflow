@@ -34,7 +34,7 @@ export default async function AnalyticsPage() {
       tone: parseFloat(a.unrealizedPnl) >= 0 ? "pos" : "neg",
     },
     { label: "Executed trades", value: String(a.totalTrades) },
-    { label: "Win rate", value: `${a.winRatePercent}%` },
+    { label: "Win rate", value: a.winRatePercent == null ? "—" : `${a.winRatePercent}%` },
     {
       label: "Avg trade P&L",
       value: sign(a.avgTradePnl),
