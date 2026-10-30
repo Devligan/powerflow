@@ -377,7 +377,14 @@ it ends) and `/api/cron/settle` at :25, through `pg_net`, with the site URL and
 A run never reaches back further than `INGEST_MAX_LOOKBACK_HOURS` (default 48):
 the RT series is one MIS file per 15-minute interval, so an unbounded catch-up
 after downtime cannot finish in one invocation and the series would never
-advance. Gaps older than that are filled with `scripts/ingest-history.ts`.
+advance. Gaps older than that are filled with `scripts/backfill-ercot.ts`
+(`npx tsx scripts/backfill-ercot.ts --from 2026-09-20`): it takes ERCOT's
+rolling reports first (real posting stamps), then the annual archives
+(NP6-785 RTM, NP4-180 DAM, NP4-181 AS) for anything older, writing only
+intervals that have no observation yet. Archive rows are labelled
+`ERCOT_MIS_HISTORY`; where the archive and the live reports overlap they agree
+to the cent. `npx tsx scripts/setup-scheduler.ts` applies 0029 and stores the
+two Vault values in one step.
 `INGEST_MAX_RECORDS` is shared round-robin across products, oldest delivery
 first, so one large backlog cannot starve the other series.
 

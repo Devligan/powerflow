@@ -21,6 +21,8 @@ npm run test:db -- src/lib/security.rls.test.ts     # one DB suite
 npm run test:db -- -t "race"
 npm run market:probe   # one live ingestion run against ERCOT MIS + the DB
 npx tsx scripts/run-migration.ts supabase/migrations/00NN_x.sql   # apply one migration without the Supabase CLI
+npx tsx scripts/backfill-ercot.ts --from 2026-09-20 [--dry-run]   # fill price gaps from ERCOT rolling reports + annual archives
+npx tsx scripts/setup-scheduler.ts                                 # apply 0029 + store Vault URL/CRON_SECRET
 ```
 
 - The shell is Windows PowerShell and the repo path contains a space. `RUN_DB_TESTS=1 npm test` does not work here — use `npm run test:db` (it sets the flag in Node and spawns vitest directly to avoid cmd.exe re-splitting the path).
@@ -41,7 +43,7 @@ npx tsx scripts/run-migration.ts supabase/migrations/00NN_x.sql   # apply one mi
 
 **Money is exact.** DB columns are `numeric`; client math uses `bigint` at a fixed 1e6 scale (`src/lib/money.ts`). Never introduce floats into accounting paths.
 
-**Market data is always actual ERCOT data.** `src/lib/ercot/index.ts#getErcotSource` resolves `ERCOT_SOURCE`: `ERCOT_MIS` (default — public MIS reports, no credentials: NP6-905 rolling RT, NP4-190 DAM, NP4-188 AS) or `ERCOT_REPLAY` (same adapter in archive mode, driven by `scripts/ingest-history.ts`). There is no synthetic feed in production. `src/lib/ingestion.ts` resumes each (market, product) series from its own cursor, clamped to `INGEST_MAX_LOOKBACK_HOURS`, writes under a per-product fair `INGEST_MAX_RECORDS` budget, then runs `promote_rtm_finals` and the `fill_crossing_limit_orders` sweep, and records the run in `ingestion_runs`. ERCOT delivery hours are US/Central with DST skip/repeat handled by `deliveryCentralToUtc` — never use a single per-day offset. Recorded fixtures live in `fixtures/ercot/` (`npm run load:history`).
+**Market data is always actual ERCOT data.** `src/lib/ercot/index.ts#getErcotSource` resolves `ERCOT_SOURCE`: `ERCOT_MIS` (default — public MIS reports, no credentials: NP6-905 rolling RT, NP4-190 DAM, NP4-188 AS) or `ERCOT_REPLAY` (same adapter in archive mode, driven by `scripts/ingest-history.ts`). There is no synthetic feed in production. `src/lib/ingestion.ts` resumes each (market, product) series from its own cursor, clamped to `INGEST_MAX_LOOKBACK_HOURS`, writes under a per-product fair `INGEST_MAX_RECORDS` budget, then runs `promote_rtm_finals` and the `fill_crossing_limit_orders` sweep, and records the run in `ingestion_runs`. RT load zones are printed twice (`LZ` and energy-weighted `LZEW`, which can differ) — always keep the canonical `LZ` print, as `parseRtmSppCsv` does. ERCOT delivery hours are US/Central with DST skip/repeat handled by `deliveryCentralToUtc` — never use a single per-day offset. Recorded fixtures live in `fixtures/ercot/` (`npm run load:history`).
 
 **Scheduling.** Vercel Hobby allows only a daily cron (`vercel.json` is a fallback). The real scheduler is Supabase `pg_cron` (migration 0029): it calls `/api/cron/ingest` at :03/:18/:33/:48 and `/api/cron/settle` at :25 via `pg_net`, reading the site URL and `CRON_SECRET` from Vault. Check `GET /api/market-data/status` (per-series newest delivery) and `net._http_response` when data looks stale.
 
