@@ -164,7 +164,9 @@ export function MarketsStrip() {
                 return (
                   <div className="mt-1 mono text-[10.5px] t-mute">
                     DA {usd(it.dayAheadPrice)} · DART{" "}
-                    <span className={dart > 0n ? "pos" : dart < 0n ? "neg" : ""}>
+                    <span
+                      className={`whitespace-nowrap ${dart > 0n ? "pos" : dart < 0n ? "neg" : ""}`}
+                    >
                       {signedUsd(dart)}
                     </span>
                   </div>

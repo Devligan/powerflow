@@ -57,7 +57,7 @@ export default async function MarketsPage() {
                       {m.dayAheadPrice != null ? usd(m.dayAheadPrice) : "—"}
                     </td>
                     <td
-                      className={`mono text-right ${dart == null ? "t-mute" : dart > 0n ? "pos" : dart < 0n ? "neg" : ""}`}
+                      className={`mono whitespace-nowrap text-right ${dart == null ? "t-mute" : dart > 0n ? "pos" : dart < 0n ? "neg" : ""}`}
                     >
                       {dart == null ? "—" : signedUsd(dart)}
                     </td>
