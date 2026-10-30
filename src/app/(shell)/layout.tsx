@@ -32,10 +32,10 @@ export default async function ShellLayout({
       <footer className="border-t border-white/10 bg-[var(--ink-panel)]">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
           <p className="caption">
-            PowerFlow · paper trading desk · simulation only
+            PowerFlow · paper trading desk · no real orders or money
           </p>
           <p className="caption">
-            All timestamps UTC · prices are simulated, never live ERCOT data
+            All timestamps UTC · prices are actual ERCOT MIS publications
           </p>
         </div>
       </footer>

@@ -14,6 +14,7 @@ interface MarketStripItem {
   price: string | null;
   deliveryTimestamp: string | null;
   source: string | null;
+  dayAheadPrice?: string | null;
 }
 
 /**
@@ -72,10 +73,11 @@ export function MarketsStrip() {
     );
   }
 
-  // Feed staleness: the newest hourly observation should be the current
-  // (running) hour; with the 5-minute ingest cron it lands within minutes of
-  // its ~HH:02 posting. Older than that means the desk is looking at a
-  // frozen feed — say so instead of leaving live-looking numbers.
+  // Feed staleness. An hourly real-time price exists only once its hour has
+  // ENDED (ERCOT posts it ~2 minutes later, and the ingest runs every 15), so
+  // the newest hour is normally the last completed one and its end is up to
+  // ~75 minutes old. Past that, the desk is looking at a frozen feed — say so
+  // instead of leaving live-looking numbers.
   const newestDeliveryMs = items.reduce((max, it) => {
     const t = it.deliveryTimestamp ? Date.parse(it.deliveryTimestamp) : NaN;
     return Number.isNaN(t) ? max : Math.max(max, t);
@@ -84,7 +86,7 @@ export function MarketsStrip() {
     Number.isFinite(newestDeliveryMs) && ts != null
       ? ts - (newestDeliveryMs + 3_600_000)
       : null;
-  const feedStale = feedAgeMs != null && feedAgeMs > 10 * 60_000;
+  const feedStale = feedAgeMs != null && feedAgeMs > 80 * 60_000;
   const feedAgeLabel =
     feedAgeMs == null
       ? null
@@ -98,7 +100,9 @@ export function MarketsStrip() {
     <div className="space-y-2">
       {feedAgeLabel && (
         <div className="flex items-center gap-2">
-          <span className="caption t-mute">ERCOT hourly feed · {feedAgeLabel}</span>
+          <span className="caption t-mute">
+            Real-time hour ended {feedAgeLabel} · DA = day-ahead clearing for the same hour
+          </span>
           {feedStale && <span className="badge badge-amber">feed lagging</span>}
         </div>
       )}
@@ -153,6 +157,21 @@ export function MarketsStrip() {
                 )}
               </div>
 
+              {it.dayAheadPrice != null && price != null && (() => {
+                // DART: real time minus day-ahead for the same hour, the
+                // number a virtual or DART position settles on.
+                const dart = price - parseDec(it.dayAheadPrice);
+                return (
+                  <div className="mt-1 mono text-[10.5px] t-mute">
+                    DA ${format(parseDec(it.dayAheadPrice), 2)} · DART{" "}
+                    <span className={dart > 0n ? "pos" : dart < 0n ? "neg" : ""}>
+                      {dart > 0n ? "+" : ""}
+                      {format(dart, 2)}
+                    </span>
+                  </div>
+                );
+              })()}
+
               <div className="mt-2.5 flex items-center gap-1">
                 <span className="badge badge-neutral">{typeLabel}</span>
                 <span
@@ -175,7 +194,7 @@ export function MarketsStrip() {
         {error
           ? "Market data unavailable right now."
           : ts
-            ? `Updated ${new Date(ts).toISOString().slice(11, 19)}Z · simulated forward curve`
+            ? `Updated ${new Date(ts).toISOString().slice(11, 19)}Z · actual ERCOT settlement point prices`
             : ""}
       </p>
     </div>

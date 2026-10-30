@@ -34,7 +34,7 @@ export default function AuthLayout({
               "$100,000 virtual cash on account creation",
               "$500,000 gross exposure cap, checked server-side",
               "Positions settled automatically at delivery",
-              "Simulated prices only, labelled on every screen",
+              "Actual ERCOT prices, every one labelled with its report and publication time",
             ].map((line) => (
               <li key={line} className="flex items-start gap-2.5">
                 <Lamp className="t-accent mt-[7px]" />

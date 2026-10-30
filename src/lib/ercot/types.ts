@@ -541,6 +541,37 @@ export interface ErcotSource {
  *  Real-time hourly is the series the desk trades and values against. */
 export const DEFAULT_MARKET_PRODUCT = "RTM_HOURLY";
 
+/** The forward market a desk commits in: the day-ahead clearing. */
+export const FORWARD_MARKET_PRODUCT = "DAM_HOURLY";
+
+/** The shared row the system-wide ancillary-service prices live on. It is a
+ *  price holder, not a place energy can be bought, so energy lists skip it. */
+export const AS_SYSTEM_POINT = "AS_SYSTEM";
+
+/** ERCOT's own names for the hubs and load zones the desk trades. */
+const SETTLEMENT_POINT_NAMES: Record<string, string> = {
+  HB_BUSAVG: "Bus Average Hub",
+  HB_HOUSTON: "Houston Hub",
+  HB_HUBAVG: "Hub Average",
+  HB_NORTH: "North Hub",
+  HB_PAN: "Panhandle Hub",
+  HB_SOUTH: "South Hub",
+  HB_WEST: "West Hub",
+  LZ_AEN: "Austin Energy load zone",
+  LZ_CPS: "CPS Energy (San Antonio) load zone",
+  LZ_HOUSTON: "Houston load zone",
+  LZ_LCRA: "LCRA load zone",
+  LZ_NORTH: "North load zone",
+  LZ_RAYBN: "Rayburn Electric load zone",
+  LZ_SOUTH: "South load zone",
+  LZ_WEST: "West load zone",
+  [AS_SYSTEM_POINT]: "Ancillary services (system-wide clearing)",
+};
+
+export function settlementPointName(point: string): string | null {
+  return SETTLEMENT_POINT_NAMES[point] ?? null;
+}
+
 /**
  * Logical source names, persisted on market_prices.source and
  * ingestion_runs.source.

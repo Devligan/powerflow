@@ -1,8 +1,13 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
+  AS_SYSTEM_POINT,
   DEFAULT_MARKET_PRODUCT,
+  FORWARD_MARKET_PRODUCT,
   resolveMarketDataMode,
+  settlementPointName,
 } from "@/lib/ercot/types";
+import { deliveryCentralToUtc } from "@/lib/ercot/mis";
+import { parseDec } from "@/lib/money";
 
 export interface MarketView {
   id: string;
@@ -15,6 +20,83 @@ export interface MarketView {
   publishedAt?: string | null;
   source: string | null;
   product: string;
+  /** Day-ahead clearing for the same hour as `price`: the DART pair. */
+  dayAheadPrice?: string | null;
+  /** Mean day-ahead price over the next Central operating day, once its
+   *  clearing has published (null until every hour of it has). */
+  dayAheadNextDayAvg?: string | null;
+}
+
+const HOUR_MS = 3600_000;
+
+/** The UTC bounds of the Central operating day `offsetDays` after `at`'s. */
+function centralDayBounds(at: Date, offsetDays: number): { start: number; end: number } | null {
+  const [y, m, d] = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" })
+    .format(at)
+    .split("-")
+    .map(Number);
+  const day = (n: number) => {
+    const t = new Date(Date.UTC(y, m - 1, d + n));
+    const label = `${String(t.getUTCMonth() + 1).padStart(2, "0")}/${String(t.getUTCDate()).padStart(2, "0")}/${t.getUTCFullYear()}`;
+    const start = deliveryCentralToUtc(label, 1);
+    return start ? Date.parse(start) : null;
+  };
+  const start = day(offsetDays);
+  const end = day(offsetDays + 1);
+  return start != null && end != null ? { start, end } : null;
+}
+
+/**
+ * Attach the day-ahead side to each market's real-time row: the DA clearing
+ * for the same hour, and the next operating day's average. Real time is what
+ * settles; day-ahead is what a desk trades forward, and the gap between them
+ * is the trade. Observations are read as of `asOf`, like everything else.
+ */
+async function attachDayAhead(rows: MarketView[], asOf: Date | null): Promise<MarketView[]> {
+  if (rows.length === 0) return rows;
+  const now = asOf ?? new Date();
+  const nextDay = centralDayBounds(now, 1);
+  const rtStarts = rows
+    .map((r) => (r.deliveryTimestamp ? Date.parse(r.deliveryTimestamp) : NaN))
+    .filter((t) => !Number.isNaN(t));
+  const from = rtStarts.length ? Math.min(...rtStarts) : now.getTime() - HOUR_MS;
+  const to = nextDay?.end ?? now.getTime() + 48 * HOUR_MS;
+
+  let query = supabaseAdmin()
+    .from("market_prices")
+    .select("market_id, delivery_timestamp, price, published_at")
+    .eq("product", FORWARD_MARKET_PRODUCT)
+    .in("market_id", rows.map((r) => r.id))
+    .gte("delivery_timestamp", new Date(from).toISOString())
+    .lt("delivery_timestamp", new Date(to).toISOString());
+  if (asOf) query = query.lte("published_at", asOf.toISOString());
+  const { data, error } = await query.order("published_at", { ascending: false }).limit(5000);
+  if (error) throw new Error(error.message);
+
+  // Latest publication per (market, hour): rows arrive newest first.
+  const byMarket = new Map<string, Map<number, string>>();
+  for (const r of data ?? []) {
+    const hours = byMarket.get(r.market_id) ?? new Map<number, string>();
+    const t = Date.parse(r.delivery_timestamp);
+    if (!hours.has(t)) hours.set(t, String(r.price));
+    byMarket.set(r.market_id, hours);
+  }
+
+  return rows.map((row) => {
+    const hours = byMarket.get(row.id);
+    if (!hours) return row;
+    const sameHour = row.deliveryTimestamp ? hours.get(Date.parse(row.deliveryTimestamp)) : undefined;
+    let nextDayAvg: string | null = null;
+    if (nextDay) {
+      const expected = Math.round((nextDay.end - nextDay.start) / HOUR_MS);
+      const prices = [...hours].filter(([t]) => t >= nextDay.start && t < nextDay.end).map(([, p]) => parseDec(p));
+      if (prices.length === expected) {
+        const mean = prices.reduce((a, b) => a + b, 0n) / BigInt(prices.length);
+        nextDayAvg = (Number(mean) / 1e6).toFixed(2);
+      }
+    }
+    return { ...row, dayAheadPrice: sameHour ?? null, dayAheadNextDayAvg: nextDayAvg };
+  });
 }
 
 /**
@@ -35,7 +117,8 @@ export async function listMarkets(asOf?: Date | null): Promise<MarketView[]> {
   if (marketsRes.error) throw new Error(marketsRes.error.message);
 
   const markets = (marketsRes.data ?? []).filter(
-    (m: { active: boolean }) => m.active
+    (m: { active: boolean; settlement_point: string }) =>
+      m.active && m.settlement_point !== AS_SYSTEM_POINT
   );
 
   type PriceRow = {
@@ -87,7 +170,7 @@ export async function listMarkets(asOf?: Date | null): Promise<MarketView[]> {
     priceRows.map((p) => [p.market_id, p])
   );
 
-  return markets
+  const rows = markets
     .sort((a: { settlement_point: string }, b: { settlement_point: string }) =>
       a.settlement_point.localeCompare(b.settlement_point)
     )
@@ -97,7 +180,7 @@ export async function listMarkets(asOf?: Date | null): Promise<MarketView[]> {
         id: m.id,
         settlementPoint: m.settlement_point,
         type: m.settlement_point_type,
-        description: m.description,
+        description: settlementPointName(m.settlement_point) ?? m.description,
         price: p?.price ?? null,
         deliveryTimestamp: p?.delivery_timestamp ?? null,
         publishedAt: p?.published_at ?? null,
@@ -105,6 +188,7 @@ export async function listMarkets(asOf?: Date | null): Promise<MarketView[]> {
         product: DEFAULT_MARKET_PRODUCT,
       };
     });
+  return attachDayAhead(rows, asOf ?? null);
 }
 
 export interface MarketOption {
@@ -123,7 +207,7 @@ export async function listMarketOptions(): Promise<MarketOption[]> {
     .eq("active", true)
     .order("settlement_point");
   if (error) throw new Error(error.message);
-  return (data ?? []).map((m) => ({
+  return (data ?? []).filter((m) => m.settlement_point !== AS_SYSTEM_POINT).map((m) => ({
     id: m.id,
     settlementPoint: m.settlement_point,
     type: m.settlement_point_type,
@@ -248,7 +332,9 @@ export async function getMarketPrices(
       id: marketRes.data.id,
       settlementPoint: marketRes.data.settlement_point,
       type: marketRes.data.settlement_point_type,
-      description: marketRes.data.description as string | null,
+      description:
+        settlementPointName(marketRes.data.settlement_point) ??
+        (marketRes.data.description as string | null),
       price: last?.price ?? null,
       deliveryTimestamp: last?.deliveryTimestamp ?? null,
       publishedAt: last?.publishedAt ?? null,
@@ -276,7 +362,9 @@ export async function getMarketStatus(): Promise<MarketStatus> {
     admin
       .from("ingestion_runs")
       .select("id, source, status, records_received, records_inserted, records_skipped, detail, started_at, finished_at")
-      .order("finished_at", { ascending: false })
+      // started_at: NULLs sort first descending, so finished_at put abandoned
+      // runs above every real one.
+      .order("started_at", { ascending: false })
       .limit(5),
     admin
       .from("market_prices")

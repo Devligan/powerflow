@@ -4,6 +4,8 @@ import {
   NormalizedPriceRecord,
   SettlementPointType,
   requireProduct,
+  settlementPointName,
+  AS_SYSTEM_POINT,
   SOURCE_ERCOT_MIS,
 } from "@/lib/ercot/types";
 import { inflateRawSync } from "node:zlib";
@@ -124,9 +126,6 @@ const REPORT_DAM_MCPC = 12329; // NP4-188-CD, DAM Clearing Prices for Capacity (
 /** The ancillary-service series the MIS adapter publishes (report 12329). */
 const AS_PRODUCTS: readonly string[] = ["REGUP", "REGDN", "RRS", "NSPIN", "ECRS"];
 
-/** Ancillary services clear system-wide: their observations live on one
- *  shared market row, not per settlement point. */
-const AS_SYSTEM_POINT = "AS_SYSTEM";
 const MIS_UA = "Mozilla/5.0 (PowerFlow market-data ingestion)";
 
 // ── US/Central DST helpers ────────────────────────────────────────────
@@ -835,7 +834,9 @@ export class ErcotMISSource implements ErcotSource {
             row.settlementPoint,
             row.settlementPointType
           ),
-          description: `${row.settlementPoint} (ERCOT settlement point)`,
+          description:
+            settlementPointName(row.settlementPoint) ??
+            `${row.settlementPoint} (ERCOT settlement point)`,
         });
       }
       if (points.length > 0) break;

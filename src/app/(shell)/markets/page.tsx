@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listMarkets } from "@/lib/markets";
 import { usd, timeAgo, sourceInfo } from "@/lib/format";
+import { parseDec } from "@/lib/money";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/lib/auth";
 import { getSimClock } from "@/lib/sim-clock";
@@ -12,7 +13,8 @@ export default async function MarketsPage() {
   const clock = await getSimClock(user.id).catch(() => null);
   const asOf = clock && clock.mode === "REPLAY" ? new Date(clock.now) : null;
   const markets = await listMarkets(asOf).catch(() => []);
-  type Market = { settlementPoint: string; price: string | null; deliveryTimestamp: string | null; source: string | null; product: string; type: string; description: string | null };
+  type Market = (typeof markets)[number];
+  const rtHour = markets.find((m) => m.deliveryTimestamp)?.deliveryTimestamp ?? null;
 
   function table(title: string, note: string, rows: Market[]) {
     return (
@@ -28,9 +30,11 @@ export default async function MarketsPage() {
             <thead>
               <tr>
                 <th>Settlement point</th>
-                <th>Description</th>
-                <th className="text-right">Last price</th>
-                <th className="text-right">As of</th>
+                <th>Name</th>
+                <th className="text-right">Real time</th>
+                <th className="text-right">Day-ahead</th>
+                <th className="text-right">DART</th>
+                <th className="text-right">DA next day avg</th>
                 <th>Source</th>
                 <th></th>
               </tr>
@@ -38,6 +42,10 @@ export default async function MarketsPage() {
             <tbody>
               {rows.map((m: Market) => {
                 const sr = sourceInfo(m.source);
+                const dart =
+                  m.price != null && m.dayAheadPrice != null
+                    ? parseDec(m.price) - parseDec(m.dayAheadPrice)
+                    : null;
                 return (
                   <tr key={m.settlementPoint}>
                     <td className="mono font-medium">{m.settlementPoint}</td>
@@ -45,8 +53,16 @@ export default async function MarketsPage() {
                     <td className="mono text-right">
                       {m.price != null ? usd(m.price) : "—"}
                     </td>
-                    <td className="mono text-right t-mute">
-                      {m.deliveryTimestamp ? timeAgo(m.deliveryTimestamp) : "—"}
+                    <td className="mono text-right t-dim">
+                      {m.dayAheadPrice != null ? usd(m.dayAheadPrice) : "—"}
+                    </td>
+                    <td
+                      className={`mono text-right ${dart == null ? "t-mute" : dart > 0n ? "pos" : dart < 0n ? "neg" : ""}`}
+                    >
+                      {dart == null ? "—" : `${dart > 0n ? "+" : ""}${usd(dart)}`}
+                    </td>
+                    <td className="mono text-right">
+                      {m.dayAheadNextDayAvg != null ? usd(m.dayAheadNextDayAvg) : "—"}
                     </td>
                     <td>
                       <span
@@ -94,9 +110,14 @@ export default async function MarketsPage() {
           </>
         )}
       >
-        ERCOT trading hubs and load zones. In replay mode every row is priced
-        at the desk's simulation clock; simulated sources are labelled as such
-        on every row.
+        ERCOT trading hubs and load zones, priced from ERCOT&apos;s own MIS
+        reports at the desk&apos;s simulation clock. Real time is the settled
+        hourly price
+        {rtHour ? <> for the hour that ended {timeAgo(new Date(Date.parse(rtHour) + 3600_000).toISOString())}</> : null};
+        day-ahead is the clearing for that same hour, and DART is the gap
+        between them — what a virtual or DART spread settles on. When the grid
+        is unconstrained every point clears at one price; the day-ahead column
+        still shows where congestion was expected.
       </PageHeader>
 
       {table(

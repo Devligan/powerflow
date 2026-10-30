@@ -7,6 +7,7 @@ import { dateTime, sourceInfo } from "@/lib/format";
 import { Lamp } from "@/components/ui/lamp";
 import { requireUser } from "@/lib/auth";
 import { getSimClock } from "@/lib/sim-clock";
+import { DEFAULT_MARKET_PRODUCT, FORWARD_MARKET_PRODUCT } from "@/lib/ercot/types";
 
 export const dynamic = "force-dynamic";
 
@@ -21,12 +22,15 @@ export default async function MarketDetailPage({
   const asOf = clock && clock.mode === "REPLAY" ? new Date(clock.now) : null;
 
   let data: Awaited<ReturnType<typeof getMarketPrices>>;
+  let forward: Awaited<ReturnType<typeof getMarketPrices>>;
   let marketOptions: Awaited<ReturnType<typeof listMarketOptions>> = [];
   try {
-    // The point list feeds the ticket's second leg, so a spread can be placed
-    // without leaving the page.
-    [data, marketOptions] = await Promise.all([
-      getMarketPrices(settlementPoint, undefined, asOf),
+    // Real time is the settled reference; day-ahead is the curve a desk
+    // trades forward, and the only orderable energy series. The point list
+    // feeds the ticket's second leg, so a spread can be placed in place.
+    [data, forward, marketOptions] = await Promise.all([
+      getMarketPrices(settlementPoint, DEFAULT_MARKET_PRODUCT, asOf),
+      getMarketPrices(settlementPoint, FORWARD_MARKET_PRODUCT, asOf),
       listMarketOptions(),
     ]);
   } catch {
@@ -35,6 +39,24 @@ export default async function MarketDetailPage({
 
   const { market, latest, series } = data;
   const sr = sourceInfo(market.source);
+  // The desk's own clock (wall time when live, replay time otherwise).
+  const nowMs = clock
+    ? Date.parse(clock.now)
+    : latest
+      ? Date.parse(latest.deliveryTimestamp) + 3600_000
+      : undefined;
+  const forwardLast = forward.latest;
+  // The ticket checks delivery END against this, so it is the end of the last
+  // published hour, not its start.
+  const forwardPricedThrough = forwardLast
+    ? forwardLast.deliveryEnd ??
+      new Date(Date.parse(forwardLast.deliveryTimestamp) + 3600_000).toISOString()
+    : null;
+  // The headline on the ticket: day-ahead for the next hour that can trade.
+  const nextForward =
+    (nowMs != null
+      ? forward.series.find((p) => Date.parse(p.deliveryTimestamp) >= nowMs)
+      : undefined) ?? forwardLast;
 
   return (
     <div className="space-y-5">
@@ -84,30 +106,41 @@ export default async function MarketDetailPage({
       <div className="grid gap-5 lg:grid-cols-[1fr_22rem]">
         <section className="card">
           <div className="mb-2 flex items-center justify-between gap-3">
-            <h2 className="card-title mb-0">Forward curve</h2>
-            {latest && (
+            <h2 className="card-title mb-0">Day-ahead curve vs real time</h2>
+            {forwardLast && (
               <span className="caption">
-                through {dateTime(latest.deliveryTimestamp)}
+                day-ahead through {dateTime(forwardPricedThrough!)}
               </span>
             )}
           </div>
-          <PriceChart points={series} />
-          {latest && (
-            <p className="caption mt-3">
-              Latest delivery {dateTime(latest.deliveryTimestamp)} ·
-              {sourceInfo(latest.source).label}
-            </p>
-          )}
+          <PriceChart
+            points={forward.series.length ? forward.series : series}
+            reference={forward.series.length ? series : undefined}
+            label={forward.series.length ? "Day-ahead" : "Real time"}
+            referenceLabel="Real time"
+            nowMs={nowMs}
+          />
+          <p className="caption mt-3">
+            Day-ahead clears the afternoon before delivery; real time settles
+            each hour after it ends. Their gap is DART — what a virtual or DART
+            spread on this point is paid.
+            {latest && (
+              <>
+                {" "}Latest real-time hour {dateTime(latest.deliveryTimestamp)} ·{" "}
+                {sourceInfo(latest.source).label}.
+              </>
+            )}
+          </p>
         </section>
 
         <TradePanel
           marketId={market.id}
           settlementPoint={market.settlementPoint}
-          latestPrice={market.price}
-          product={market.product}
-          pricedThrough={latest?.deliveryTimestamp ?? null}
+          latestPrice={nextForward?.price ?? market.price}
+          product={forwardLast ? FORWARD_MARKET_PRODUCT : market.product}
+          pricedThrough={forwardPricedThrough ?? latest?.deliveryTimestamp ?? null}
           markets={marketOptions}
-          series={series}
+          series={forwardLast ? forward.series : series}
           simNowMs={asOf ? asOf.getTime() : undefined}
         />
       </div>

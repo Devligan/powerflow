@@ -57,9 +57,12 @@ export function Nav({
         </div>
 
         <div className="ml-auto flex items-center gap-3">
-          <span className="badge badge-amber hidden lg:inline-flex">
+          <span
+            className="badge badge-green hidden lg:inline-flex"
+            title="Prices are ERCOT's own MIS publications; orders, fills and accounts are paper."
+          >
             <Lamp pulse />
-            Simulated feed
+            ERCOT data · paper trading
           </span>
           <span className="hidden border-l border-white/10 pl-3 sm:block">
             <UtcClock />
