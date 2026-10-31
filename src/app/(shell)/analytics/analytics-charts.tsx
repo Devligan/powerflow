@@ -102,7 +102,7 @@ export function AnalyticsCharts({
   }, [pnlByMarket]);
 
   return (
-    <div className="grid gap-5 lg:grid-cols-2">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-2">
       {/* ---- Cumulative realized P&L ---------------------------------- */}
       <section className="card">
         <div className="mb-2 flex items-baseline justify-between gap-3">
