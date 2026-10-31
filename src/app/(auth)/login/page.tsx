@@ -6,11 +6,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { safeNextPath } from "@/lib/redirect";
 import { OAuthButtons } from "@/components/oauth-buttons";
+import { describeCallbackError } from "@/lib/oauth";
 
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = safeNextPath(searchParams.get("next"));
+  const callbackError = describeCallbackError(searchParams.get("error"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +57,14 @@ export function LoginForm() {
           </div>
         )}
 
-        {error && <div className="note note-error">{error}</div>}
+        {/* A form failure, or the reason the OAuth callback sent the visitor
+            back here (?error=…) in words they can act on — never GoTrue's
+            internal wording. One alert at a time. */}
+        {(error ?? callbackError) && (
+          <div role="alert" className="note note-error">
+            {error ?? callbackError}
+          </div>
+        )}
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
@@ -67,6 +76,8 @@ export function LoginForm() {
               type="email"
               required
               autoComplete="email"
+              autoCapitalize="none"
+              spellCheck={false}
               className="input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}

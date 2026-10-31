@@ -88,6 +88,8 @@ function SignupForm() {
               type="email"
               required
               autoComplete="email"
+              autoCapitalize="none"
+              spellCheck={false}
               className="input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
