@@ -5,6 +5,27 @@ Supabase + Vercel). Trade actual ERCOT hub and load-zone prices — day-ahead
 clearing, 15-minute real-time settlement, and the hourly settlement series —
 with virtual cash, a full risk engine, immutable audit trail, and analytics.
 
+**Live:** https://powerflow-two.vercel.app — sign up with email or Google.
+
+### At a glance
+
+- **Real market data, continuously.** ERCOT's public MIS reports are ingested
+  every 15 minutes by a Postgres `pg_cron` job, with continuous history from
+  2026-09-20 (gaps filled from ERCOT's own annual archives, which match the
+  live reports to the cent). Day-ahead, real-time, and ancillary-service prices
+  for all 7 trading hubs and 8 load zones.
+- **The engine lives in the database.** Fills, marks, margin and settlement are
+  `SECURITY DEFINER` Postgres functions, run in one transaction with a per-account
+  row lock; a TypeScript mirror is pinned to them by tests. Prices are read
+  *as of* each account's own simulation clock, so replaying history has no
+  look-ahead.
+- **Instruments, not just prices.** Energy spot, virtuals, DART and basis
+  spreads, point-to-point obligations/options, CRRs, block forwards and swaps,
+  each reduced to a single price by its settlement rule.
+- **Correct by construction.** Exact fixed-point money (`bigint`, never floats),
+  idempotent orders, append-only trades and audit log, row-level security,
+  automatic settlement and margin with forced liquidation and deficits.
+
 > **Where the prices come from**: ERCOT provides the market, PowerFlow provides
 > the trading. Every price row is ingested from ERCOT's own MIS reports
 > (`ERCOT_MIS`, the default) and carries its true publication stamp; the
@@ -15,9 +36,10 @@ with virtual cash, a full risk engine, immutable audit trail, and analytics.
 
 ## Features
 
-- Secure auth (email/password + optional GitHub OAuth) via Supabase.
+- Secure auth via Supabase: email/password and Google; any provider enabled
+  in the Supabase project appears automatically.
 - $100,000 starting virtual cash; $500,000 gross-exposure limit per account.
-- Buy/sell of hourly delivery windows per **product** on 4 hubs + 4 load
+- Buy/sell of hourly delivery windows per **product** on 7 hubs + 8 load
   zones, with server-authoritative execution prices taken from the persisted
   price *for the interval and market actually traded* — never from the client
   and never from an unrelated series.
