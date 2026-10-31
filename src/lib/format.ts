@@ -11,6 +11,42 @@ export function usd(v: string | number | bigint, places = 2): string {
   return `$${formatGrouped(parseDec(v), places)}`;
 }
 
+const CENTRAL = "America/Chicago";
+
+/** "5 PM" — the Central wall-clock hour of an instant (DST-aware). */
+export function centralHour(ms: number): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone: CENTRAL, hour: "numeric" }).format(ms);
+}
+
+/**
+ * "Sat, Oct 31 · 5:00 PM – 6:00 PM CDT · HE18": a UTC delivery window in the
+ * terms ERCOT and its traders use — Central wall time, with the offset in
+ * effect on that date, and the hour-ending number for a one-hour window.
+ */
+export function centralWindowLabel(startMs: number, endMs: number): string {
+  const day = new Intl.DateTimeFormat("en-US", {
+    timeZone: CENTRAL,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(startMs);
+  const time = (ms: number) =>
+    new Intl.DateTimeFormat("en-US", { timeZone: CENTRAL, hour: "numeric", minute: "2-digit" }).format(ms);
+  const zone =
+    new Intl.DateTimeFormat("en-US", { timeZone: CENTRAL, timeZoneName: "short" })
+      .formatToParts(startMs)
+      .find((p) => p.type === "timeZoneName")?.value ?? "CT";
+  let label = `${day} · ${time(startMs)} – ${time(endMs)} ${zone}`;
+  if (endMs - startMs === 3_600_000) {
+    // Hour ending: the Central hour the interval ends in, 1–24 (midnight = 24).
+    const endHour = Number(
+      new Intl.DateTimeFormat("en-US", { timeZone: CENTRAL, hour: "numeric", hourCycle: "h23" }).format(endMs)
+    );
+    label += ` · HE${endHour === 0 ? 24 : endHour}`;
+  }
+  return label;
+}
+
 /** +$1,234.56 / −$1,234.56 — the sign ahead of the currency symbol, for
  *  spreads and P&L where direction is the point. Zero is unsigned. */
 export function signedUsd(v: string | number | bigint, places = 2): string {

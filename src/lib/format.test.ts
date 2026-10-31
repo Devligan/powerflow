@@ -3,10 +3,32 @@ import {
   instrumentInfo,
   legsLabel,
   positionUnit,
+  centralWindowLabel,
   signedUsd,
   volumeUnitLabel,
 } from "@/lib/format";
 import { INSTRUMENTS, PRODUCTS } from "@/lib/ercot/types";
+
+describe("centralWindowLabel", () => {
+  it("names a UTC hour in Central terms, with the hour ending", () => {
+    expect(
+      centralWindowLabel(Date.parse("2026-10-31T22:00:00Z"), Date.parse("2026-10-31T23:00:00Z"))
+    ).toBe("Sat, Oct 31 · 5:00 PM – 6:00 PM CDT · HE18");
+  });
+
+  it("calls the midnight hour HE24", () => {
+    expect(
+      centralWindowLabel(Date.parse("2026-11-01T04:00:00Z"), Date.parse("2026-11-01T05:00:00Z"))
+    ).toBe("Sat, Oct 31 · 11:00 PM – 12:00 AM CDT · HE24");
+  });
+
+  it("uses the offset in effect on the delivery date", () => {
+    // After the 2026-11-01 fall-back, Central is UTC−6.
+    expect(
+      centralWindowLabel(Date.parse("2026-11-02T00:00:00Z"), Date.parse("2026-11-02T01:00:00Z"))
+    ).toBe("Sun, Nov 1 · 6:00 PM – 7:00 PM CST · HE19");
+  });
+});
 
 describe("signedUsd", () => {
   it("puts the sign ahead of the currency symbol", () => {

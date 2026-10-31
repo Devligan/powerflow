@@ -11,6 +11,8 @@ import {
   usd,
   num,
   signedUsd,
+  centralHour,
+  centralWindowLabel,
 } from "@/lib/format";
 import {
   DEFAULT_INSTRUMENT,
@@ -516,13 +518,22 @@ export function TradePanel({
               value={hour}
               onChange={(e) => setHour(Number(e.target.value))}
             >
-              {Array.from({ length: 24 }, (_, i) => (
-                <option key={i} value={i}>
-                  {String(i).padStart(2, "0")}:00
-                </option>
-              ))}
+              {Array.from({ length: 24 }, (_, i) => {
+                const hh = String(i).padStart(2, "0");
+                const ms = Date.parse(`${dateStr}T${hh}:00:00Z`);
+                return (
+                  <option key={i} value={i}>
+                    {hh}:00{Number.isNaN(ms) ? "" : ` · ${centralHour(ms)} CT`}
+                  </option>
+                );
+              })}
             </select>
           </div>
+          {delivery && (
+            <p className="caption col-span-2 normal-case tracking-normal t-dim">
+              {centralWindowLabel(delivery.startMs, delivery.endMs)}
+            </p>
+          )}
         </div>
 
         {/* Window, for instruments whose delivery is a period */}

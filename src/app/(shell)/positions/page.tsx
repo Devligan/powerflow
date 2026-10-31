@@ -10,6 +10,7 @@ import {
   legsLabel,
   positionUnit,
   volumeUnitLabel,
+  centralWindowLabel,
 } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
 
@@ -89,7 +90,11 @@ export default async function PositionsPage() {
                           ? `${p.deliveryStart.slice(0, 10)} → ${p.deliveryEnd.slice(0, 10)}`
                           : showClosed
                             ? shortDate(p.deliveryStart)
-                            : p.deliveryStart.slice(0, 16).replace("T", " ")}
+                            : `${p.deliveryStart.slice(0, 16).replace("T", " ")}Z`}
+                        {/* ERCOT's own clock: Central time and hour ending. */}
+                        <div className="text-[10.5px] normal-case">
+                          {centralWindowLabel(Date.parse(p.deliveryStart), Date.parse(p.deliveryEnd))}
+                        </div>
                       </td>
                       <td className="whitespace-nowrap">
                         {p.settlement === "SETTLED" ? (
