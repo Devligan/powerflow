@@ -67,7 +67,7 @@ const SPEC: Array<{ term: string; detail: string }> = [
 const SEQUENCE: Array<{ title: string; body: string }> = [
   {
     title: "Fund the desk",
-    body: "Sign up with an email address. The account bootstraps itself with virtual cash and an exposure limit.",
+    body: "Sign up with email or Google. The account bootstraps itself with virtual cash and an exposure limit.",
   },
   {
     title: "Pick a point and an interval",
