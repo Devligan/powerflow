@@ -18,7 +18,7 @@ export const config = {
   ],
 };
 
-const PUBLIC_PATHS = ["/", "/login", "/signup", "/auth"];
+const PUBLIC_PATHS = ["/", "/login", "/signup", "/auth", "/privacy", "/terms"];
 const PUBLIC_PREFIXES = ["/leaderboard", "/markets"];
 
 export async function proxy(request: NextRequest) {

@@ -225,7 +225,9 @@ export default async function Home() {
       <footer className="border-t border-white/10 bg-[var(--ink-panel)]">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-7 sm:flex-row sm:items-center sm:justify-between">
           <p className="caption">
-            PowerFlow · for education only · not investment advice
+            PowerFlow · for education only · not investment advice ·{" "}
+            <Link href="/privacy" className="hover:underline">Privacy</Link> ·{" "}
+            <Link href="/terms" className="hover:underline">Terms</Link>
           </p>
           <p className="caption">
             All timestamps UTC · actual ERCOT market data, simulated trading

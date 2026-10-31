@@ -3,6 +3,7 @@ import { parseDbDec } from "@/lib/money";
 import { getSessionUser } from "@/lib/auth";
 import { usd, bpsToPercent } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
+import { LeaderboardOptIn } from "@/components/leaderboard-opt-in";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,19 @@ export default async function LeaderboardPage({
 
   const { rows, error } = result;
 
+  // The viewer's own setting, for the join/leave control.
+  const optedIn = user
+    ? Boolean(
+        (
+          await supabaseAdmin()
+            .from("profiles")
+            .select("leaderboard_opt_in")
+            .eq("id", user.id)
+            .maybeSingle()
+        ).data?.leaderboard_opt_in
+      )
+    : null;
+
   return (
     <div className="space-y-5">
       <PageHeader
@@ -64,6 +78,8 @@ export default async function LeaderboardPage({
         Ranked by marked equity. Aggregate figures only, no positions or trades
         of anyone else are exposed.
       </PageHeader>
+
+      {optedIn != null && <LeaderboardOptIn optedIn={optedIn} />}
 
       {error ? (
         <div className="card text-[13px] t-dim">
@@ -147,8 +163,8 @@ export default async function LeaderboardPage({
       )}
 
       <p className="caption">
-        Your entry appears only while your profile opt-in is enabled. Equity =
-        virtual cash + mark-to-market value of open positions.
+        New accounts start unlisted; your entry appears only while you have
+        joined. Equity = virtual cash + mark-to-market value of open positions.
       </p>
     </div>
   );

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getSessionUser, ensureUserRecords, getUserProfile } from "@/lib/auth";
 import { Nav } from "@/components/nav";
 import { SetupBanner } from "@/components/setup-banner";
@@ -32,7 +33,9 @@ export default async function ShellLayout({
       <footer className="border-t border-white/10 bg-[var(--ink-panel)]">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
           <p className="caption">
-            PowerFlow · paper trading desk · no real orders or money
+            PowerFlow · paper trading desk · no real orders or money ·{" "}
+            <Link href="/privacy" className="hover:underline">Privacy</Link> ·{" "}
+            <Link href="/terms" className="hover:underline">Terms</Link>
           </p>
           <p className="caption">
             All timestamps UTC · prices are actual ERCOT MIS publications

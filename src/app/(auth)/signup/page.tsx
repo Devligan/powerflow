@@ -128,6 +128,11 @@ function SignupForm() {
           <button type="submit" disabled={busy} className="btn btn-primary w-full">
             {busy ? "Creating account" : "Create account"}
           </button>
+          <p className="text-[11.5px] t-mute">
+            By creating an account you agree to the{" "}
+            <Link href="/terms" className="hover:underline">terms</Link> and{" "}
+            <Link href="/privacy" className="hover:underline">privacy policy</Link>.
+          </p>
         </form>
 
         <OAuthButtons next={next} />
