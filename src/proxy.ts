@@ -14,7 +14,9 @@ import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
  */
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)",
+    // Metadata images (link previews, icons) are fetched by crawlers with no
+    // session; they must never be redirected to /login.
+    "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|opengraph-image|twitter-image|icon|apple-icon).*)",
   ],
 };
 

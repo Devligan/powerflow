@@ -12,9 +12,7 @@ export function LegalPage({ title, children }: { title: string; children: ReactN
     <div className="min-h-dvh">
       <header className="border-b border-white/10 bg-[var(--ink-panel)]">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
-          <Link href="/">
-            <Brand tag="paper trading" />
-          </Link>
+          <Brand tag="paper trading" />
         </div>
       </header>
       <main className="mx-auto max-w-2xl px-4 py-12">

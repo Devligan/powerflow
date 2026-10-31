@@ -28,10 +28,26 @@ const plexMono = IBM_Plex_Mono({
   display: "swap",
 });
 
+const DESCRIPTION =
+  "Paper-trade ERCOT hub and load-zone power: hourly day-ahead and real-time series, 15-minute intervals, spreads and block forwards, settled by a real matching engine against actual ERCOT prices.";
+
 export const metadata: Metadata = {
+  // Resolves the generated preview image and canonical links to absolute URLs.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://powerflow-two.vercel.app"),
   title: "PowerFlow — ERCOT paper trading desk",
-  description:
-    "Paper-trade ERCOT hub and load-zone power: hourly day-ahead and real-time series, 15-minute intervals, spreads and block forwards, settled by a real matching engine against actual ERCOT prices.",
+  description: DESCRIPTION,
+  openGraph: {
+    type: "website",
+    siteName: "PowerFlow",
+    title: "PowerFlow — paper-trade the Texas power market",
+    description: DESCRIPTION,
+    url: "/",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "PowerFlow — paper-trade the Texas power market",
+    description: DESCRIPTION,
+  },
 };
 
 export default function RootLayout({
