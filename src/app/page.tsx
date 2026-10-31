@@ -115,8 +115,11 @@ export default async function Home() {
 
       <main className="mx-auto max-w-6xl px-4">
         {/* ---- Statement + the actual product ---------------------------- */}
-        <section className="grid gap-10 py-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,27rem)] lg:gap-14 lg:py-20">
-          <div className="reveal">
+        {/* The base column is pinned to minmax(0,1fr): an implicit column sizes
+            to its content, and the market strip's row of tiles made the hero
+            ~2,600px wide on a phone. */}
+        <section className="grid grid-cols-[minmax(0,1fr)] gap-10 py-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,27rem)] lg:gap-14 lg:py-20">
+          <div className="reveal min-w-0">
             <p className="caption">ERCOT · day-ahead and real-time</p>
             <h1 className="mt-4 max-w-2xl font-display text-4xl leading-[1.05] font-bold tracking-tight sm:text-5xl">
               Trade the Texas power curve, hour by hour.
@@ -151,7 +154,7 @@ export default async function Home() {
             </p>
           </div>
 
-          <div className="reveal" style={{ animationDelay: "80ms" }}>
+          <div className="reveal min-w-0" style={{ animationDelay: "80ms" }}>
             <section className="card card-bracket p-0">
               <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
                 <h2 className="card-title mb-0">Settlement point monitor</h2>
