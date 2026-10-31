@@ -436,13 +436,18 @@ export function portfolioMetrics(pf: PortfolioMark) {
   for (const pos of pf.positions) {
     const b = bucket(pos.instrument);
     const unit = unitForProduct(pos.product) ?? "UNKNOWN";
-    b.positions += 1;
+    // A flat position (closed or settled) holds nothing: no value, no
+    // unrealized P&L, so it needs no mark. Looking for one counted every
+    // settled position as "could not be priced". Its realized P&L still counts.
+    const flat = pos.quantityMwh === 0n;
+    if (!flat) b.positions += 1;
 
     // Banked P&L and volume do not depend on a mark.
     b.realizedPnl = add(b.realizedPnl, pos.realizedPnl);
     realized = add(realized, pos.realizedPnl);
     addVolume(volumeAcc, unit, pos.quantityMwh);
     addVolume(b.volumeAcc, unit, pos.quantityMwh);
+    if (flat) continue;
 
     const mark = pf.marks.get(positionKey(pos));
     if (mark === undefined) {

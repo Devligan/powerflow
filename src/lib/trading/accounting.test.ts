@@ -308,6 +308,23 @@ describe("breakdown by instrument", () => {
     ]);
   });
 
+  it("does not report a settled (flat) position as unpriced", () => {
+    // Settlement leaves the row at quantity 0 with its realized P&L; it has
+    // no mark because there is nothing left to value.
+    const settled = live({ instrument: "ENERGY_SPOT", marketId: "m1" });
+    const metrics = portfolioMetrics({
+      cashBalance: parseDec("100012"),
+      startingCash: parseDec("100000"),
+      marks: new Map(),
+      positions: [{ ...settled, ...pos("0", "0", "12") }],
+    });
+    expect(metrics.unmarkedPositions).toBe(0);
+    expect(metrics.byInstrument[0].unmarkedPositions).toBe(0);
+    expect(metrics.byInstrument[0].positions).toBe(0);
+    expect(format(metrics.realizedPnl)).toBe("12");
+    expect(format(metrics.totalPnl)).toBe("12");
+  });
+
   it("counts a spread as one instrument position, not two legs", () => {
     const spread = live({
       instrument: "BASIS_SPREAD",

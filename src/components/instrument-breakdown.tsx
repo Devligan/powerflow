@@ -64,8 +64,9 @@ export function InstrumentBreakdownTable({
                               {inst.ruleLabel}
                             </span>
                             <span className="text-[10px] t-mute">
-                              {row.positions} position
-                              {row.positions === 1 ? "" : "s"}
+                              {row.positions === 0
+                                ? "closed · realized only"
+                                : `${row.positions} open position${row.positions === 1 ? "" : "s"}`}
                               {row.volumes.length > 0 &&
                                 ` · ${row.volumes
                                   .map((v) => volumeUnitLabel(v.unit))
