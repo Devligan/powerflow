@@ -7,6 +7,11 @@ import { Stat } from "@/components/ui/stat";
 
 export const dynamic = "force-dynamic";
 
+const toneOf = (v: string): "pos" | "neg" | undefined => {
+  const n = parseFloat(v);
+  return n > 0 ? "pos" : n < 0 ? "neg" : undefined;
+};
+
 export default async function AnalyticsPage() {
   const user = await requireUser();
   const a = await getAnalytics(user.id);
@@ -26,23 +31,29 @@ export default async function AnalyticsPage() {
     {
       label: "Realized P&L",
       value: sign(a.realizedPnl),
-      tone: parseFloat(a.realizedPnl) >= 0 ? "pos" : "neg",
+      tone: toneOf(a.realizedPnl),
     },
     {
       label: "Unrealized",
       value: sign(a.unrealizedPnl),
-      tone: parseFloat(a.unrealizedPnl) >= 0 ? "pos" : "neg",
+      tone: toneOf(a.unrealizedPnl),
     },
     { label: "Executed trades", value: String(a.totalTrades) },
     { label: "Win rate", value: a.winRatePercent == null ? "—" : `${a.winRatePercent}%` },
     {
       label: "Avg trade P&L",
       value: sign(a.avgTradePnl),
-      tone: parseFloat(a.avgTradePnl) >= 0 ? "pos" : "neg",
+      tone: toneOf(a.avgTradePnl),
     },
-    { label: "Best trade", value: sign(a.bestTradePnl), tone: "pos" },
-    { label: "Worst trade", value: sign(a.worstTradePnl), tone: "neg" },
-    { label: "Max drawdown", value: sign(a.maxDrawdown), tone: "neg" },
+    // Coloured by the figure's own sign: a profitable worst trade is still a
+    // profit, and a zero drawdown is not a loss.
+    { label: "Best trade", value: sign(a.bestTradePnl), tone: toneOf(a.bestTradePnl) },
+    { label: "Worst trade", value: sign(a.worstTradePnl), tone: toneOf(a.worstTradePnl) },
+    {
+      label: "Max drawdown",
+      value: sign(a.maxDrawdown),
+      tone: parseFloat(a.maxDrawdown) !== 0 ? "neg" : undefined,
+    },
   ];
 
   // Volume is reported per unit: energy traded in MWh and capacity in MW are
