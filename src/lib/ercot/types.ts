@@ -442,6 +442,17 @@ export function deskInstruments(): InstrumentDef[] {
   return DESK_INSTRUMENT_CODES.map((c) => requireInstrument(c));
 }
 
+/**
+ * Margined instruments (0041): a position that settles DA→RT is backed by
+ * collateral, not cash. Opening it moves no cash; it is worth its unrealized
+ * P&L, and only realized P&L ever reaches the cash balance — the way ERCOT
+ * treats a virtual or a PTP obligation. Mirror of is_margined_instrument.
+ */
+export function isMarginedInstrument(code: string): boolean {
+  const rule = getInstrument(code)?.settlementRule;
+  return rule === "CONVERGENCE" || rule === "CONGESTION_CONVERGENCE";
+}
+
 /** ERCOT's bid/offer price bounds for day-ahead energy bids, $/MWh. */
 export const BID_PRICE_FLOOR = -250;
 export const BID_PRICE_CAP = 5000;

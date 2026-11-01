@@ -175,6 +175,19 @@ describe("marginRequirements", () => {
     near(dollars(req.usedMargin), 0);
   });
 
+  it("values a margined position (a virtual) at its P&L, not its notional (0041)", () => {
+    const dec = {
+      instrument: "VIRTUAL",
+      product: "DAM_HOURLY",
+      quantityMwh: 10_000_000n, // 10 MW long (a DEC)
+      averageEntryPrice: 50_000_000n,
+      markPrice: 60_000_000n,
+    };
+    const inc = { ...dec, quantityMwh: -10_000_000n }; // an INC at the same prices
+    near(dollars(marginRequirements([dec]).markedValue), 100); // (60 − 50) × 10
+    near(dollars(marginRequirements([inc]).markedValue), -100);
+  });
+
   it("defaults to the rates migration 0014 gives an account", () => {
     expect(DEFAULT_MARGIN_RATES).toEqual({ initial: 0.12, maintenance: 0.1 });
   });

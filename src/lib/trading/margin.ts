@@ -1,3 +1,4 @@
+import { isMarginedInstrument } from "@/lib/ercot/types";
 import { add, abs, mul, mulScalar, sub } from "@/lib/money";
 
 /**
@@ -85,6 +86,8 @@ export function marginTier(args: {
 /** A position as margin sees it: its own mark, or none. */
 export interface MarginedPosition {
   instrument: string;
+  /** Needed for a margined instrument (0041), which is worth qty × (mark − entry). */
+  averageEntryPrice?: bigint;
   product: string;
   quantityMwh: bigint;
   markPrice: bigint | null;
@@ -128,7 +131,13 @@ export function marginRequirements(
       unpricedPositions += 1;
       continue;
     }
-    markedValue = add(markedValue, mul(pos.markPrice, pos.quantityMwh));
+    markedValue = add(
+      markedValue,
+      mul(
+        isMarginedInstrument(pos.instrument) ? pos.markPrice - (pos.averageEntryPrice ?? 0n) : pos.markPrice,
+        pos.quantityMwh
+      )
+    );
 
     const notional = mul(pos.markPrice, abs(pos.quantityMwh));
     usedMargin = add(usedMargin, rateOf(notional, rates.initial));

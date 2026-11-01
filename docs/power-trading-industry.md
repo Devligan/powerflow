@@ -90,8 +90,9 @@ offers netted. Available credit = total credit limit − total potential exposur
 
 - **Collateral (0040)**: a bid holds MW × the 95th-percentile |RT − DA| at its
   point over 30 days (≥ $10/MW), and open bids must fit within cash — ERCOT's
-  exposure logic in simple form. Still open: fills move cash by notional
-  rather than posting collateral, and the $500k gross cap remains.
+  exposure logic in simple form. Since 0041 virtuals and PTP obligations are margined:
+  opening one moves no cash, it is worth its P&L, settlement pays (RT − DA) × MW,
+  and open positions hold collateral too. Only legacy instruments still move notional.
 - **Fundamentals**: the market page shows tomorrow's hourly load, wind and
   solar forecasts, net load and reserve, and the week's peak load, from ERCOT's
   public dashboard feeds (src/lib/fundamentals.ts).

@@ -6,7 +6,7 @@ import {
   mul,
   sub,
 } from "@/lib/money";
-import { unitForProduct, type PriceUnit } from "@/lib/ercot/types";
+import { isMarginedInstrument, unitForProduct, type PriceUnit } from "@/lib/ercot/types";
 
 export type TradeSide = "BUY" | "SELL";
 
@@ -456,8 +456,9 @@ export function portfolioMetrics(pf: PortfolioMark) {
       continue;
     }
 
-    const mv = mul(mark, pos.quantityMwh);
     const unreal = unrealizedPnl(pos, mark);
+    // A margined position (0041) put no cash up, so it is worth its P&L only.
+    const mv = isMarginedInstrument(pos.instrument) ? unreal : mul(mark, pos.quantityMwh);
     const gross = mul(mark, abs(pos.quantityMwh));
     markedValue = add(markedValue, mv);
     unrealized = add(unrealized, unreal);
