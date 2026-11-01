@@ -250,7 +250,7 @@ describe.skipIf(!dbTestsEnabled())("historical replay on actual ERCOT data (live
 
   it("fills a virtual position at the actual day-ahead price ERCOT published", async () => {
     const dayAhead = num(dam.get(hour)!.price);
-    const { data, error } = await client.rpc("execute_trade", trade());
+    const { data, error } = await db.rpc("execute_trade", trade());
     expect(error).toBeNull();
     expect((data as { trade_id: string }).trade_id).toBeTruthy();
 

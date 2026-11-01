@@ -43,11 +43,15 @@ with virtual cash, a full risk engine, immutable audit trail, and analytics.
   zones, with server-authoritative execution prices taken from the persisted
   price *for the interval and market actually traded* — never from the client
   and never from an unrelated series.
-- **Working limit orders**: commit to a price and let the book work — an
-  order fills through the instant engine when the interval's actual ERCOT
-  print crosses it (buy at/below the limit, sell at/above, ties fill), at
-  the print itself, never the limit. Cancel any open order; unfilled orders
-  expire after 7 days. Every fill, cancel and placement is audited.
+- **Day-ahead bids, as ERCOT runs them** (migrations 0037–0038): a position
+  for an operating day is a bid or offer placed before **10:00 Central the
+  day before**, at the clearing price or with a limit. It fills when ERCOT
+  publishes the day-ahead clearing (~13:30), at the actual clearing price —
+  a limit only if the price crosses it (buy at/below, sell at/above, ties
+  fill). Nobody can buy a day-ahead interval at its already-published price,
+  and nothing trades once its delivery has started. Cancel any open order;
+  unfilled bids expire when delivery starts. Every fill, cancel and placement
+  is audited.
 - Day-ahead **ancillary-service clearing prices** (REGUP, REGDN, RRS, NSPIN,
   ECRS) ingested from ERCOT's NP4-188-CD report — system-wide MCPC series,
   final on arrival. AS capacity remains a resource obligation (no assets on
@@ -225,10 +229,25 @@ no browser present it reports that it skipped rather than failing.
 
 ## How trading works
 
-`POST /api/trades` → `execute_trade(...)` (SQL, security definer, one
-transaction):
+Every orderable instrument prices off the day-ahead market (`DAM_HOURLY`), so
+every position starts as a **bid**: `POST /api/orders` → `place_limit_order`,
+accepted only before `dam_gate(delivery_start)` — 10:00 Central on the day
+before the delivery's operating day — on the account's own clock. A bid with
+no limit is a `MARKET` order (fill at whatever clears); otherwise `LIMIT`.
+When ERCOT publishes the clearing prices, the service-role sweep
+`fill_crossing_limit_orders` (run by every ingest, and right after a replay
+clock jump) fills each bid that crosses, judged on its own account's clock and
+at the price the fill will actually be made at. A user calling `execute_trade`
+directly for a day-ahead interval is refused (`DAM_ORDER_REQUIRED` before the
+deadline, `DAM_CLOSED` after): knowing the clearing price, and watching real
+time come in, before choosing a side was the edge this closes. And nothing is
+accepted once its delivery has started (0037).
 
-1. authorization (`auth.uid()` must equal the account owner)
+The fill itself is `execute_trade(...)` (SQL, security definer, one
+transaction), called by the sweep:
+
+1. authorization (`auth.uid()` must equal the account owner, or the
+   service-role sweep acting for the order's owner)
 2. market active, product catalogued + tradable, delivery window valid
    (exactly the product's settlement interval, interval-aligned, future,
    ≤ 35 days)

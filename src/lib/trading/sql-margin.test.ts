@@ -164,7 +164,7 @@ describe.skipIf(!dbTestsEnabled())("margin and settlement funding (live database
   ): Promise<{ entryPrice: number; quantity: number }> => {
     const start = (over.p_delivery_start as string) ?? slot(1);
     const end = (over.p_delivery_end as string) ?? shift(start, 1);
-    const { data, error } = await desk.client.rpc("execute_trade", {
+    const { data, error } = await db.rpc("execute_trade", {
       p_user_id: desk.userId,
       p_market_id: marketId,
       p_counter_market_id: null,

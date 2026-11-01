@@ -135,12 +135,12 @@ describe.skipIf(!dbTestsEnabled())("cash and exposure under contention (live dat
   }, 120_000);
 
   it("when cash covers one of two racing orders, exactly one fills", async () => {
-    const { userId, client } = await freshAccount(15); // 15 × notional of one order
+    const { userId } = await freshAccount(15); // 15 × notional of one order
     const cashBefore = await cashOf(userId);
 
     const responses = await Promise.all([
-      client.rpc("execute_trade", order(userId)),
-      client.rpc("execute_trade", order(userId)),
+      db.rpc("execute_trade", order(userId)),
+      db.rpc("execute_trade", order(userId)),
     ]);
 
     const ok = responses.filter((r) => !r.error);
@@ -157,12 +157,12 @@ describe.skipIf(!dbTestsEnabled())("cash and exposure under contention (live dat
   }, 120_000);
 
   it("when cash covers both, both fill — the lock serializes rather than blocks", async () => {
-    const { userId, client } = await freshAccount(20);
+    const { userId } = await freshAccount(20);
     const cashBefore = await cashOf(userId);
 
     const responses = await Promise.all([
-      client.rpc("execute_trade", order(userId)),
-      client.rpc("execute_trade", order(userId)),
+      db.rpc("execute_trade", order(userId)),
+      db.rpc("execute_trade", order(userId)),
     ]);
     expect(responses.every((r) => !r.error)).toBe(true);
 
@@ -172,11 +172,11 @@ describe.skipIf(!dbTestsEnabled())("cash and exposure under contention (live dat
   }, 120_000);
 
   it("a burst cannot spend cash the account does not have", async () => {
-    const { userId, client } = await freshAccount(25); // room for two, not three
+    const { userId } = await freshAccount(25); // room for two, not three
     const cashBefore = await cashOf(userId);
 
     const responses = await Promise.all(
-      Array.from({ length: 6 }, () => client.rpc("execute_trade", order(userId)))
+      Array.from({ length: 6 }, () => db.rpc("execute_trade", order(userId)))
     );
 
     // Regardless of arrival order, the balance only funds two fills.
@@ -208,12 +208,12 @@ describe.skipIf(!dbTestsEnabled())("cash and exposure under contention (live dat
 
   it("when the exposure limit funds one of two racing orders, exactly one fills", async () => {
     // Room for one 10 MWh leg (gross 10P) and not for two (20P).
-    const { userId, client } = await freshAccount(1_000, 15);
+    const { userId } = await freshAccount(1_000, 15);
     const cashBefore = await cashOf(userId);
 
     const responses = await Promise.all([
-      client.rpc("execute_trade", order(userId)),
-      client.rpc("execute_trade", order(userId)),
+      db.rpc("execute_trade", order(userId)),
+      db.rpc("execute_trade", order(userId)),
     ]);
 
     const failed = responses.filter((r) => r.error);
@@ -227,12 +227,12 @@ describe.skipIf(!dbTestsEnabled())("cash and exposure under contention (live dat
   }, 120_000);
 
   it("a rejection racing a fill still writes nothing of its own", async () => {
-    const { userId, client } = await freshAccount(15);
+    const { userId } = await freshAccount(15);
     const before = await tradeCount(userId);
 
     const [accepted, rejected] = await Promise.all([
-      client.rpc("execute_trade", order(userId)),
-      client.rpc("execute_trade", order(userId, { p_quantity_mwh: 1_000 })), // far beyond cash
+      db.rpc("execute_trade", order(userId)),
+      db.rpc("execute_trade", order(userId, { p_quantity_mwh: 1_000 })), // far beyond cash
     ]);
     expect(accepted.error).toBeNull();
     expect(rejected.error).toBeTruthy();

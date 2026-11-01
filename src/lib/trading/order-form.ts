@@ -12,7 +12,13 @@ import {
   needsCounterPoint,
   resolveTradedProduct,
 } from "@/lib/trading/instruments";
-import { hourEndingStartUtc } from "@/lib/ercot/hour-ending";
+import {
+  centralHourEnding,
+  damDeadlineUtc,
+  firstOpenOperatingDay,
+  hourEndingStartUtc,
+  isDayAheadProduct,
+} from "@/lib/ercot/hour-ending";
 
 /**
  * Order-ticket logic, kept out of the component.
@@ -299,7 +305,21 @@ export function checkOrderForm(input: OrderFormInput): OrderFormCheck {
       message: "A settlement window must be a whole number of settlement intervals.",
     };
   }
-  if (input.priceProbe === "unpriced") {
+  // Day-ahead positions are bids made before the market clears (0038): an
+  // operating day takes bids until 10:00 Central the day before, at a price
+  // nobody knows yet. So no published price is the normal case for a bid —
+  // it waits for the clearing — and a passed deadline is final.
+  const dayAhead = isDayAheadProduct(effectiveProduct(input.instrument, input.product));
+  if (dayAhead) {
+    const deadline = damDeadlineUtc(input.delivery.startMs);
+    if (deadline != null && now >= deadline) {
+      const day = centralHourEnding(input.delivery.startMs).day;
+      return {
+        ok: false,
+        message: `Day-ahead bids for operating day ${day} closed at 10:00 AM Central the day before. The first day still open is ${firstOpenOperatingDay(now)}.`,
+      };
+    }
+  } else if (input.priceProbe === "unpriced") {
     return {
       ok: false,
       message:

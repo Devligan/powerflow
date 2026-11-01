@@ -231,7 +231,7 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     const start = over.p_delivery_start as string;
     const end =
       (over.p_delivery_end as string | undefined) ?? shift(start, 1);
-    const { data, error } = await client.rpc("execute_trade", {
+    const { data, error } = await db.rpc("execute_trade", {
       p_user_id: user.id,
       p_market_id: marketId,
       p_counter_market_id: null,

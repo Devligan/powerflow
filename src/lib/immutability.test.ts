@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { admin, createTestUser, dbTestsEnabled, userClient } from "@/lib/testing/db";
+import { admin, createTestUser, dbTestsEnabled } from "@/lib/testing/db";
 
 /**
  * `trades` and `audit_events` are append-only, against the real database.
@@ -40,7 +40,6 @@ describe.skipIf(!dbTestsEnabled())("trades and audit events are immutable (live 
 
   let db: SupabaseClient;
   let user: Awaited<ReturnType<typeof createTestUser>>;
-  let client: SupabaseClient;
   let marketId: string;
   /** A future, priced interval, so a real fill can be made through the normal
    *  user path rather than by inserting rows behind the engine's back. */
@@ -50,9 +49,10 @@ describe.skipIf(!dbTestsEnabled())("trades and audit events are immutable (live 
   let tradeId: string;
   let auditEventId: string;
 
-  /** Fill a position for `owner` through the real RPC, returning the trade id. */
-  const fill = async (owner: { id: string }, where: SupabaseClient): Promise<string> => {
-    const { data, error } = await where.rpc("execute_trade", {
+  /** Fill a position for `owner` the way fills happen since 0038 — through the
+   *  service-role path the order sweep uses — returning the trade id. */
+  const fill = async (owner: { id: string }): Promise<string> => {
+    const { data, error } = await db.rpc("execute_trade", {
       p_user_id: owner.id,
       p_market_id: marketId,
       p_counter_market_id: null,
@@ -71,7 +71,6 @@ describe.skipIf(!dbTestsEnabled())("trades and audit events are immutable (live 
   beforeAll(async () => {
     db = admin();
     user = await createTestUser("immutability");
-    client = await userClient(user);
 
     const { data: m } = await db
       .from("markets")
@@ -93,7 +92,7 @@ describe.skipIf(!dbTestsEnabled())("trades and audit events are immutable (live 
     start = rows![0].delivery_timestamp as string;
     end = new Date(new Date(start).getTime() + HOUR).toISOString();
 
-    tradeId = await fill(user, client);
+    tradeId = await fill(user);
 
     const { data: events } = await db
       .from("audit_events")
@@ -182,8 +181,7 @@ describe.skipIf(!dbTestsEnabled())("trades and audit events are immutable (live 
       // immutability triggers. That must keep working, or every suite's
       // teardown — and account deletion in production — breaks instead.
       const victim = await createTestUser("immutability-cascade");
-      const victimClient = await userClient(victim);
-      await fill(victim, victimClient);
+      await fill(victim);
 
       const owned = async (table: string, column: string) => {
         const { data, error } = await db.from(table).select(column).eq(column, victim.id);

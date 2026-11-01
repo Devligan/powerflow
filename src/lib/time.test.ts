@@ -10,7 +10,7 @@ import {
   utcToLocal,
   windowLabel,
 } from "@/lib/time";
-import { operatingDayHours } from "@/lib/ercot/hour-ending";
+import { damDeadlineUtc, firstOpenOperatingDay, operatingDayHours } from "@/lib/ercot/hour-ending";
 
 const CT = "America/Chicago";
 const PT = "America/Los_Angeles";
@@ -82,6 +82,19 @@ describe("time zone validation", () => {
     expect(isValidTimeZone("Not/AZone")).toBe(false);
     expect(normalizeTimeZone("Not/AZone")).toBe(CT);
     expect(normalizeTimeZone(undefined)).toBe(CT);
+  });
+});
+
+describe("day-ahead deadline (mirror of dam_gate, 0038)", () => {
+  it("is 10:00 Central the day before the operating day, across DST", () => {
+    // Operating day Nov 1 (HE24 included): Oct 31 10:00 CDT.
+    expect(damDeadlineUtc(Date.parse("2026-11-02T05:00:00Z"))).toBe(Date.parse("2026-10-31T15:00:00Z"));
+    // Operating day Nov 3: Nov 2 10:00 CST.
+    expect(damDeadlineUtc(Date.parse("2026-11-03T06:00:00Z"))).toBe(Date.parse("2026-11-02T16:00:00Z"));
+  });
+  it("names the first operating day still open for bids", () => {
+    expect(firstOpenOperatingDay(Date.parse("2026-11-01T15:59:00Z"))).toBe("2026-11-02"); // 09:59 CST
+    expect(firstOpenOperatingDay(Date.parse("2026-11-01T16:00:00Z"))).toBe("2026-11-03"); // 10:00 CST
   });
 });
 

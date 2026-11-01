@@ -132,7 +132,7 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
   }, 240_000);
 
   it("enters a day-ahead PTP obligation at the day-ahead spread, not a known outcome", async () => {
-    const { data, error } = await client.rpc("execute_trade", trade());
+    const { data, error } = await db.rpc("execute_trade", trade());
     expect(error).toBeNull();
     const result = data as Execution;
 

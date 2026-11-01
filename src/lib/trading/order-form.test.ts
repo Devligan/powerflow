@@ -235,6 +235,20 @@ describe("order ticket validation", () => {
     expect(checkOrderForm(tooFar).ok).toBe(false);
   });
 
+  it("takes day-ahead bids only before 10:00 Central the day before (0038)", () => {
+    const virtual = requireInstrument("VIRTUAL");
+    // Operating day Nov 3, HE18; deadline Nov 2 10:00 CST = 16:00Z.
+    const he18 = buildWindow({ date: "2026-11-03", hour: 23, intervalMinutes: 60, intervals: 1 })!;
+    const bid = (now: string, priceProbe: "priced" | "unpriced" | "unknown" = "unpriced") =>
+      checkOrderForm(ticket({ instrument: virtual, product: "DAM_HOURLY", delivery: he18, now: Date.parse(now), priceProbe }));
+    // Before the deadline, no clearing price yet is normal: the bid waits for it.
+    expect(bid("2026-11-02T15:59:00Z")).toEqual({ ok: true });
+    const late = bid("2026-11-02T16:00:00Z");
+    expect(late.ok).toBe(false);
+    expect(!late.ok && late.message).toMatch(/closed at 10:00 AM Central/);
+    expect(!late.ok && late.message).toMatch(/2026-11-04/);
+  });
+
   it("closes trading when delivery starts, not when it ends (0037)", () => {
     // Inside the hour its real-time prints are already being published.
     const inProgress = ticket({ delivery: win(1), now: Date.parse("2026-09-22T01:40:00.000Z") });

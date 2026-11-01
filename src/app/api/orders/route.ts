@@ -50,7 +50,8 @@ export async function GET(req: Request) {
       counterMarketId: o.counter_market_id,
       side: o.side,
       quantityMwh: m(parseDbDec(o.quantity_mwh)),
-      limitPrice: m(parseDbDec(o.limit_price)),
+      // MARKET orders have no limit: they fill at the clearing price.
+      limitPrice: o.limit_price == null ? null : m(parseDbDec(o.limit_price)),
       orderType: o.order_type,
       status: o.status,
       deliveryStart: o.delivery_start,
@@ -77,12 +78,15 @@ const OrderRequest = z.object({
     .refine((v) => parseDec(v) > 0n && parseDec(v) <= parseDec("1000"), {
       message: "Quantity must be > 0 and <= 1000 MWh",
     }),
+  // Omitted or null: a MARKET order, filled at whatever the day-ahead market
+  // clears at. Otherwise a LIMIT (0038).
   limitPrice: z
     .string()
     .regex(/^\d+(\.\d{1,6})?$/, "Limit price must be a positive decimal number")
     .refine((v) => parseDec(v) > 0n, {
       message: "Limit price must be > 0",
-    }),
+    })
+    .nullish(),
   deliveryStart: z.string().datetime(),
   deliveryEnd: z.string().datetime(),
   expiresAt: z.string().datetime().optional(),
@@ -107,6 +111,7 @@ const FRIENDLY: Record<string, string> = {
   DELIVERY_IN_PAST: "That delivery period has already started, so it can no longer be traded.",
   DELIVERY_TOO_FAR_OUT: "That delivery is too far in the future (max 35 days).",
   EXPIRY_INVALID: "Expiry must be in the future.",
+  DAM_CLOSED: "Day-ahead bids for that operating day closed at 10:00 AM Central the day before.",
 };
 
 export async function POST(req: Request) {
@@ -145,7 +150,7 @@ export async function POST(req: Request) {
       : null,
     p_side: o.side,
     p_quantity_mwh: o.quantityMwh,
-    p_limit_price: o.limitPrice,
+    p_limit_price: o.limitPrice ?? null,
     p_delivery_start: o.deliveryStart,
     p_delivery_end: o.deliveryEnd,
     p_expires_at: o.expiresAt ?? null,

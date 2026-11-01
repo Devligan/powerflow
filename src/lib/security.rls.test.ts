@@ -31,7 +31,6 @@ describe.skipIf(!dbTestsEnabled())("authorization boundary (live database)", () 
   let db: SupabaseClient;
   let victim: Awaited<ReturnType<typeof createTestUser>>;
   let attacker: Awaited<ReturnType<typeof createTestUser>>;
-  let victimClient: SupabaseClient;
   let attackerClient: SupabaseClient;
   let anonClient: SupabaseClient;
   let marketId: string;
@@ -49,7 +48,6 @@ describe.skipIf(!dbTestsEnabled())("authorization boundary (live database)", () 
     db = admin();
     victim = await createTestUser("rls-victim");
     attacker = await createTestUser("rls-attacker");
-    victimClient = await userClient(victim);
     attackerClient = await userClient(attacker);
     // No sign-in at all: the bare anon key, i.e. an unauthenticated visitor.
     anonClient = createClient(
@@ -84,7 +82,7 @@ describe.skipIf(!dbTestsEnabled())("authorization boundary (live database)", () 
     intervalEnd = new Date(new Date(interval).getTime() + 3600_000).toISOString();
 
     // Give the victim something worth taking.
-    const { data, error } = await victimClient.rpc("execute_trade", {
+    const { data, error } = await db.rpc("execute_trade", {
       p_user_id: victim.id,
       p_market_id: marketId,
       p_counter_market_id: null,
@@ -336,7 +334,7 @@ describe.skipIf(!dbTestsEnabled())("authorization boundary (live database)", () 
         .single();
       const shared = victimTrade!.client_order_id as string;
 
-      const { data, error } = await attackerClient.rpc("execute_trade", {
+      const { data, error } = await db.rpc("execute_trade", {
         p_user_id: attacker.id,
         p_market_id: marketId,
         p_counter_market_id: null,

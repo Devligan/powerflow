@@ -233,7 +233,7 @@ export function TradesTable() {
                   <td colSpan={9} className="py-8 text-center text-[13px] t-mute">
                     No trades match that query.{" "}
                     <Link href="/markets" className="t-accent hover:underline">
-                      Place your first trade
+                      Place your first day-ahead bid
                     </Link>
                   </td>
                 </tr>

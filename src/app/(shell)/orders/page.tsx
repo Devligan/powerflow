@@ -16,7 +16,8 @@ const STATUS_TONE: Record<string, string> = {
 };
 
 /**
- * The order book: working limits and their outcomes.
+ * The order book: day-ahead bids and offers waiting for the market to clear,
+ * and their outcomes.
  *
  * An order is a commitment to a price, not a fill — this page is where a
  * resting order waits visibly, and where its eventual fill (with the trade
@@ -32,7 +33,7 @@ export default async function OrdersPage() {
       ? db
           .from("paper_orders")
           .select(
-            "id, market_id, counter_market_id, product, instrument, side, quantity_mwh, limit_price, status, delivery_start, delivery_end, filled_trade_id, created_at"
+            "id, market_id, counter_market_id, product, instrument, side, quantity_mwh, limit_price, order_type, status, delivery_start, delivery_end, filled_trade_id, created_at"
           )
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
@@ -57,8 +58,10 @@ export default async function OrdersPage() {
       <header>
         <h1 className="font-display text-2xl font-bold">Orders</h1>
         <p className="caption mt-1 t-mute">
-          Working limits rest until the interval&apos;s actual ERCOT print
-          crosses them. Fills execute at the print, never the limit.
+          Day-ahead bids close at 10:00 AM Central the day before each
+          operating day. When ERCOT publishes the clearing prices, each order
+          fills at the actual clearing price: always for an order at the
+          clearing price, and for a limit only when the price crosses it.
         </p>
       </header>
 
@@ -76,8 +79,14 @@ export default async function OrdersPage() {
                     {o.side}
                   </span>
                   <span className="mono">{format(parseDbDec(o.quantity_mwh), 2)} MWh</span>
-                  <span className="t-mute">@ limit</span>
-                  <span className="mono">${format(parseDbDec(o.limit_price), 2)}</span>
+                  {o.limit_price == null ? (
+                    <span className="t-mute">at the clearing price</span>
+                  ) : (
+                    <>
+                      <span className="t-mute">@ limit</span>
+                      <span className="mono">${format(parseDbDec(o.limit_price), 2)}</span>
+                    </>
+                  )}
                   <span className="t-mute">·</span>
                   <span className="mono font-medium">{legs(o)}</span>
                   <span className="text-[12px]">
@@ -99,7 +108,7 @@ export default async function OrdersPage() {
         <h2 className="card-title">History</h2>
         {history.length === 0 ? (
           <p className="caption mt-2 t-mute">
-            No orders yet. Place a working limit from any market page.
+            No orders yet. Place a day-ahead bid from any market page.
           </p>
         ) : (
           <div className="mt-3 space-y-2">
@@ -114,7 +123,9 @@ export default async function OrdersPage() {
                   </span>
                   <span className="mono">{format(parseDbDec(o.quantity_mwh), 2)}</span>
                   <span className="t-mute">@</span>
-                  <span className="mono">{format(parseDbDec(o.limit_price), 2)}</span>
+                  <span className="mono">
+                    {o.limit_price == null ? "clearing" : format(parseDbDec(o.limit_price), 2)}
+                  </span>
                   <span className="t-mute">·</span>
                   <span className="mono">{legs(o)}</span>
                   <span className="t-mute">· {o.instrument}</span>

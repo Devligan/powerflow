@@ -9,13 +9,12 @@ import {
   positionUnit,
   instrumentInfo,
   usd,
-  num,
-  signedUsd,
 } from "@/lib/format";
 import { dateTime, localTime, windowLabel } from "@/lib/time";
 import { useTimeZone } from "@/components/time-zone";
 import {
   centralHourEnding,
+  damDeadlineUtc,
   hourEndingStartUtc,
   operatingDayHours,
 } from "@/lib/ercot/hour-ending";
@@ -33,14 +32,12 @@ import {
   MAX_STRIP_HOURS,
   blockWindow,
   buildWindow,
-  stripClientOrderId,
   stripWindows,
   type BlockShape,
   type DeliveryWindow,
   checkOrderForm,
   effectiveProduct,
   estimateInstrumentPrice,
-  orderRequest,
   probePrice,
   ruleHint,
   selectableProducts,
@@ -58,9 +55,10 @@ import { liveDeliveryDefault } from "@/lib/trading/live-defaults";
  * window rather than an instant, and a virtual trade names a settlement point
  * and interval but takes no delivery leg at all.
  *
- * What can be priced here is stated and what cannot is said to be settled at
- * execution. A composed instrument's price is never previewed from leg A, and
- * a partly covered window is not previewed at all.
+ * Every day-ahead position is a BID (0038): placed before 10:00 Central the
+ * day before its operating day, at the clearing price or with a limit, and
+ * filled when ERCOT publishes the clearing prices — at a price nobody knew when
+ * bidding closed. The ticket states the deadline and the clearing time.
  */
 export function TradePanel({
   marketId,
@@ -111,29 +109,17 @@ export function TradePanel({
     () => liveDeliveryDefault(product).note
   );
   const [windowLength, setWindowLength] = useState(DEFAULT_WINDOW_INTERVALS);
-  // Execution mode: fill now at the interval's actual print, or work a
-  // resting limit that the sweep fills when the print crosses.
+  // Bid type: take whatever the market clears at, or name a limit.
   const [executionMode, setExecutionMode] = useState<"MARKET" | "LIMIT">("MARKET");
   const [limitPrice, setLimitPrice] = useState("");
-  const [placed, setPlaced] = useState<null | { orderId: string; limitPrice: string; side: string }>(null);
+  const [placed, setPlaced] = useState<null | { orderId: string; limitPrice: string | null; side: string }>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fill, setFill] = useState<null | {
-    executionPrice: string;
-    notional: string;
-    cashBalance: string;
-    positionQuantity: string;
-    realizedDelta: string;
-    instrument: string;
-    settlementRule: string;
-    replayed: boolean;
-  }>(null);
-  const [orderNonce, setOrderNonce] = useState(0);
   // Consecutive hours a single-interval order is repeated over (a strip).
   const [stripHours, setStripHours] = useState(1);
   const [stripResults, setStripResults] = useState<StripLegResult[] | null>(null);
   // Which ticket state the shown outcome belongs to: editing the ticket hides
-  // it, so a fill message never sits beside an order it did not come from.
+  // it, so a result never sits beside an order it did not come from.
   const [resultKey, setResultKey] = useState<string | null>(null);
 
   const instrument = getInstrument(instrumentCode) ?? getInstrument(DEFAULT_INSTRUMENT)!;
@@ -204,24 +190,6 @@ export function TradePanel({
   ].join("|");
   const showResult = resultKey === formKey;
 
-  // The series horizon the page was rendered with: in replay it is bounded by
-  // the reader's clock (the page passes the as-of series), so an order beyond
-  // it would promise a price nobody has seen. The wall clock is never read
-  // during render; the ticket's own time check lives in checkOrderForm.
-  const pricedThroughMs = pricedThrough ? new Date(pricedThrough).getTime() : null;
-  const beyondHorizon =
-    lastLeg != null &&
-    pricedThroughMs != null &&
-    lastLeg.endMs > pricedThroughMs;
-
-  // A stable id per intent, rotated after a fill: a retry of the order in the
-  // box cannot double-fill, while deliberately repeating it still executes.
-  const clientOrderId = useMemo(
-    () => newOrderId(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [marketId, instrumentCode, chosenProduct, counterMarketId, side, quantity, dateStr, hour, intervals, stripHours, orderNonce]
-  );
-
   // The ticket holds its start as a UTC date and hour (what the engine and
   // the order-form helpers take), but a trader picks ERCOT's operating day
   // and hour ending, so the controls translate in both directions.
@@ -254,54 +222,43 @@ export function TradePanel({
     setWindowLength(w.intervals);
   }
 
-  /** One order: a fill now, or a working limit. Throws the server's reason. */
-  async function placeOne(w: DeliveryWindow, orderId: string) {
-    if (executionMode === "LIMIT") {
-      const res = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          marketId,
-          instrument: instrument.code,
-          product: tradedProduct,
-          counterMarketId,
-          side,
-          quantityMwh: quantity,
-          limitPrice,
-          deliveryStart: w.start,
-          deliveryEnd: w.end,
-        }),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.error ?? "Order failed");
-      return { kind: "LIMIT" as const, orderId: body.orderId as string };
-    }
-    const res = await fetch("/api/trades", {
+  /**
+   * One day-ahead bid (0038): at the clearing price, or with a limit. Both
+   * rest until ERCOT publishes the day-ahead prices and then fill at the
+   * actual clearing price. Throws the server's reason.
+   */
+  async function placeOne(w: DeliveryWindow) {
+    const res = await fetch("/api/orders", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(
-        orderRequest({
-          marketId,
-          instrumentCode: instrument.code,
-          product: tradedProduct,
-          counterMarketId,
-          side,
-          quantity,
-          delivery: w,
-          clientOrderId: orderId,
-        })
-      ),
+      body: JSON.stringify({
+        marketId,
+        instrument: instrument.code,
+        product: tradedProduct,
+        counterMarketId,
+        side,
+        quantityMwh: quantity,
+        limitPrice: executionMode === "LIMIT" ? limitPrice : null,
+        deliveryStart: w.start,
+        deliveryEnd: w.end,
+      }),
     });
     const body = await res.json();
-    if (!res.ok) throw new Error(body?.error ?? "Trade failed");
-    return { kind: "FILL" as const, trade: body.trade };
+    if (!res.ok) throw new Error(body?.error ?? "Order failed");
+    return { orderId: body.orderId as string };
   }
+
+  // When the day-ahead market for this delivery stops taking bids, and when
+  // its prices come out (ERCOT posts them around 13:30 Central that day).
+  const deadlineMs = delivery ? damDeadlineUtc(delivery.startMs) : null;
+  const clearingMs = deadlineMs != null ? deadlineMs + 3.5 * 3_600_000 : null;
+  const minutesLeft =
+    deadlineMs != null && simNowMs != null ? Math.floor((deadlineMs - simNowMs) / 60_000) : null;
 
   function pickInstrument(code: string) {
     const next = getInstrument(code);
     if (!next) return;
     setInstrumentCode(code);
-    setFill(null);
     setError(null);
     const options = selectableProducts(next);
     if (options.length > 0 && !options.includes(chosenProduct)) {
@@ -331,36 +288,32 @@ export function TradePanel({
     }
     setBusy(true);
     setError(null);
-    setFill(null);
     setPlaced(null);
     setStripResults(null);
     setResultKey(formKey);
     try {
       if (legs.length === 1) {
-        const out = await placeOne(legs[0], clientOrderId);
-        if (out.kind === "LIMIT") setPlaced({ orderId: out.orderId, limitPrice, side });
-        else setFill(out.trade);
+        const out = await placeOne(legs[0]);
+        setPlaced({ orderId: out.orderId, limitPrice: executionMode === "LIMIT" ? limitPrice : null, side });
       } else {
-        // Sequential, so each leg sees the cash the previous one left; a
-        // refused hour is reported and the strip carries on.
+        // Sequential, so a refused hour is reported and the strip carries on.
         const results: StripLegResult[] = [];
-        for (const [i, w] of legs.entries()) {
+        for (const w of legs) {
           const he = centralHourEnding(w.startMs);
           const label = `HE${he.he}${he.repeated ? "*" : ""}`;
           try {
-            const out = await placeOne(w, stripClientOrderId(clientOrderId, i));
-            results.push(
-              out.kind === "LIMIT"
-                ? { label, ok: true, detail: `working @ ${limitPrice}` }
-                : { label, ok: true, detail: usd(out.trade.executionPrice), replayed: Boolean(out.trade.replayed) }
-            );
+            await placeOne(w);
+            results.push({
+              label,
+              ok: true,
+              detail: executionMode === "LIMIT" ? `bid @ ${limitPrice}` : "bid at the clearing price",
+            });
           } catch (err) {
             results.push({ label, ok: false, detail: err instanceof Error ? err.message : "Refused" });
           }
           setStripResults([...results]);
         }
       }
-      setOrderNonce((n) => n + 1);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Trade failed");
@@ -536,9 +489,9 @@ export function TradePanel({
           />
         </div>
 
-        {/* Execution mode: fill now at the print, or rest a working limit */}
+        {/* Bid type: take whatever the market clears at, or name a limit */}
         <div className="border-t border-white/10 pt-4">
-          <span className="label">Execution</span>
+          <span className="label">Day-ahead bid</span>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -550,7 +503,7 @@ export function TradePanel({
                   : "border-white/15 t-mute hover:text-white/80"
               }`}
             >
-              Fill now
+              At clearing price
             </button>
             <button
               type="button"
@@ -562,7 +515,7 @@ export function TradePanel({
                   : "border-white/15 t-mute hover:text-white/80"
               }`}
             >
-              Working limit
+              Limit price
             </button>
           </div>
           {executionMode === "LIMIT" && (
@@ -581,10 +534,10 @@ export function TradePanel({
                 placeholder="35.00"
               />
               <p className="mt-2 text-[11px] leading-relaxed t-mute">
-                Rests on the book until the interval&apos;s actual ERCOT print
-                crosses it — a buy fills at or below your limit, a sell at or
-                above (ties fill). The fill price is the print itself, never
-                your limit. Unfilled orders expire after 7 days.
+                Fills only if the day-ahead market clears at or below your limit
+                for a buy, at or above it for a sell (ties fill). The fill price
+                is the clearing price itself, never your limit. A bid that does
+                not clear expires when delivery starts.
               </p>
             </div>
           )}
@@ -692,32 +645,42 @@ export function TradePanel({
           </div>
         )}
 
-        {/* Settlement rule note */}
-        <p className="border-t border-white/10 pt-4 text-[11px] leading-relaxed t-mute">
-          {instrument.settlementRule === "AVERAGE"
-            ? "A window must be a whole number of settlement intervals, and every interval in it must be priced."
-            : "One trade covers one settlement interval. Settled intervals and sessions beyond 35 days are rejected."}
-        </p>
-
-        <p className="text-[11px] leading-relaxed t-mute">
-          Fills at the price published for that exact interval, never one carried
-          forward from another.
-          <br />
-          {tradedProduct} priced through{" "}
-          <span className="mono t-dim">
-            {pricedThrough != null ? dateTime(pricedThrough, tz) : "—"}
-          </span>
-          .
-        </p>
-
-        {beyondHorizon && (
-          <div className="note note-warn">
+        {/* The day-ahead calendar for this delivery: when bids close, when it clears */}
+        <div className="border-t border-white/10 pt-4 text-[11px] leading-relaxed t-mute">
+          {deadlineMs != null && delivery ? (
+            <p>
+              Bids for operating day{" "}
+              <span className="mono t-dim">{centralHourEnding(delivery.startMs).day}</span>{" "}
+              close <span className="t-dim">{dateTime(deadlineMs, tz)}</span>
+              {minutesLeft != null && minutesLeft > 0 && (
+                <span className="t-dim">
+                  {" "}
+                  (in {minutesLeft >= 60 ? `${Math.floor(minutesLeft / 60)}h ` : ""}
+                  {minutesLeft % 60}m)
+                </span>
+              )}
+              . ERCOT publishes the clearing prices around{" "}
+              <span className="t-dim">{clearingMs != null ? localTime(clearingMs, tz) : "—"}</span>{" "}
+              that day, and your bid fills then
+              {executionMode === "LIMIT" ? " if the price crosses your limit" : " at the clearing price"}.
+            </p>
+          ) : (
+            <p>Pick a delivery to see when its bids close.</p>
+          )}
+          <p className="mt-1">
             {instrument.settlementRule === "AVERAGE"
-              ? "That window runs past the priced horizon, so no order can fill there."
-              : "That delivery is past the priced horizon, so no order can fill there."}{" "}
-            It will be refused rather than filled at an older price.
-          </div>
-        )}
+              ? "A window must be a whole number of settlement intervals; it fills at the average of their clearing prices."
+              : "One bid covers one settlement interval."}{" "}
+            Nobody — including you — knows the clearing price when bids close.
+            {pricedThrough != null && (
+              <>
+                {" "}
+                Day-ahead prices are published through{" "}
+                <span className="mono t-dim">{dateTime(pricedThrough, tz)}</span>.
+              </>
+            )}
+          </p>
+        </div>
 
         {/* Execution preview */}
         {estimatedNotional != null && estimate !== null ? (
@@ -735,11 +698,11 @@ export function TradePanel({
           </div>
         ) : (
           <div className="border border-white/10 bg-[var(--ink-well)] px-3 py-2 text-[11px] t-mute">
-            Price is composed at execution
+            The price is set when the day-ahead market clears
             {instrument.settlementRule === "DIFFERENCE"
-              ? " from both legs"
+              ? ", from both legs"
               : instrument.settlementRule === "CONVERGENCE"
-                ? " from the two energy markets"
+                ? "; the position then settles against real time"
                 : ""}
             .
           </div>
@@ -752,9 +715,11 @@ export function TradePanel({
         {showResult && stripResults && (
           <div className={`note ${stripResults.every((r) => r.ok) ? "note-ok" : "note-warn"}`}>
             <p className="mb-1">
-              {stripResults.filter((r) => r.ok).length} of {legs.length} hours{" "}
-              {executionMode === "LIMIT" ? "placed" : "filled"}
-              {busy ? "…" : "."}
+              {stripResults.filter((r) => r.ok).length} of {legs.length} hourly bids placed
+              {busy ? "…" : "."} They fill when the day-ahead market clears.{" "}
+              <Link href="/orders" className="underline">
+                Orders
+              </Link>
             </p>
             <ul className="mono space-y-0.5 text-[11px]">
               {stripResults.map((r) => (
@@ -767,34 +732,19 @@ export function TradePanel({
           </div>
         )}
 
-        {showResult && fill && (
-          <div className="note note-ok">
-            {fill.replayed && (
-              <span
-                className="badge badge-amber mr-2"
-                title="This order id has already executed"
-              >
-                Replayed
-              </span>
-            )}
-            Filled {instrumentInfo(fill.instrument)?.shortLabel ?? fill.instrument}{" "}
-            at <span className="mono">{usd(fill.executionPrice)}</span>, notional{" "}
-            {usd(fill.notional)}. Cash now {usd(fill.cashBalance)} · position{" "}
-            <span className="mono">{num(fill.positionQuantity, 3)}</span> {unit}
-            {parseDec(fill.realizedDelta) !== 0n && (
-              <span className={parseDec(fill.realizedDelta) > 0n ? " pos" : " neg"}>
-                {" "}
-                · realized {signedUsd(fill.realizedDelta)}
-              </span>
-            )}
-          </div>
-        )}
-
         {showResult && placed && (
           <div className="note note-ok">
-            Working {placed.side === "BUY" ? "buy" : "sell"} for{" "}
-            <span className="mono">{placed.limitPrice}</span> — resting until the
-            print crosses. View it under{" "}
+            {placed.side === "BUY" ? "Bid to buy" : "Offer to sell"} placed
+            {placed.limitPrice ? (
+              <>
+                {" "}with a limit of <span className="mono">${placed.limitPrice}</span>
+              </>
+            ) : (
+              " at the clearing price"
+            )}
+            . It fills when ERCOT publishes the day-ahead prices
+            {clearingMs != null ? ` (around ${localTime(clearingMs, tz)})` : ""}. Track it
+            under{" "}
             <Link href="/orders" className="mono underline">
               Orders
             </Link>
@@ -808,14 +758,12 @@ export function TradePanel({
           className="btn btn-primary w-full"
         >
           {busy
-            ? executionMode === "LIMIT"
-              ? "Placing"
-              : "Executing"
-            : executionMode === "LIMIT"
-              ? `Work ${isBuy ? "buy" : "sell"} ${quantity || "0"} ${unit} @ ${limitPrice || "—"}${legs.length > 1 ? ` × ${legs.length} hours` : ""}`
-              : `${isBuy ? "Buy" : "Sell"} ${quantity || "0"} ${unit} · ${
-                  info?.shortLabel ?? instrument.label
-                }${legs.length > 1 ? ` × ${legs.length} hours` : ""}`}
+            ? "Placing"
+            : `${isBuy ? "Bid to buy" : "Offer to sell"} ${quantity || "0"} ${unit} · ${
+                info?.shortLabel ?? instrument.label
+              }${executionMode === "LIMIT" ? ` @ ${limitPrice || "—"}` : " at clearing"}${
+                legs.length > 1 ? ` × ${legs.length} hours` : ""
+              }`}
         </button>
 
         {Number(quantity) > MAX_QUANTITY && (
@@ -848,16 +796,4 @@ function safeQty(v: string): bigint {
   } catch {
     return 0n;
   }
-}
-
-/**
- * A client order id for one intent. Prefers the platform UUID generator and
- * falls back to a timestamp+counter shape where it is unavailable (older
- * browsers, non-secure contexts) rather than silently sending no id at all.
- */
-function newOrderId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `ord-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 }

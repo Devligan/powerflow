@@ -81,6 +81,43 @@ export function operatingDayHours(day: string): OperatingHour[] {
   return out;
 }
 
+/** The Central calendar day before `day` (YYYY-MM-DD). */
+function previousDay(day: string): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+}
+
+/**
+ * ERCOT's day-ahead deadline for the operating day a delivery starts in:
+ * 10:00 Central on the day before (the start of HE11 that day). Mirror of
+ * `dam_gate` (0038). Bids for that operating day are accepted only before it.
+ */
+export function damDeadlineUtc(deliveryStartMs: number): number | null {
+  const { day } = centralHourEnding(deliveryStartMs);
+  return hourEndingStartUtc(previousDay(day), 11);
+}
+
+/** Products cleared by the day-ahead market (bid before its deadline). */
+export function isDayAheadProduct(code: string): boolean {
+  return code.startsWith("DAM");
+}
+
+/**
+ * The first ERCOT operating day still open for day-ahead bids at `nowMs`:
+ * tomorrow before 10:00 Central, the day after from then on.
+ */
+export function firstOpenOperatingDay(nowMs: number): string {
+  let day = centralHourEnding(nowMs).day;
+  for (let i = 0; i < 4; i++) {
+    const [y, m, d] = day.split("-").map(Number);
+    day = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+    const first = hourEndingStartUtc(day, 1);
+    const deadline = first == null ? null : damDeadlineUtc(first);
+    if (deadline != null && nowMs < deadline) return day;
+  }
+  return day;
+}
+
 /** ERCOT's on-peak hours: HE7–HE22 (06:00–22:00 Central). */
 export function isPeakHour(he: number): boolean {
   return he >= 7 && he <= 22;

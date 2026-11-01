@@ -192,7 +192,7 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
 
   it("opens a long position and debits cash by exactly the notional", async () => {
     const before = await cash();
-    const { data, error } = await client.rpc("execute_trade", trade());
+    const { data, error } = await db.rpc("execute_trade", trade());
     expect(error).toBeNull();
     expect(data).toBeTruthy();
 
@@ -203,9 +203,16 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
     expect(pos.realized).toBe(0);
   }, 60_000);
 
+  it("refuses a user's direct day-ahead fill: day-ahead positions are bids (0038)", async () => {
+    // Fills come from the service-role order sweep (as above, via `db`); a
+    // user session may only place an order before the 10:00 deadline.
+    const { error } = await client.rpc("execute_trade", trade());
+    expect(String(error?.message)).toMatch(/DAM_CLOSED|DAM_ORDER_REQUIRED/);
+  });
+
   it("weights the average entry price when adding to a position", async () => {
     await republish(price + 20);
-    const { error } = await client.rpc("execute_trade", trade({ p_quantity_mwh: 10, p_side: "BUY" }));
+    const { error } = await db.rpc("execute_trade", trade({ p_quantity_mwh: 10, p_side: "BUY" }));
     expect(error).toBeNull();
     const pos = (await position())!;
     expect(pos.qty).toBe(20);
@@ -217,7 +224,7 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
     const before = await position();
     await republish(price + 5);
     const cashBefore = await cash();
-    const { error } = await client.rpc("execute_trade", trade({ p_quantity_mwh: 8, p_side: "SELL" }));
+    const { error } = await db.rpc("execute_trade", trade({ p_quantity_mwh: 8, p_side: "SELL" }));
     expect(error).toBeNull();
 
     const pos = (await position())!;
@@ -231,7 +238,7 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
   it("full close leaves no position and the whole P&L realized", async () => {
     const before = await position();
     await republish(price - 3);
-    const { error } = await client.rpc("execute_trade", trade({ p_quantity_mwh: 12, p_side: "SELL" }));
+    const { error } = await db.rpc("execute_trade", trade({ p_quantity_mwh: 12, p_side: "SELL" }));
     expect(error).toBeNull();
 
     const pos = (await position())!;
@@ -241,9 +248,9 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
   }, 60_000);
 
   it("flips through zero onto a new short basis", async () => {
-    await client.rpc("execute_trade", trade({ p_quantity_mwh: 5, p_side: "BUY" }));
+    await db.rpc("execute_trade", trade({ p_quantity_mwh: 5, p_side: "BUY" }));
     await republish(price + 7);
-    const { error } = await client.rpc("execute_trade", trade({ p_quantity_mwh: 8, p_side: "SELL" }));
+    const { error } = await db.rpc("execute_trade", trade({ p_quantity_mwh: 8, p_side: "SELL" }));
     expect(error).toBeNull();
 
     const pos = (await position())!;
@@ -254,7 +261,7 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
 
   it("accumulates a short at a weighted average", async () => {
     await republish(price + 10);
-    await client.rpc("execute_trade", trade({ p_quantity_mwh: 5, p_side: "SELL" }));
+    await db.rpc("execute_trade", trade({ p_quantity_mwh: 5, p_side: "SELL" }));
     const pos = (await position())!;
     expect(pos.qty).toBe(-8);
     near(pos.avg, (3 * (price + 7) + 5 * (price + 10)) / 8);
@@ -351,10 +358,10 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
 
   it("replays a duplicate order id instead of filling twice", async () => {
     const id = crypto.randomUUID();
-    const first = await client.rpc("execute_trade", trade({ p_quantity_mwh: 4, p_client_order_id: id }));
+    const first = await db.rpc("execute_trade", trade({ p_quantity_mwh: 4, p_client_order_id: id }));
     const before = { cash: await cash(), ...(await counts()) };
 
-    const again = await client.rpc("execute_trade", trade({ p_quantity_mwh: 4, p_client_order_id: id }));
+    const again = await db.rpc("execute_trade", trade({ p_quantity_mwh: 4, p_client_order_id: id }));
     expect(again.error).toBeNull();
     expect((again.data as { trade_id: string }).trade_id).toBe(
       (first.data as { trade_id: string }).trade_id
@@ -371,7 +378,7 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
 
     const responses = await Promise.all(
       Array.from({ length: 8 }, () =>
-        client.rpc("execute_trade", trade({ p_quantity_mwh: 2, p_client_order_id: id }))
+        db.rpc("execute_trade", trade({ p_quantity_mwh: 2, p_client_order_id: id }))
       )
     );
     for (const r of responses) expect(r.error).toBeNull();
