@@ -105,8 +105,10 @@ export default async function MarketDetailPage({
         </p>
       )}
 
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <section className="card">
+      {/* Chart and analysis stack on the left with the ticket spanning both on
+          the right; on a phone the ticket comes straight after the chart. */}
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <section className="card lg:col-start-1 lg:row-start-1">
           <div className="mb-2 flex items-center justify-between gap-3">
             <h2 className="card-title mb-0">Day-ahead curve vs real time</h2>
             {forwardLast && (
@@ -135,24 +137,28 @@ export default async function MarketDetailPage({
           </p>
         </section>
 
-        <TradePanel
-          marketId={market.id}
-          settlementPoint={market.settlementPoint}
-          latestPrice={nextForward?.price ?? market.price}
-          product={forwardLast ? FORWARD_MARKET_PRODUCT : market.product}
-          pricedThrough={forwardPricedThrough ?? latest?.deliveryTimestamp ?? null}
-          markets={marketOptions}
-          series={forwardLast ? forward.series : series}
-          simNowMs={asOf ? asOf.getTime() : undefined}
-        />
-      </div>
+        <div className="lg:col-start-2 lg:row-span-2 lg:row-start-1">
+          <TradePanel
+            marketId={market.id}
+            settlementPoint={market.settlementPoint}
+            latestPrice={nextForward?.price ?? market.price}
+            product={forwardLast ? FORWARD_MARKET_PRODUCT : market.product}
+            pricedThrough={forwardPricedThrough ?? latest?.deliveryTimestamp ?? null}
+            markets={marketOptions}
+            series={forwardLast ? forward.series : series}
+            simNowMs={asOf ? asOf.getTime() : undefined}
+          />
+        </div>
 
-      {/* Streams in after the ticket: weeks of history, not on the trade path. */}
-      {clock && (
-        <Suspense fallback={<MarketIntelSkeleton />}>
-          <MarketIntel marketId={market.id} nowMs={Date.parse(clock.now)} asOf={asOf} />
-        </Suspense>
-      )}
+        {/* Streams in after the ticket: weeks of history, not on the trade path. */}
+        {clock && (
+          <div className="min-w-0 lg:col-start-1 lg:row-start-2">
+            <Suspense fallback={<MarketIntelSkeleton />}>
+              <MarketIntel marketId={market.id} nowMs={Date.parse(clock.now)} asOf={asOf} />
+            </Suspense>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -74,7 +74,7 @@ export function PriceHeatmap({ rows, todayDay }: { rows: HeatRow[]; todayDay: st
             <tr className="caption">
               <th className="sticky left-0 z-10 bg-[var(--ink-panel)] pr-2 text-left font-normal">Day</th>
               {HOURS.map((h) => (
-                <th key={h} className="min-w-[1.6rem] text-center font-normal">
+                <th key={h} className="min-w-[1.4rem] text-center font-normal">
                   {h}
                 </th>
               ))}

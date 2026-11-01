@@ -44,7 +44,7 @@ export async function MarketIntel({
   const today = centralHourEnding(now).day;
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-2">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <section className="card">
         <div className="mb-1 flex items-baseline justify-between gap-3">
           <h2 className="card-title mb-0">DART by hour</h2>
@@ -69,7 +69,7 @@ export async function MarketIntel({
 
 export function MarketIntelSkeleton() {
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-2">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       {["DART by hour", "Day-ahead by hour"].map((t) => (
         <section key={t} className="card opacity-60">
           <h2 className="card-title">{t}</h2>

@@ -285,9 +285,9 @@ export async function getMarketPrices(
   let series: PricePoint[];
   if (asOf) {
     // Replay: observations visible by the clock, over a window that tracks
-    // the CLOCK (not the wall clock). Intervals may deliver after the clock â€”
+    // the CLOCK (not the wall clock). Intervals may deliver after the clock —
     // a day-ahead curve published by the clock is exactly what a trader
-    // would have seen â€” so the upper bound is forward-looking.
+    // would have seen — so the upper bound is forward-looking.
     const horizonFrom = new Date(asOf.getTime() - 48 * 3600_000);
     const horizonTo = new Date(asOf.getTime() + 48 * 3600_000);
     const pricesRes = await admin
@@ -399,7 +399,7 @@ export interface MarketStatus {
   latestPriceAt: string | null;
   latestPriceSource: string | null;
   mode: string;
-  /** ERCOT_REPLAY | ERCOT_LIVE â€” the two data regimes (both actual ERCOT). */
+  /** ERCOT_REPLAY | ERCOT_LIVE — the two data regimes (both actual ERCOT). */
   dataMode: string;
 }
 

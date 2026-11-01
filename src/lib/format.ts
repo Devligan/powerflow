@@ -19,6 +19,11 @@ export function centralHour(ms: number): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: CENTRAL, hour: "numeric" }).format(ms);
 }
 
+/** "1 AM CDT" — the Central hour with its offset, so fall-back's two 1 AMs differ. */
+export function centralHourZone(ms: number): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone: CENTRAL, hour: "numeric", timeZoneName: "short" }).format(ms);
+}
+
 /**
  * "Sat, Oct 31 · 5:00 PM – 6:00 PM CDT · HE18": a UTC delivery window in the
  * terms ERCOT and its traders use — Central wall time, with the offset in

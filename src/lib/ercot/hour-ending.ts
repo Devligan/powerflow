@@ -42,6 +42,24 @@ export function centralHourEnding(startMs: number): HourEnding {
   return { day, he: hour + 1, repeated };
 }
 
+/**
+ * The UTC start of an operating day's hour ending — the first occurrence on
+ * the fall-back day, null for the spring-forward gap (HE3). Browser-safe twin
+ * of `deliveryCentralToUtc`, which lives with the MIS parser.
+ */
+export function hourEndingStartUtc(day: string, he: number): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!m || !Number.isInteger(he) || he < 1 || he > 24) return null;
+  const wall = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), he - 1);
+  // CDT (−5) first, so the repeated hour resolves to its first occurrence.
+  for (const offsetHours of [5, 6]) {
+    const t = wall + offsetHours * HOUR_MS;
+    const got = centralHourEnding(t);
+    if (got.day === day && got.he === he && !got.repeated) return t;
+  }
+  return null;
+}
+
 /** ERCOT's on-peak hours: HE7–HE22 (06:00–22:00 Central). */
 export function isPeakHour(he: number): boolean {
   return he >= 7 && he <= 22;

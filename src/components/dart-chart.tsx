@@ -23,7 +23,7 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 /**
  * DART by hour ending: the mean of real time minus day-ahead, as a bar from
- * zero, with the p10–p90 band as a whisker. Above zero real time cleared over
+ * zero, with the middle half of outcomes (p25–p75) as a whisker. Above zero real time cleared over
  * day-ahead (an INC earned); below, a DEC did. On-peak hours (HE7–HE22) sit on
  * a faint wash, since that is how blocks and most virtual strategies split the
  * day. Hover or focus names the hour; the table view carries every value.
@@ -38,8 +38,8 @@ export function DartChart({ stats, days }: { stats: DartHour[]; days: number }) 
   }
 
   // The y band covers every whisker and zero, so no bar or band is clipped.
-  const lo = Math.min(0, ...priced.map((s) => s.p10 ?? s.mean!));
-  const hi = Math.max(0, ...priced.map((s) => s.p90 ?? s.mean!));
+  const lo = Math.min(0, ...priced.map((s) => s.p25 ?? s.mean!));
+  const hi = Math.max(0, ...priced.map((s) => s.p75 ?? s.mean!));
   const pad = (hi - lo) * 0.08 || 1;
   const yLo = lo - pad;
   const band = hi + pad - yLo;
@@ -148,12 +148,12 @@ export function DartChart({ stats, days }: { stats: DartHour[]; days: number }) 
                 <rect x={left} y={PAD_T} width={slot} height={BASE - PAD_T} fill={active ? "rgb(230 227 221 / 0.05)" : "transparent"} />
                 {s.mean != null && (
                   <>
-                    {s.p10 != null && s.p90 != null && (
+                    {s.p25 != null && s.p75 != null && (
                       <line
                         x1={left + slot / 2}
                         x2={left + slot / 2}
-                        y1={y(s.p90)}
-                        y2={y(s.p10)}
+                        y1={y(s.p75)}
+                        y2={y(s.p25)}
                         stroke="var(--line-bright)"
                         strokeWidth="1"
                       />
@@ -188,7 +188,7 @@ export function DartChart({ stats, days }: { stats: DartHour[]; days: number }) 
           <span className="inline-block h-2 w-3" style={{ background: SHORT, opacity: 0.8 }} /> RT below DA · DEC earned
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-3 w-px" style={{ background: "var(--line-bright)" }} /> p10–p90
+          <span className="inline-block h-3 w-px" style={{ background: "var(--line-bright)" }} /> p25–p75 (middle half)
         </span>
         <span>Hour ending, Central · last {days} days</span>
       </div>

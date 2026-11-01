@@ -12,6 +12,7 @@ import {
   needsCounterPoint,
   resolveTradedProduct,
 } from "@/lib/trading/instruments";
+import { hourEndingStartUtc } from "@/lib/ercot/hour-ending";
 
 /**
  * Order-ticket logic, kept out of the component.
@@ -304,6 +305,67 @@ export function checkOrderForm(input: OrderFormInput): OrderFormCheck {
   }
 
   return { ok: true };
+}
+
+/** Most hours one strip ticket may place: a full operating day. */
+export const MAX_STRIP_HOURS = 25;
+
+/**
+ * A strip: the same single-interval order repeated over consecutive
+ * intervals, the way desks bid virtuals (an INC across HE14–HE19, say).
+ * Each window is its own order — positions are per interval — so a strip is
+ * N independent fills, never one averaged trade.
+ */
+export function stripWindows(first: DeliveryWindow, count: number, intervalMinutes: number): DeliveryWindow[] {
+  const n = Number.isInteger(count) && count >= 1 ? Math.min(count, MAX_STRIP_HOURS) : 1;
+  const step = intervalMinutes * MINUTE_MS;
+  return Array.from({ length: n }, (_, i) => {
+    const startMs = first.startMs + i * step;
+    const endMs = startMs + step;
+    return {
+      startMs,
+      endMs,
+      start: new Date(startMs).toISOString(),
+      end: new Date(endMs).toISOString(),
+      minutes: intervalMinutes,
+    };
+  });
+}
+
+/**
+ * One idempotency key per strip leg, derived from the ticket's: a retry of
+ * the whole strip replays every leg that already filled instead of filling it
+ * twice, while legs that failed get a genuine second attempt.
+ */
+export function stripClientOrderId(base: string, index: number): string {
+  return index === 0 ? base : `${base}~${index}`;
+}
+
+export type BlockShape = "PEAK" | "ATC";
+
+/**
+ * The ticket inputs (UTC date, UTC hour, hourly intervals) for a standard
+ * block on a Central operating day: on-peak is HE7–HE22, 16 hours on every
+ * day; around-the-clock is HE1 to the next day's HE1, which is 23 or 25 hours
+ * across a DST change.
+ */
+export function blockWindow(
+  day: string,
+  shape: BlockShape
+): { date: string; hour: number; intervals: number } | null {
+  const start = hourEndingStartUtc(day, shape === "PEAK" ? 7 : 1);
+  if (start == null) return null;
+  let end: number | null;
+  if (shape === "PEAK") {
+    end = start + 16 * HOUR_MS;
+  } else {
+    const [y, m, d] = day.split("-").map(Number);
+    const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+    end = hourEndingStartUtc(next, 1);
+  }
+  if (end == null) return null;
+  const iso = new Date(start).toISOString();
+  return { date: iso.slice(0, 10), hour: new Date(start).getUTCHours(), intervals: Math.round((end - start) / HOUR_MS) };
 }
 
 export interface OrderRequestInput {

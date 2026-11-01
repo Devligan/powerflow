@@ -12,9 +12,10 @@ import {
   usd,
   num,
   signedUsd,
-  centralHour,
+  centralHourZone,
   centralWindowLabel,
 } from "@/lib/format";
+import { centralHourEnding } from "@/lib/ercot/hour-ending";
 import {
   DEFAULT_INSTRUMENT,
   DEFAULT_MARKET_PRODUCT,
@@ -26,7 +27,13 @@ import { needsCounterPoint } from "@/lib/trading/instruments";
 import {
   DEFAULT_WINDOW_INTERVALS,
   MAX_QUANTITY,
+  MAX_STRIP_HOURS,
+  blockWindow,
   buildWindow,
+  stripClientOrderId,
+  stripWindows,
+  type BlockShape,
+  type DeliveryWindow,
   checkOrderForm,
   effectiveProduct,
   estimateInstrumentPrice,
@@ -118,6 +125,12 @@ export function TradePanel({
     replayed: boolean;
   }>(null);
   const [orderNonce, setOrderNonce] = useState(0);
+  // Consecutive hours a single-interval order is repeated over (a strip).
+  const [stripHours, setStripHours] = useState(1);
+  const [stripResults, setStripResults] = useState<StripLegResult[] | null>(null);
+  // Which ticket state the shown outcome belongs to: editing the ticket hides
+  // it, so a fill message never sits beside an order it did not come from.
+  const [resultKey, setResultKey] = useState<string | null>(null);
 
   const instrument = getInstrument(instrumentCode) ?? getInstrument(DEFAULT_INSTRUMENT)!;
   const info = instrumentInfo(instrument.code);
@@ -134,39 +147,58 @@ export function TradePanel({
 
   const intervals = windowIntervals(instrument.settlementRule, windowLength);
   const delivery = buildWindow({ date: dateStr, hour, intervalMinutes, intervals });
+  const isWindow = instrument.settlementRule === "AVERAGE";
+  // Every order this ticket would place: one, or one per hour of a strip.
+  const legs: DeliveryWindow[] = delivery
+    ? isWindow
+      ? [delivery]
+      : stripWindows(delivery, stripHours, intervalMinutes)
+    : [];
+  const lastLeg = legs[legs.length - 1] ?? null;
 
-  const probe = delivery
-    ? probePrice(instrument, delivery, intervalMinutes, series, product, tradedProduct)
-    : "unknown";
-
-  const estimate = delivery
-    ? estimateInstrumentPrice(
-        instrument,
-        delivery,
-        intervalMinutes,
-        series,
-        product,
-        tradedProduct
-      )
-    : null;
+  const legEstimates = legs.map((w) =>
+    estimateInstrumentPrice(instrument, w, intervalMinutes, series, product, tradedProduct)
+  );
+  // The preview is the average across legs, and only when every leg is priced.
+  const estimate =
+    legEstimates.length > 0 && legEstimates.every((e) => e !== null)
+      ? (legEstimates as bigint[]).reduce((a, b) => a + b, 0n) / BigInt(legEstimates.length)
+      : null;
 
   const qty = safeQty(quantity);
   const estimatedNotional =
-    estimate !== null && qty > 0n ? (estimate * qty) / 1_000_000n : null;
+    estimate !== null && qty > 0n ? (estimate * qty * BigInt(legs.length)) / 1_000_000n : null;
 
-  const check = delivery
-    ? checkOrderForm({
+  // The first leg that would be refused names the hour, so a strip that runs
+  // off the priced horizon says where.
+  const check = (() => {
+    if (!delivery) return { ok: false as const, message: "That delivery date is not valid." };
+    for (const w of legs) {
+      const c = checkOrderForm({
         instrument,
         product: offersProducts ? chosenProduct : tradedProduct,
         counterMarketId,
         marketId,
         quantity,
-        delivery,
+        delivery: w,
         intervalMinutes,
-        priceProbe: probe,
+        priceProbe: probePrice(instrument, w, intervalMinutes, series, product, tradedProduct),
         now: simNowMs,
-      })
-    : { ok: false as const, message: "That delivery date is not valid." };
+      });
+      if (!c.ok) {
+        return legs.length > 1
+          ? { ok: false as const, message: `HE${centralHourEnding(w.startMs).he}: ${c.message}` }
+          : c;
+      }
+    }
+    return { ok: true as const };
+  })();
+
+  const formKey = [
+    marketId, instrumentCode, chosenProduct, counterMarketId, side, quantity, dateStr, hour,
+    intervals, legs.length, executionMode, limitPrice,
+  ].join("|");
+  const showResult = resultKey === formKey;
 
   // The series horizon the page was rendered with: in replay it is bounded by
   // the reader's clock (the page passes the as-of series), so an order beyond
@@ -174,17 +206,69 @@ export function TradePanel({
   // during render; the ticket's own time check lives in checkOrderForm.
   const pricedThroughMs = pricedThrough ? new Date(pricedThrough).getTime() : null;
   const beyondHorizon =
-    delivery != null &&
+    lastLeg != null &&
     pricedThroughMs != null &&
-    delivery.endMs > pricedThroughMs;
+    lastLeg.endMs > pricedThroughMs;
 
   // A stable id per intent, rotated after a fill: a retry of the order in the
   // box cannot double-fill, while deliberately repeating it still executes.
   const clientOrderId = useMemo(
     () => newOrderId(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [marketId, instrumentCode, chosenProduct, counterMarketId, side, quantity, dateStr, hour, intervals, orderNonce]
+    [marketId, instrumentCode, chosenProduct, counterMarketId, side, quantity, dateStr, hour, intervals, stripHours, orderNonce]
   );
+
+  function applyBlock(shape: BlockShape) {
+    if (!delivery) return;
+    const w = blockWindow(centralHourEnding(delivery.startMs).day, shape);
+    if (!w) return;
+    setDateStr(w.date);
+    setHour(w.hour);
+    setWindowLength(w.intervals);
+  }
+
+  /** One order: a fill now, or a working limit. Throws the server's reason. */
+  async function placeOne(w: DeliveryWindow, orderId: string) {
+    if (executionMode === "LIMIT") {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          marketId,
+          instrument: instrument.code,
+          product: tradedProduct,
+          counterMarketId,
+          side,
+          quantityMwh: quantity,
+          limitPrice,
+          deliveryStart: w.start,
+          deliveryEnd: w.end,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error ?? "Order failed");
+      return { kind: "LIMIT" as const, orderId: body.orderId as string };
+    }
+    const res = await fetch("/api/trades", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(
+        orderRequest({
+          marketId,
+          instrumentCode: instrument.code,
+          product: tradedProduct,
+          counterMarketId,
+          side,
+          quantity,
+          delivery: w,
+          clientOrderId: orderId,
+        })
+      ),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body?.error ?? "Trade failed");
+    return { kind: "FILL" as const, trade: body.trade };
+  }
 
   function pickInstrument(code: string) {
     const next = getInstrument(code);
@@ -209,6 +293,7 @@ export function TradePanel({
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    setResultKey(formKey);
     if (!delivery || !check.ok) {
       setError(check.ok ? "That delivery date is not valid." : check.message);
       return;
@@ -221,49 +306,33 @@ export function TradePanel({
     setError(null);
     setFill(null);
     setPlaced(null);
+    setStripResults(null);
+    setResultKey(formKey);
     try {
-      if (executionMode === "LIMIT") {
-        const res = await fetch("/api/orders", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            marketId,
-            instrument: instrument.code,
-            product: tradedProduct,
-            counterMarketId,
-            side,
-            quantityMwh: quantity,
-            limitPrice,
-            deliveryStart: delivery.start,
-            deliveryEnd: delivery.end,
-          }),
-        });
-        const body = await res.json();
-        if (!res.ok) throw new Error(body?.error ?? "Order failed");
-        setPlaced({ orderId: body.orderId, limitPrice, side });
-        setOrderNonce((n) => n + 1);
-        router.refresh();
-        return;
+      if (legs.length === 1) {
+        const out = await placeOne(legs[0], clientOrderId);
+        if (out.kind === "LIMIT") setPlaced({ orderId: out.orderId, limitPrice, side });
+        else setFill(out.trade);
+      } else {
+        // Sequential, so each leg sees the cash the previous one left; a
+        // refused hour is reported and the strip carries on.
+        const results: StripLegResult[] = [];
+        for (const [i, w] of legs.entries()) {
+          const he = centralHourEnding(w.startMs);
+          const label = `HE${he.he}${he.repeated ? "*" : ""}`;
+          try {
+            const out = await placeOne(w, stripClientOrderId(clientOrderId, i));
+            results.push(
+              out.kind === "LIMIT"
+                ? { label, ok: true, detail: `working @ ${limitPrice}` }
+                : { label, ok: true, detail: usd(out.trade.executionPrice), replayed: Boolean(out.trade.replayed) }
+            );
+          } catch (err) {
+            results.push({ label, ok: false, detail: err instanceof Error ? err.message : "Refused" });
+          }
+          setStripResults([...results]);
+        }
       }
-      const res = await fetch("/api/trades", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(
-          orderRequest({
-            marketId,
-            instrumentCode: instrument.code,
-            product: tradedProduct,
-            counterMarketId,
-            side,
-            quantity,
-            delivery,
-            clientOrderId,
-          })
-        ),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.error ?? "Trade failed");
-      setFill(body.trade);
       setOrderNonce((n) => n + 1);
       router.refresh();
     } catch (err) {
@@ -524,15 +593,40 @@ export function TradePanel({
                 const ms = Date.parse(`${dateStr}T${hh}:00:00Z`);
                 return (
                   <option key={i} value={i}>
-                    {hh}:00{Number.isNaN(ms) ? "" : ` · ${centralHour(ms)} CT`}
+                    {hh}:00{Number.isNaN(ms) ? "" : ` · ${centralHourZone(ms)}`}
                   </option>
                 );
               })}
             </select>
           </div>
+          {!isWindow && (
+            <div className="col-span-2">
+              <label className="label" htmlFor="strip-hours">
+                Strip · consecutive hours
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="strip-hours"
+                  type="number"
+                  min={1}
+                  max={MAX_STRIP_HOURS}
+                  className="input mono w-20"
+                  value={stripHours}
+                  onChange={(e) => setStripHours(Math.max(1, Math.min(MAX_STRIP_HOURS, Number(e.target.value) || 1)))}
+                />
+                <span className="text-[11px] t-mute">
+                  {legs.length > 1 && lastLeg
+                    ? `HE${centralHourEnding(legs[0].startMs).he} → HE${centralHourEnding(lastLeg.startMs).he} · ${legs.length} orders of ${quantity || "0"} ${unit}`
+                    : "one order"}
+                </span>
+              </div>
+            </div>
+          )}
           {delivery && (
             <p className="caption col-span-2 normal-case tracking-normal t-dim">
-              {centralWindowLabel(delivery.startMs, delivery.endMs)}
+              {legs.length > 1 && lastLeg
+                ? centralWindowLabel(delivery.startMs, lastLeg.endMs)
+                : centralWindowLabel(delivery.startMs, delivery.endMs)}
             </p>
           )}
         </div>
@@ -558,6 +652,19 @@ export function TradePanel({
                 {delivery ? formatMinutes(delivery.minutes) : "—"} on {tradedProduct}
               </span>
             </div>
+            {intervalMinutes === 60 && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button type="button" className="btn btn-sm" onClick={() => applyBlock("PEAK")}>
+                  On-peak HE7–22
+                </button>
+                <button type="button" className="btn btn-sm" onClick={() => applyBlock("ATC")}>
+                  Around the clock
+                </button>
+                <span className="text-[11px] t-mute">
+                  for {delivery ? centralHourEnding(delivery.startMs).day : "—"} (Central)
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -592,13 +699,13 @@ export function TradePanel({
         {estimatedNotional != null && estimate !== null ? (
           <div className="flex items-baseline justify-between gap-3 border border-white/10 bg-[var(--ink-well)] px-3 py-2">
             <span className="caption">
-              Est. {instrument.settlementRule === "AVERAGE" ? "window avg" : "price"}
+              Est. {isWindow ? "window avg" : legs.length > 1 ? "strip avg" : "price"}
             </span>
             <span className="mono text-[12px]">
-              ${format(estimate, 2)}
+              {usd(estimate)}
               <span className="t-mute">
                 {" "}
-                · notional ${format(estimatedNotional, 2)}
+                · notional {usd(estimatedNotional)}
               </span>
             </span>
           </div>
@@ -616,9 +723,27 @@ export function TradePanel({
 
         {!check.ok && <div className="note note-warn">{check.message}</div>}
 
-        {error && <div className="note note-error">{error}</div>}
+        {showResult && error && <div className="note note-error">{error}</div>}
 
-        {fill && (
+        {showResult && stripResults && (
+          <div className={`note ${stripResults.every((r) => r.ok) ? "note-ok" : "note-warn"}`}>
+            <p className="mb-1">
+              {stripResults.filter((r) => r.ok).length} of {legs.length} hours{" "}
+              {executionMode === "LIMIT" ? "placed" : "filled"}
+              {busy ? "…" : "."}
+            </p>
+            <ul className="mono space-y-0.5 text-[11px]">
+              {stripResults.map((r) => (
+                <li key={r.label} className={r.ok ? "" : "t-short"}>
+                  {r.label} · {r.detail}
+                  {r.replayed ? " · replayed" : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {showResult && fill && (
           <div className="note note-ok">
             {fill.replayed && (
               <span
@@ -641,7 +766,7 @@ export function TradePanel({
           </div>
         )}
 
-        {placed && (
+        {showResult && placed && (
           <div className="note note-ok">
             Working {placed.side === "BUY" ? "buy" : "sell"} for{" "}
             <span className="mono">{placed.limitPrice}</span> — resting until the
@@ -663,10 +788,10 @@ export function TradePanel({
               ? "Placing"
               : "Executing"
             : executionMode === "LIMIT"
-              ? `Work ${isBuy ? "buy" : "sell"} ${quantity || "0"} ${unit} @ ${limitPrice || "—"}`
+              ? `Work ${isBuy ? "buy" : "sell"} ${quantity || "0"} ${unit} @ ${limitPrice || "—"}${legs.length > 1 ? ` × ${legs.length} hours` : ""}`
               : `${isBuy ? "Buy" : "Sell"} ${quantity || "0"} ${unit} · ${
                   info?.shortLabel ?? instrument.label
-                }`}
+                }${legs.length > 1 ? ` × ${legs.length} hours` : ""}`}
         </button>
 
         {Number(quantity) > MAX_QUANTITY && (
@@ -677,6 +802,14 @@ export function TradePanel({
       </div>
     </form>
   );
+}
+
+interface StripLegResult {
+  label: string;
+  ok: boolean;
+  /** Fill price, working-order note, or the server's refusal. */
+  detail: string;
+  replayed?: boolean;
 }
 
 function formatMinutes(minutes: number): string {

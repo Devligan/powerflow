@@ -26,6 +26,8 @@ export interface DartHour {
   /** Share of hours where RT > DA, 0–1. */
   pctRtAbove: number | null;
   p10: number | null;
+  p25: number | null;
+  p75: number | null;
   p90: number | null;
 }
 
@@ -53,7 +55,7 @@ export function dartByHour(dayAhead: HourlyPrice[], realTime: HourlyPrice[]): Da
   return buckets.map((xs, i) => {
     const n = xs.length;
     if (n === 0) {
-      return { he: i + 1, n, mean: null, stdev: null, pctRtAbove: null, p10: null, p90: null };
+      return { he: i + 1, n, mean: null, stdev: null, pctRtAbove: null, p10: null, p25: null, p75: null, p90: null };
     }
     const mean = xs.reduce((a, b) => a + b, 0) / n;
     const stdev = n > 1 ? Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1)) : 0;
@@ -65,6 +67,8 @@ export function dartByHour(dayAhead: HourlyPrice[], realTime: HourlyPrice[]): Da
       stdev,
       pctRtAbove: xs.filter((x) => x > 0).length / n,
       p10: quantile(sorted, 0.1),
+      p25: quantile(sorted, 0.25),
+      p75: quantile(sorted, 0.75),
       p90: quantile(sorted, 0.9),
     };
   });
