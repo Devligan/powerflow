@@ -149,7 +149,9 @@ export default async function MarketDetailPage({
             pricedThrough={forwardPricedThrough ?? latest?.deliveryTimestamp ?? null}
             markets={marketOptions}
             series={forwardLast ? forward.series : series}
-            simNowMs={asOf ? asOf.getTime() : undefined}
+            // The account's clock in both modes: the ticket counts down to the
+            // day-ahead deadline from it (the engine re-checks on submit).
+            simNowMs={asOf ? asOf.getTime() : clock ? Date.parse(clock.now) : undefined}
           />
         </div>
 
