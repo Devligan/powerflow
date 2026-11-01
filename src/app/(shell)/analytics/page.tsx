@@ -91,6 +91,39 @@ export default async function AnalyticsPage() {
       </div>
 
       <AnalyticsCharts pnlByDay={a.pnlByDay} pnlByMarket={a.pnlByMarket} />
+
+      {/* How a DART desk is judged: spread captured per MWh, by side, by hour. */}
+      <section className="card">
+        <h2 className="card-title">Desk performance</h2>
+        <div className="mt-2 grid grid-cols-2 gap-3 text-[12px] sm:grid-cols-4">
+          <div>
+            <p className="caption t-mute">P&amp;L per settled MWh</p>
+            <p className="mono">{a.desk.pnlPerMwh == null ? "—" : sign(a.desk.pnlPerMwh)}</p>
+          </div>
+          <div>
+            <p className="caption t-mute">DEC P&amp;L</p>
+            <p className={`mono ${parseFloat(a.desk.decPnl) >= 0 ? "pos" : "neg"}`}>{sign(a.desk.decPnl)}</p>
+          </div>
+          <div>
+            <p className="caption t-mute">INC P&amp;L</p>
+            <p className={`mono ${parseFloat(a.desk.incPnl) >= 0 ? "pos" : "neg"}`}>{sign(a.desk.incPnl)}</p>
+          </div>
+          <div>
+            <p className="caption t-mute">Sharpe (daily, annualized)</p>
+            <p className="mono">{a.desk.sharpe ?? "—"}</p>
+          </div>
+        </div>
+        {a.desk.pnlByHour.length > 0 && (
+          <p className="mt-3 text-[11px] t-mute">
+            By hour ending:{" "}
+            {a.desk.pnlByHour.map((h) => `HE${h.he} ${sign(h.pnl)}`).join(" · ")}
+          </p>
+        )}
+        <p className="mt-2 text-[11px] t-mute">
+          {num(a.desk.settledMwh)} MWh settled. A DEC earns when real time clears above day-ahead, an INC
+          when it clears below.
+        </p>
+      </section>
     </div>
   );
 }

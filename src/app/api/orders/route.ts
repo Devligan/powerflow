@@ -115,6 +115,8 @@ const FRIENDLY: Record<string, string> = {
   DELIVERY_IN_PAST: "That delivery period has already started, so it can no longer be traded.",
   DELIVERY_TOO_FAR_OUT: "That delivery is too far in the future (max 35 days).",
   EXPIRY_INVALID: "Expiry must be in the future.",
+  CREDIT_LIMIT_EXCEEDED:
+    "Not enough credit: your open bids' collateral plus this one would exceed your cash. Each bid holds MW x the 95th-percentile day-ahead/real-time gap at its point (at least $10/MW).",
   DAM_CLOSED: "Day-ahead bids for that operating day closed at 10:00 AM Central the day before.",
 };
 

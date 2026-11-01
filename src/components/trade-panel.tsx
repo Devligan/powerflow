@@ -115,7 +115,11 @@ export function TradePanel({
   const [opDay, setOpDay] = useState(() => firstOpenOperatingDay(simNowMs ?? Date.now()));
   const [hours, setHours] = useState<HourKey[]>(["18"]);
   const [bidType, setBidType] = useState<"MARKET" | "LIMIT">("MARKET");
-  const [limitPrice, setLimitPrice] = useState("");
+  // A limit bid is a curve: up to four MW-at-price steps per hour, as ERCOT
+  // takes them. Each step is its own order, so the fill at any clearing price
+  // is exactly the curve's: a bid step clears at or below its price, an offer
+  // step at or above.
+  const [steps, setSteps] = useState<Array<{ mw: string; price: string }>>([{ mw: "10", price: "" }]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<Array<{ label: string; ok: boolean; detail: string }> | null>(null);
@@ -140,13 +144,17 @@ export function TradePanel({
   // Limit: ERCOT's bounds, below zero included.
   const limitProblem = (() => {
     if (bidType !== "LIMIT") return null;
-    if (!LIMIT_RE.test(limitPrice.trim())) return "Enter a limit price in $/MWh (it may be negative).";
-    const v = parseDec(limitPrice.trim());
-    if (v < parseDec(String(BID_PRICE_FLOOR)) || v > parseDec(String(BID_PRICE_CAP))) {
-      return `ERCOT accepts bid prices from −$${-BID_PRICE_FLOOR} to $${BID_PRICE_CAP.toLocaleString("en-US")}/MWh.`;
+    for (const s of steps) {
+      if (!LIMIT_RE.test(s.price.trim())) return "Enter each step's price in $/MWh (it may be negative).";
+      const v = parseDec(s.price.trim());
+      if (v < parseDec(String(BID_PRICE_FLOOR)) || v > parseDec(String(BID_PRICE_CAP))) {
+        return `ERCOT accepts bid prices from −$${-BID_PRICE_FLOOR} to $${BID_PRICE_CAP.toLocaleString("en-US")}/MWh.`;
+      }
+      if (!(Number(s.mw) > 0) || Number(s.mw) > MAX_QUANTITY) return `Each step needs 0–${MAX_QUANTITY} MW.`;
     }
     return null;
   })();
+  const totalMw = bidType === "LIMIT" ? steps.reduce((a, s) => a + (Number(s.mw) || 0), 0) : Number(quantity);
 
   const check = (() => {
     if (legs.length === 0) return { ok: false as const, message: "Choose at least one hour." };
@@ -156,7 +164,7 @@ export function TradePanel({
         product: DAM_PRODUCT,
         counterMarketId: isPath ? counterMarketId : null,
         marketId,
-        quantity,
+        quantity: bidType === "LIMIT" ? steps[0].mw : quantity,
         delivery: w,
         intervalMinutes: 60,
         priceProbe: "unknown",
@@ -168,7 +176,7 @@ export function TradePanel({
     return { ok: true as const };
   })();
 
-  const formKey = [instrumentCode, counterMarketId, side, quantity, opDay, hours.join(","), bidType, limitPrice].join("|");
+  const formKey = [instrumentCode, counterMarketId, side, quantity, opDay, hours.join(","), bidType, JSON.stringify(steps)].join("|");
   const showResult = resultKey === formKey;
 
   function setPreset(which: "PEAK" | "OFFPEAK" | "ATC" | "NONE") {
@@ -190,7 +198,7 @@ export function TradePanel({
     if (!needsCounterPoint(requireInstrument(code).settlementRule)) setCounterMarketId(null);
   }
 
-  async function placeOne(w: DeliveryWindow) {
+  async function placeOne(w: DeliveryWindow, mw: string, limit: string | null) {
     const res = await fetch("/api/orders", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -200,8 +208,8 @@ export function TradePanel({
         product: DAM_PRODUCT,
         counterMarketId: isPath ? counterMarketId : null,
         side,
-        quantityMwh: quantity,
-        limitPrice: bidType === "LIMIT" ? limitPrice.trim() : null,
+        quantityMwh: mw,
+        limitPrice: limit,
         deliveryStart: w.start,
         deliveryEnd: w.end,
       }),
@@ -225,8 +233,12 @@ export function TradePanel({
     for (const h of chosen) {
       const label = `HE${String(h.he).padStart(2, "0")}${h.repeated ? "*" : ""}`;
       try {
-        await placeOne(hourWindow(h.startMs));
-        out.push({ label, ok: true, detail: bidType === "LIMIT" ? `limit ${limitPrice.trim()}` : "at clearing" });
+        if (bidType === "LIMIT") {
+          for (const s of steps) await placeOne(hourWindow(h.startMs), s.mw.trim(), s.price.trim());
+        } else {
+          await placeOne(hourWindow(h.startMs), quantity, null);
+        }
+        out.push({ label, ok: true, detail: bidType === "LIMIT" ? `-step curve` : "at clearing" });
       } catch (err) {
         out.push({ label, ok: false, detail: err instanceof Error ? err.message : "Refused" });
       }
@@ -239,7 +251,7 @@ export function TradePanel({
   const counterOptions = markets.filter((m) => m.id !== marketId);
   const counterPoint = counterOptions.find((m) => m.id === counterMarketId)?.settlementPoint ?? null;
   const isBuy = side === "BUY";
-  const qtyNum = Number(quantity);
+  const qtyNum = totalMw;
   const placedCount = results?.filter((r) => r.ok).length ?? 0;
 
   return (
@@ -327,7 +339,8 @@ export function TradePanel({
           </div>
         </div>
 
-        {/* Quantity */}
+        {/* Quantity: an at-clearing bid's MW (a curve carries MW per step) */}
+        {bidType === "MARKET" && (
         <div className="border-t border-white/10 pt-4">
           <label className="label" htmlFor="qty">
             Quantity · MW in each hour
@@ -343,6 +356,7 @@ export function TradePanel({
             placeholder="10"
           />
         </div>
+        )}
 
         {/* Operating day and hours */}
         <div className="border-t border-white/10 pt-4">
@@ -429,24 +443,47 @@ export function TradePanel({
           </div>
           {bidType === "LIMIT" && (
             <div className="mt-3">
-              <label className="label" htmlFor="limit-price">
-                Limit · $/MWh (−{BID_PRICE_FLOOR * -1} to {BID_PRICE_CAP.toLocaleString("en-US")})
-              </label>
-              <input
-                id="limit-price"
-                type="text"
-                inputMode="decimal"
-                required
-                className="input mono"
-                value={limitPrice}
-                onChange={(e) => setLimitPrice(e.target.value)}
-                placeholder={isBuy ? "35.00" : "-5.00"}
-              />
+              <span className="label">
+                Bid curve · MW at $/MWh (−{BID_PRICE_FLOOR * -1} to {BID_PRICE_CAP.toLocaleString("en-US")})
+              </span>
+              <div className="space-y-1.5">
+                {steps.map((s, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <input
+                      aria-label={`Step ${i + 1} MW`}
+                      inputMode="decimal"
+                      className="input mono w-20"
+                      value={s.mw}
+                      onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, mw: e.target.value } : x)))}
+                    />
+                    <span className="text-[11px] t-mute">MW at</span>
+                    <input
+                      id={i === 0 ? "limit-price" : undefined}
+                      aria-label={`Step ${i + 1} price`}
+                      inputMode="decimal"
+                      className="input mono flex-1"
+                      value={s.price}
+                      onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, price: e.target.value } : x)))}
+                      placeholder={isBuy ? "35.00" : "-5.00"}
+                    />
+                    {steps.length > 1 && (
+                      <button type="button" className="btn btn-sm" onClick={() => setSteps(steps.filter((_, j) => j !== i))}>
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {steps.length < 4 && (
+                  <button type="button" className="btn btn-sm" onClick={() => setSteps([...steps, { mw: "5", price: "" }])}>
+                    + step
+                  </button>
+                )}
+              </div>
               <p className="mt-2 text-[11px] leading-relaxed t-mute">
                 {isBuy
                   ? "The most you will pay day-ahead: the bid clears in hours that price at or below it."
                   : "The least you will sell for day-ahead: the offer clears in hours that price at or above it."}{" "}
-                It can be below zero. The fill is the clearing price itself, never your limit.
+                Prices can be below zero. Each step is a separate order; the fill is the clearing price itself, never your limit.
               </p>
             </div>
           )}
@@ -512,8 +549,8 @@ export function TradePanel({
         <button type="submit" disabled={busy || !check.ok} className="btn btn-primary w-full">
           {busy
             ? "Placing"
-            : `${sideLabels[side][0]} ${quantity || "0"} MW × ${chosen.length} h ${
-                bidType === "LIMIT" ? `@ ${limitPrice || "—"}` : "at clearing"
+            : `${sideLabels[side][0]} ${totalMw || 0} MW × ${chosen.length} h ${
+                bidType === "LIMIT" ? `on a ${steps.length}-step curve` : "at clearing"
               }`}
         </button>
 

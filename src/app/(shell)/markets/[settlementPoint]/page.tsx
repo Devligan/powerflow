@@ -5,6 +5,7 @@ import Link from "next/link";
 import { getMarketPrices, listMarketOptions } from "@/lib/markets";
 import { TradePanel } from "@/components/trade-panel";
 import { PriceChart } from "@/components/price-chart";
+import { FundamentalsPanel } from "@/components/fundamentals-panel";
 import { sourceInfo } from "@/lib/format";
 import { dateTime, shortDate } from "@/lib/time";
 import { getViewerTimeZone } from "@/lib/time-zone-server";
@@ -160,6 +161,14 @@ export default async function MarketDetailPage({
           <div className="min-w-0 lg:col-start-1 lg:row-start-2">
             <Suspense fallback={<MarketIntelSkeleton />}>
               <MarketIntel marketId={market.id} nowMs={Date.parse(clock.now)} asOf={asOf} />
+            </Suspense>
+          </div>
+        )}
+        {/* Live forecasts describe today's grid, not a replayed day. */}
+        {!asOf && (
+          <div className="min-w-0 lg:col-start-1">
+            <Suspense fallback={null}>
+              <FundamentalsPanel />
             </Suspense>
           </div>
         )}

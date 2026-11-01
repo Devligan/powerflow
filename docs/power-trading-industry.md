@@ -86,28 +86,21 @@ offers netted. Available credit = total credit limit − total potential exposur
 | Shapes | Consecutive-hour strips | Hour sheet with 5x16 / 2x16 / 7x8 / 7x24 presets, NERC-holiday aware |
 | Time | UTC | Viewer's zone; ERCOT HE and operating days on Central |
 
-## 4. What remains (in priority order)
+## 4. Since then
 
-1. **Collateral, not cash, for virtuals.** The engine still debits a DEC's
-   notional and credits an INC's until settlement, and caps gross notional at
-   $500k. ERCOT instead holds collateral against potential exposure (above).
-   Replacing it with a risk-based requirement (e.g. per-MW exposure from each
-   point's historical DART distribution) changes accounting, margin and their
-   TS mirrors.
-2. **Fundamentals.** Traders bid on forecasts. ERCOT publishes them on the
-   public MIS: seven-day load forecast by weather zone, hourly wind and solar
-   production forecasts by region (e.g. NP4-737-CD solar, NP4-742-CD wind by
-   region; confirm the current IDs in the ERCOT data product catalog). Ingest
-   and show them beside prices.
-3. **Bid curves.** ERCOT bids are price/quantity curves (several segments per
-   hour), not single prices.
-4. **Term products.** Futures/forwards need a forward price, which is not
-   public; settling against real-time averages is easy, entry is not. Options:
-   a licensed curve, or clearly-labelled simulated quotes.
-5. **CRR auctions.** ERCOT publishes auction results; an auction-cleared
-   entry price would make CRRs meaningful.
-6. **Performance analytics** traders are judged on: P&L by hour/point/shape,
-   hit rate, average DART captured, drawdown, Sharpe.
+- **Collateral (0040)**: a bid holds MW × the 95th-percentile |RT − DA| at its
+  point over 30 days (≥ $10/MW), and open bids must fit within cash — ERCOT's
+  exposure logic in simple form. Still open: fills move cash by notional
+  rather than posting collateral, and the $500k gross cap remains.
+- **Fundamentals**: the market page shows tomorrow's hourly load, wind and
+  solar forecasts, net load and reserve, and the week's peak load, from ERCOT's
+  public dashboard feeds (src/lib/fundamentals.ts).
+- **Bid curves**: a limit bid is up to four MW-at-price steps per hour, each
+  its own order — the same fills as a step curve.
+- **Desk analytics**: P&L per settled MWh, DEC vs INC, by hour ending, daily
+  Sharpe.
+- **Not done**: futures/forwards (no public forward curve) and CRRs (needs
+  ERCOT auction prices). Both need a data source before they can be honest.
 
 ## Sources
 

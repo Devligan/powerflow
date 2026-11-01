@@ -1,3 +1,4 @@
+import { centralHourEnding } from "@/lib/ercot/hour-ending";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { m } from "@/lib/api";
 import { parseDbDec } from "@/lib/money";
@@ -34,6 +35,17 @@ export interface AnalyticsResult {
   maxDrawdown: string;
   pnlByDay: Array<{ day: string; pnl: string }>;
   pnlByMarket: Array<{ market: string; pnl: string }>;
+  /** How a DART desk is judged: what each settled MWh earned, by side and
+   *  by hour ending, and the risk-adjusted return of daily P&L. */
+  desk: {
+    pnlPerMwh: string | null;
+    settledMwh: string;
+    decPnl: string;
+    incPnl: string;
+    pnlByHour: Array<{ he: number; pnl: string }>;
+    /** Annualized Sharpe of daily realized P&L; null under two days. */
+    sharpe: number | null;
+  };
 }
 
 /** Derive per-trade realized P&L by replaying history through the trading
@@ -186,6 +198,30 @@ export async function getAnalytics(userId: string): Promise<AnalyticsResult> {
     if (dd > maxDD) maxDD = dd;
   }
 
+  // Desk metrics. A position's P&L is realized on the trade that closes it
+  // (for a virtual, the real-time settlement): closing a long (a DEC) is a
+  // SELL, closing a short (an INC) a BUY.
+  const closing = replay.trades.filter((t) => t.realizedPnL !== 0n);
+  const settledMwh = closing.reduce((s, t) => s + t.quantityMwh, 0n);
+  const pnlPerMwh = settledMwh > 0n ? (replay.cumulativeRealized * 1_000_000n) / settledMwh : null;
+  let decPnl = 0n;
+  let incPnl = 0n;
+  const byHour = new Map<number, bigint>();
+  for (const t of closing) {
+    if (t.side === "SELL") decPnl += t.realizedPnL;
+    else incPnl += t.realizedPnL;
+    const he = centralHourEnding(Date.parse(t.deliveryStart)).he;
+    byHour.set(he, (byHour.get(he) ?? 0n) + t.realizedPnL);
+  }
+  const cumulative = [...byDay.values()].map((v) => Number(v) / 1e6);
+  const daily = cumulative.map((v, i) => v - (i ? cumulative[i - 1] : 0));
+  let sharpe: number | null = null;
+  if (daily.length >= 2) {
+    const mean = daily.reduce((a, b) => a + b, 0) / daily.length;
+    const sd = Math.sqrt(daily.reduce((a, b) => a + (b - mean) ** 2, 0) / (daily.length - 1));
+    sharpe = sd > 0 ? Math.round((mean / sd) * Math.sqrt(252) * 100) / 100 : null;
+  }
+
   return {
     currentEquity: m(metrics.equity),
     startingCash: m(startingCash),
@@ -216,5 +252,13 @@ export async function getAnalytics(userId: string): Promise<AnalyticsResult> {
       market: pointByMarket.get(id) ?? id,
       pnl: m(pnl),
     })),
+    desk: {
+      pnlPerMwh: pnlPerMwh == null ? null : m(pnlPerMwh),
+      settledMwh: m(settledMwh),
+      decPnl: m(decPnl),
+      incPnl: m(incPnl),
+      pnlByHour: [...byHour.entries()].sort((a, b) => a[0] - b[0]).map(([he, pnl]) => ({ he, pnl: m(pnl) })),
+      sharpe,
+    },
   };
 }
