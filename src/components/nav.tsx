@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Brand } from "@/components/brand";
-import { Lamp } from "@/components/ui/lamp";
 import { UtcClock } from "@/components/ui/clock";
 
 const NAV = [
@@ -44,7 +43,7 @@ export function Nav({
 
         <span className="hidden h-5 w-px bg-white/10 sm:block" />
 
-        <div className="hidden items-center md:flex">
+        <div className="hidden items-center lg:flex">
           {NAV.map((n) => (
             <Link
               key={n.href}
@@ -57,21 +56,17 @@ export function Nav({
           ))}
         </div>
 
+        {/* Eight sections, the clock and the account just fit the 6xl
+            column, so the "ERCOT data · paper trading" badge lives in the
+            shell footer instead. */}
         <div className="ml-auto flex items-center gap-3">
-          <span
-            className="badge badge-green hidden lg:inline-flex"
-            title="Prices are ERCOT's own MIS publications; orders, fills and accounts are paper."
-          >
-            <Lamp pulse />
-            ERCOT data · paper trading
-          </span>
           <span className="hidden border-l border-white/10 pl-3 sm:block">
             <UtcClock />
           </span>
 
           {user ? (
             <>
-              <span className="caption hidden max-w-[10rem] truncate sm:block">
+              <span className="caption hidden max-w-[10rem] truncate xl:block">
                 {displayName || "trader"}
               </span>
               <form action="/auth/signout" method="post">
@@ -88,7 +83,7 @@ export function Nav({
         </div>
       </div>
 
-      <div className="scroll-thin flex items-center gap-1 overflow-x-auto border-t border-white/5 px-4 md:hidden">
+      <div className="scroll-thin flex items-center gap-1 overflow-x-auto border-t border-white/5 px-4 lg:hidden">
         {NAV.map((n) => (
           <Link
             key={n.href}
