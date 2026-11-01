@@ -55,9 +55,20 @@ interface WindSolarRow {
 
 async function get<T>(name: string): Promise<T | null> {
   try {
-    const res = await fetch(`${BASE}/${name}.json`, { next: { revalidate: 300 } });
-    return res.ok ? ((await res.json()) as T) : null;
-  } catch {
+    // ERCOT's edge refuses server requests without a browser-like
+    // User-Agent (the MIS ingestion sends one for the same reason).
+    const res = await fetch(`${BASE}/${name}.json`, {
+      headers: { "User-Agent": "Mozilla/5.0 (PowerFlow fundamentals)", Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+      next: { revalidate: 300 },
+    });
+    if (!res.ok) {
+      console.error(`[fundamentals] ${name}: HTTP ${res.status}`);
+      return null;
+    }
+    return (await res.json()) as T;
+  } catch (e) {
+    console.error(`[fundamentals] ${name}: ${e instanceof Error ? e.message : e}`);
     return null;
   }
 }
