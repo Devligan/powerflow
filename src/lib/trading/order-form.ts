@@ -281,8 +281,11 @@ export function checkOrderForm(input: OrderFormInput): OrderFormCheck {
     return { ok: false, message: "That product is not one this desk trades." };
   }
 
-  if (input.delivery.endMs <= now) {
-    return { ok: false, message: "That delivery already started — that interval has settled." };
+  // Trading closes when delivery STARTS (0037): inside the period, its
+  // real-time prints are already being published, so a price fixed before
+  // it would be a bet on a partly known result.
+  if (input.delivery.startMs <= now) {
+    return { ok: false, message: "That delivery period has already started, so it can no longer be traded." };
   }
   if (input.delivery.startMs > now + MAX_DAYS_OUT * 24 * HOUR_MS) {
     return {

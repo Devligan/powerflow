@@ -235,6 +235,16 @@ describe("order ticket validation", () => {
     expect(checkOrderForm(tooFar).ok).toBe(false);
   });
 
+  it("closes trading when delivery starts, not when it ends (0037)", () => {
+    // Inside the hour its real-time prints are already being published.
+    const inProgress = ticket({ delivery: win(1), now: Date.parse("2026-09-22T01:40:00.000Z") });
+    expect(checkOrderForm(inProgress).ok).toBe(false);
+    const atStart = ticket({ delivery: win(1), now: Date.parse("2026-09-22T01:00:00.000Z") });
+    expect(checkOrderForm(atStart).ok).toBe(false);
+    const justBefore = ticket({ delivery: win(1), now: Date.parse("2026-09-22T00:59:59.000Z") });
+    expect(checkOrderForm(justBefore).ok).toBe(true);
+  });
+
   it("blocks a delivery it knows has no price, and lets an unverifiable one through", () => {
     expect(checkOrderForm(ticket({ priceProbe: "unpriced" })).ok).toBe(false);
     // "unknown" is not a reason to refuse — the server is the authority

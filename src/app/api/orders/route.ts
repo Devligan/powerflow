@@ -104,7 +104,7 @@ const FRIENDLY: Record<string, string> = {
   QUANTITY_INVALID: "Quantity must be a positive number.",
   LIMIT_PRICE_INVALID: "Limit price must be a positive number.",
   DELIVERY_INVALID: "The delivery window is invalid.",
-  DELIVERY_IN_PAST: "Delivery already started — that interval has settled.",
+  DELIVERY_IN_PAST: "That delivery period has already started, so it can no longer be traded.",
   DELIVERY_TOO_FAR_OUT: "That delivery is too far in the future (max 35 days).",
   EXPIRY_INVALID: "Expiry must be in the future.",
 };
