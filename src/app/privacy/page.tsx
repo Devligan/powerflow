@@ -17,12 +17,17 @@ export default function PrivacyPage() {
           <li>
             <strong className="t-fg">Account:</strong> your email address and, if
             you use a password, a hash of it held by our authentication provider.
+            PowerFlow itself never stores or logs your password, and changes to
+            your email or password are confirmed through your inbox.
             If you sign in with Google, the name, email address and profile
             picture Google shares with us.
           </li>
           <li>
-            <strong className="t-fg">Profile:</strong> a username derived from your
-            email address, and whether you have joined the public standings.
+            <strong className="t-fg">Profile:</strong> the display name and
+            username you choose, an optional profile picture, and whether you
+            have joined the public standings. Neither name is derived from your
+            email address, and pictures you upload are cropped and stripped of
+            their metadata (such as location) before they leave your browser.
           </li>
           <li>
             <strong className="t-fg">Trading activity:</strong> your simulated
@@ -64,19 +69,24 @@ export default function PrivacyPage() {
           &quot;Continue with Google&quot;.
         </p>
         <p>
-          The standings are opt-in. New accounts are not listed; if you join, your
-          username and aggregate figures (equity, return, trade count) are visible
-          to anyone viewing the standings. Your positions and individual trades
-          are never shown to anyone else, and you can leave at any time.
+          The standings are opt-in. New accounts are private and not listed; if
+          you join, your display name, profile picture and aggregate figures
+          (equity, return, trade count) are visible to anyone viewing the
+          standings. Your email address, username, positions and individual
+          trades are never shown to anyone else, and you can make your account
+          private again at any time in Settings.
         </p>
       </LegalSection>
 
       <LegalSection heading="Retention and deletion">
         <p>
-          Your data is kept while your account exists. To delete your account,
-          email <a className="t-accent hover:underline" href={`mailto:${LEGAL_CONTACT}`}>{LEGAL_CONTACT}</a>{" "}
-          from the address you signed up with; deleting it removes your profile,
-          account, positions, trades and audit history.
+          Your data is kept while your account exists. You can delete your
+          account yourself at any time under Settings → Delete account; this
+          permanently removes your profile, picture, paper account, orders,
+          positions, trades and audit history. You can also download your trade
+          history there first. If you cannot sign in, email{" "}
+          <a className="t-accent hover:underline" href={`mailto:${LEGAL_CONTACT}`}>{LEGAL_CONTACT}</a>{" "}
+          from the address you signed up with.
         </p>
       </LegalSection>
 

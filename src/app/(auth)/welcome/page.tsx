@@ -27,6 +27,14 @@ export default async function WelcomePage({
   if (!profile) throw new Error("Your account could not be loaded.");
   if (profile.onboarded_at !== null) redirect(next);
 
+  // Accounts created before 0036 were given the part of their email before
+  // the "@" as a display name. Don't suggest it: the display name is public.
+  const emailLocal = (user.email ?? "").split("@")[0].toLowerCase();
+  const suggestedName =
+    profile.display_name && profile.display_name.toLowerCase() !== emailLocal
+      ? profile.display_name
+      : "";
+
   return (
     <div className="card p-0">
       <div className="border-b border-white/10 px-6 py-4">
@@ -42,7 +50,7 @@ export default async function WelcomePage({
           <p className="label">Profile picture · optional</p>
           <AvatarEditor
             initialUrl={profile.avatar_url}
-            name={profile.display_name ?? profile.username}
+            name={suggestedName || profile.username}
           />
         </div>
         <ProfileForm
@@ -50,7 +58,7 @@ export default async function WelcomePage({
           next={next}
           initial={{
             username: profile.username,
-            displayName: profile.display_name ?? "",
+            displayName: suggestedName,
             leaderboardOptIn: profile.leaderboard_opt_in,
           }}
         />

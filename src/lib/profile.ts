@@ -98,6 +98,24 @@ export function avatarExtension(type: AvatarType): string {
   return type === "image/png" ? "png" : type === "image/jpeg" ? "jpg" : "webp";
 }
 
+/**
+ * The object path inside the avatars bucket that a stored picture URL points
+ * at, or null for anything else (an OAuth provider's picture, a foreign URL).
+ * Pictures are named randomly, never by user id: the URL is public, and it
+ * must not be a way to learn who an account is.
+ */
+export function avatarPathFromUrl(
+  url: string | null | undefined,
+  bucket = "avatars"
+): string | null {
+  if (!url) return null;
+  const marker = `/storage/v1/object/public/${bucket}/`;
+  const at = url.indexOf(marker);
+  if (at < 0) return null;
+  const path = decodeURIComponent(url.slice(at + marker.length).split("?")[0]);
+  return path && !path.includes("..") ? path : null;
+}
+
 /* ---------------------------------------------------------------------
  * Password changes
  * ------------------------------------------------------------------- */

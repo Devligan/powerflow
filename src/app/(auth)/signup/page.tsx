@@ -40,7 +40,16 @@ function SignupForm() {
           emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
         },
       });
-      if (error) throw new Error(error.message);
+      if (error) {
+        // GoTrue's "already registered" would confirm that an address has an
+        // account; answer in terms that hold either way.
+        if (error.code === "user_already_exists" || error.code === "email_exists") {
+          throw new Error(
+            "An account could not be created with that email. If it is already yours, sign in or reset your password."
+          );
+        }
+        throw new Error(error.message);
+      }
       // Confirmation-dependent: if a session was issued, proceed; otherwise
       // tell the user to confirm their inbox.
       // Either way the account chooses its trader name next (/welcome).

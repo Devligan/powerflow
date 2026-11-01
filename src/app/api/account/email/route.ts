@@ -31,13 +31,12 @@ export async function POST(req: Request) {
     { emailRedirectTo: authCallbackUrl(req, "/settings?email=confirmed") }
   );
   if (error) {
-    const status = error.status === 429 ? 429 : 422;
-    return fail(
-      status === 429
-        ? "Too many emails sent. Wait a minute and try again."
-        : error.message,
-      status
-    );
+    if (error.status === 429) {
+      return fail("Too many emails sent. Wait a minute and try again.", 429);
+    }
+    // Not GoTrue's own wording: "already registered" would tell anyone with
+    // an account whether some other address has one too.
+    return fail("That address can't be used. Check it, or try a different one.", 422);
   }
   return ok({ pendingEmail: data.user?.new_email ?? email });
 }

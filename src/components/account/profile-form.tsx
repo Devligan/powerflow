@@ -136,7 +136,7 @@ export function ProfileForm({
         <p className="mt-1.5 text-[11px] t-mute">
           {nameProblem && displayName.trim() !== ""
             ? nameProblem
-            : "Shown to other traders, on the standings. Up to 40 characters."}
+            : "Shown to other traders on the standings, so avoid your email address or anything private. Up to 40 characters."}
         </p>
       </div>
       <div>
@@ -167,7 +167,7 @@ export function ProfileForm({
               ? "Checking…"
               : availability.state === "ok" && !availability.current
                 ? `@${normalizeUsername(username)} is available.`
-                : "Unique. Lowercase letters, digits and underscores, 3–30 characters."}
+                : "Unique and private: only you see it. Lowercase letters, digits and underscores, 3–30 characters."}
         </p>
       </div>
 

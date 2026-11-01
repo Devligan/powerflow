@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  avatarPathFromUrl,
   displayNameProblem,
   describeProfileError,
   initials,
@@ -65,6 +66,19 @@ describe("sniffImageType", () => {
   it("refuses anything else, SVG included", () => {
     expect(sniffImageType(new TextEncoder().encode("<svg onload=alert(1)>"))).toBeNull();
     expect(sniffImageType(new Uint8Array([0x47, 0x49, 0x46, 0x38]))).toBeNull();
+  });
+});
+
+describe("avatarPathFromUrl", () => {
+  const base = "https://x.supabase.co/storage/v1/object/public/avatars/";
+  it("reads our own bucket's path", () => {
+    expect(avatarPathFromUrl(`${base}3f2a.webp`)).toBe("3f2a.webp");
+    expect(avatarPathFromUrl(`${base}3f2a.webp?v=1`)).toBe("3f2a.webp");
+  });
+  it("ignores a provider's picture and path tricks", () => {
+    expect(avatarPathFromUrl("https://lh3.googleusercontent.com/a/abc")).toBeNull();
+    expect(avatarPathFromUrl(`${base}../other/x.png`)).toBeNull();
+    expect(avatarPathFromUrl(null)).toBeNull();
   });
 });
 

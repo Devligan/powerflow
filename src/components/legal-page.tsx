@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Brand } from "@/components/brand";
 
 export const LEGAL_CONTACT = "sriharshachallangi@gmail.com";
-export const LEGAL_EFFECTIVE = "October 30, 2026";
+export const LEGAL_EFFECTIVE = "November 1, 2026";
 
 /** Shared frame for the public policy pages: the site header, a readable
  *  measure, and the cross-links a visitor expects at the foot. */

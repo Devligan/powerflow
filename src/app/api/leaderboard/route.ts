@@ -1,51 +1,38 @@
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import { ok, fail, m } from "@/lib/api";
 import { parseDbDec } from "@/lib/money";
+import { getPublicStandings } from "@/lib/standings";
 
 export const dynamic = "force-dynamic";
 
-interface LeaderboardRow {
-  user_id: string;
-  username: string;
-  display_name: string | null;
-  starting_cash: string;
-  cash_balance: string;
-  realized_pnl: string;
-  marked_value: string;
-  equity: string;
-  return_bps: string;
-  open_notional_mwh: string;
-  open_notional_mw: string;
-  positions_count: number;
-  trades_count: number;
-  joined_at: string;
-}
-
+/**
+ * The public standings as JSON. Unauthenticated, so it carries exactly what
+ * the Rank page shows anyone: chosen display names, pictures and aggregate
+ * figures — never user ids, usernames or emails (src/lib/standings.ts).
+ */
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const top = Math.min(Math.max(Number(url.searchParams.get("top") ?? "100"), 1), 100);
 
-  const admin = supabaseAdmin();
-  const { data, error } = await admin.rpc("get_leaderboard", { p_top: top });
-  if (error) return fail(error.message, 500);
-
-  const rows = (data ?? []) as unknown as LeaderboardRow[];
-  return ok({
-    leaderboard: rows.map((r, i) => ({
-      rank: i + 1,
-      userId: r.user_id,
-      username: r.username,
-      displayName: r.display_name,
-      equity: m(parseDbDec(r.equity)),
-      returnBps: Number(parseDbDec(r.return_bps)),
-      realizedPnl: m(parseDbDec(r.realized_pnl)),
-      markedValue: m(parseDbDec(r.marked_value)),
-      // Notional per unit — never a single mixed total.
-      openNotionalMwh: m(parseDbDec(r.open_notional_mwh)),
-      openNotionalMw: m(parseDbDec(r.open_notional_mw)),
-      positionsCount: r.positions_count,
-      tradesCount: r.trades_count,
-      joinedAt: r.joined_at,
-    })),
-  });
+  try {
+    const rows = await getPublicStandings(top);
+    return ok({
+      leaderboard: rows.map((r) => ({
+        rank: r.rank,
+        displayName: r.displayName,
+        avatarUrl: r.avatarUrl,
+        equity: m(parseDbDec(r.equity)),
+        returnBps: Number(parseDbDec(r.returnBps)),
+        realizedPnl: m(parseDbDec(r.realizedPnl)),
+        markedValue: m(parseDbDec(r.markedValue)),
+        // Notional per unit — never a single mixed total.
+        openNotionalMwh: m(parseDbDec(r.openNotionalMwh)),
+        openNotionalMw: m(parseDbDec(r.openNotionalMw)),
+        positionsCount: r.positionsCount,
+        tradesCount: r.tradesCount,
+        joinedAt: r.joinedAt,
+      })),
+    });
+  } catch {
+    return fail("Standings are unavailable right now.", 500);
+  }
 }

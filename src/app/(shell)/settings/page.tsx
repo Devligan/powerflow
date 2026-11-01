@@ -180,8 +180,6 @@ export default async function SettingsPage({
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-1.5 text-[12.5px]">
           <dt className="t-mute">Member since</dt>
           <dd className="mono">{centralDate(profile.created_at)}</dd>
-          <dt className="t-mute">Account ID</dt>
-          <dd className="mono truncate t-dim">{user.id}</dd>
         </dl>
         <a href="/api/trades/export" className="btn btn-sm inline-flex">
           Download trade blotter (CSV)

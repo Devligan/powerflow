@@ -34,7 +34,22 @@ export async function POST(req: Request) {
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 401 });
+    // One answer for a wrong password and an unknown address, so the form
+    // cannot be used to find out who has an account. An unconfirmed address
+    // is only reported after the password matched, so saying so leaks nothing.
+    if (error.code === "email_not_confirmed") {
+      return NextResponse.json(
+        { error: "Confirm your email address first, using the link we sent you." },
+        { status: 401 }
+      );
+    }
+    if (error.status === 429) {
+      return NextResponse.json(
+        { error: "Too many attempts. Wait a minute and try again." },
+        { status: 429 }
+      );
+    }
+    return NextResponse.json({ error: "Incorrect email or password." }, { status: 401 });
   }
 
   return NextResponse.json({ ok: true });

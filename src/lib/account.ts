@@ -1,6 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { PASSWORD_LINK_WINDOW_S, recoveryAgeSeconds } from "@/lib/profile";
+import {
+  PASSWORD_LINK_WINDOW_S,
+  avatarPathFromUrl,
+  recoveryAgeSeconds,
+} from "@/lib/profile";
 
 /**
  * Server-side account helpers shared by the settings routes and pages.
@@ -35,13 +39,13 @@ export async function passwordLinkStatus(): Promise<
   return { ok: true, secondsLeft: PASSWORD_LINK_WINDOW_S - age };
 }
 
-/** Remove every stored picture of a user (on replace, removal or deletion). */
-export async function removeAvatarFiles(userId: string, keep?: string): Promise<void> {
-  const storage = supabaseAdmin().storage.from(AVATAR_BUCKET);
-  const { data, error } = await storage.list(userId, { limit: 100 });
-  if (error || !data) return;
-  const paths = data
-    .map((f) => `${userId}/${f.name}`)
-    .filter((p) => p !== keep);
-  if (paths.length > 0) await storage.remove(paths);
+/**
+ * Delete the stored file behind a picture URL (on replace, removal or account
+ * deletion). A URL that is not in our bucket — an OAuth provider's picture —
+ * has nothing of ours to delete.
+ */
+export async function removeAvatarAt(url: string | null | undefined): Promise<void> {
+  const path = avatarPathFromUrl(url, AVATAR_BUCKET);
+  if (!path) return;
+  await supabaseAdmin().storage.from(AVATAR_BUCKET).remove([path]);
 }

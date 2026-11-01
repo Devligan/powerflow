@@ -2,28 +2,12 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { parseDbDec } from "@/lib/money";
 import { getSessionUser } from "@/lib/auth";
 import { usd, bpsToPercent, centralDate } from "@/lib/format";
+import { getPublicStandings, type StandingsRow } from "@/lib/standings";
 import { PageHeader } from "@/components/ui/page-header";
 import { LeaderboardOptIn } from "@/components/leaderboard-opt-in";
 import { Avatar } from "@/components/ui/avatar";
 
 export const dynamic = "force-dynamic";
-
-interface LeaderboardRow {
-  user_id: string;
-  username: string;
-  display_name: string | null;
-  starting_cash: string;
-  cash_balance: string;
-  realized_pnl: string;
-  marked_value: string;
-  equity: string;
-  return_bps: string;
-  open_notional_mwh: string;
-  open_notional_mw: string;
-  positions_count: number;
-  trades_count: number;
-  joined_at: string;
-}
 
 export default async function LeaderboardPage({
   searchParams,
@@ -33,41 +17,16 @@ export default async function LeaderboardPage({
   const { top } = await searchParams;
   const n = Math.min(Math.max(Number(top ?? "100"), 1), 100);
 
-  const [user, result] = await Promise.all([
-    getSessionUser().catch(() => null),
-    (async () => {
-      try {
-        const { data, error } = await supabaseAdmin().rpc("get_leaderboard", {
-          p_top: n,
-        });
-        if (error) throw new Error(error.message);
-        return {
-          rows: (data ?? []) as unknown as Array<Record<string, unknown>>,
-          error: null as string | null,
-        };
-      } catch (e) {
-        return {
-          rows: [] as Array<Record<string, unknown>>,
-          error: e instanceof Error ? e.message : "Leaderboard unavailable",
-        };
-      }
-    })(),
-  ]);
-
-  const { rows, error } = result;
-
-  // Pictures for the listed traders only (get_leaderboard predates avatars).
-  const listedIds = rows.map((r) => String(r.user_id));
-  const avatars = new Map<string, string>();
-  if (listedIds.length > 0) {
-    const { data } = await supabaseAdmin()
-      .from("profiles")
-      .select("id, avatar_url")
-      .in("id", listedIds)
-      .not("avatar_url", "is", null);
-    for (const p of data ?? []) avatars.set(p.id as string, p.avatar_url as string);
+  // Rows carry no user ids or usernames: this page's payload is public, and
+  // React keys and props are serialised into it (src/lib/standings.ts).
+  const user = await getSessionUser().catch(() => null);
+  let rows: StandingsRow[] = [];
+  let error: string | null = null;
+  try {
+    rows = await getPublicStandings(n, user?.id ?? null);
+  } catch {
+    error = "Leaderboard unavailable";
   }
-
   // The viewer's own setting, for the join/leave control.
   const optedIn = user
     ? Boolean(
@@ -96,8 +55,7 @@ export default async function LeaderboardPage({
 
       {error ? (
         <div className="card text-[13px] t-dim">
-          Standings are unavailable right now.{" "}
-          <span className="t-mute">({error})</span>
+          Standings are unavailable right now.
         </div>
       ) : (
         <section className="card p-0">
@@ -124,36 +82,30 @@ export default async function LeaderboardPage({
                     </td>
                   </tr>
                 ) : (
-                  rows.map((r, i) => {
-                    const row = r as unknown as LeaderboardRow;
+                  rows.map((row) => {
                     const equity = parseDbDec(row.equity);
-                    const realized = parseDbDec(row.realized_pnl);
-                    const isMe = user != null && row.user_id === user.id;
+                    const realized = parseDbDec(row.realizedPnl);
                     return (
-                      <tr key={row.user_id}>
+                      <tr key={row.rank}>
                         <td className="mono">
-                          <span className={i < 3 ? "t-accent" : "t-mute"}>
-                            {String(i + 1).padStart(2, "0")}
+                          <span className={row.rank <= 3 ? "t-accent" : "t-mute"}>
+                            {String(row.rank).padStart(2, "0")}
                           </span>
                         </td>
                         <td className="font-medium">
                           <span className="flex items-center gap-2">
-                            <Avatar
-                              url={avatars.get(row.user_id)}
-                              name={row.display_name || row.username}
-                              size={22}
-                            />
-                            {row.display_name || row.username || "trader"}
-                            {isMe && (
+                            <Avatar url={row.avatarUrl} name={row.displayName} size={22} />
+                            {row.displayName}
+                            {row.isViewer && (
                               <span className="badge badge-amber">You</span>
                             )}
                           </span>
                         </td>
                         <td className="mono text-right">{usd(equity)}</td>
                         <td
-                          className={`mono text-right ${parseFloat(row.return_bps) >= 0 ? "pos" : "neg"}`}
+                          className={`mono text-right ${parseFloat(row.returnBps) >= 0 ? "pos" : "neg"}`}
                         >
-                          {bpsToPercent(row.return_bps)}
+                          {bpsToPercent(row.returnBps)}
                         </td>
                         <td
                           className={`mono text-right ${realized >= 0n ? "pos" : "neg"}`}
@@ -161,14 +113,14 @@ export default async function LeaderboardPage({
                           {usd(realized)}
                         </td>
                         <td className="mono text-right">
-                          {usd(parseDbDec(row.marked_value))}
+                          {usd(parseDbDec(row.markedValue))}
                         </td>
                         <td className="mono text-right">
-                          {row.positions_count}
+                          {row.positionsCount}
                         </td>
-                        <td className="mono text-right">{row.trades_count}</td>
+                        <td className="mono text-right">{row.tradesCount}</td>
                         <td className="mono t-mute">
-                          {centralDate(row.joined_at)}
+                          {centralDate(row.joinedAt)}
                         </td>
                       </tr>
                     );

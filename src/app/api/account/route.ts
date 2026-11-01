@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSessionUser, getUserProfile } from "@/lib/auth";
 import { ok, fail } from "@/lib/api";
-import { removeAvatarFiles } from "@/lib/account";
+import { removeAvatarAt } from "@/lib/account";
 import { normalizeUsername } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
@@ -29,9 +29,10 @@ export async function DELETE(req: Request) {
     return fail("Type your username exactly to confirm.", 422);
   }
 
-  await removeAvatarFiles(user.id);
+  await removeAvatarAt(profile.avatar_url);
   const { error } = await supabaseAdmin().auth.admin.deleteUser(user.id);
   if (error) {
+    // The id only, never the email: server logs are not the place for it.
     console.error(`[account] delete failed for ${user.id}: ${error.message}`);
     return fail("Your account could not be deleted. Please try again.", 500);
   }

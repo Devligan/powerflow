@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, getUserProfile } from "@/lib/auth";
 import { ok, fail } from "@/lib/api";
-import { AVATAR_BUCKET, removeAvatarFiles } from "@/lib/account";
+import { AVATAR_BUCKET, removeAvatarAt } from "@/lib/account";
 import { AVATAR_MAX_BYTES, avatarExtension, sniffImageType } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
@@ -12,9 +12,11 @@ export const dynamic = "force-dynamic";
  * The browser crops and scales the picture to a small square before sending
  * it (which also drops its EXIF metadata, location included); this handler
  * trusts none of that. It checks the size and the file's actual bytes, stores
- * it under the user's own folder with the service role (the bucket has no
- * write policies), and records the public URL via set_profile_avatar, which
- * a user session cannot call (0035).
+ * it with the service role (the bucket has no write policies), and records the
+ * public URL via set_profile_avatar, which a user session cannot call (0035).
+ *
+ * The file gets a random name, not the user's id: its URL is public on the
+ * standings, and must not reveal who an account is.
  */
 export async function POST(req: Request) {
   const user = await getSessionUser();
@@ -29,7 +31,8 @@ export async function POST(req: Request) {
   const type = sniffImageType(bytes);
   if (!type) return fail("Use a PNG, JPEG or WebP picture.", 415);
 
-  const path = `${user.id}/${Date.now()}.${avatarExtension(type)}`;
+  const previous = (await getUserProfile(user.id))?.avatar_url ?? null;
+  const path = `${crypto.randomUUID()}.${avatarExtension(type)}`;
   const admin = supabaseAdmin();
   const storage = admin.storage.from(AVATAR_BUCKET);
   const { error: upError } = await storage.upload(path, bytes, {
@@ -50,7 +53,7 @@ export async function POST(req: Request) {
     return fail("The picture could not be saved to your profile.", 500);
   }
 
-  await removeAvatarFiles(user.id, path);
+  await removeAvatarAt(previous);
   return ok({ avatarUrl });
 }
 
@@ -59,11 +62,12 @@ export async function DELETE() {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
 
+  const previous = (await getUserProfile(user.id))?.avatar_url ?? null;
   const { error } = await supabaseAdmin().rpc("set_profile_avatar", {
     p_user_id: user.id,
     p_avatar_url: null,
   });
   if (error) return fail("The picture could not be removed.", 500);
-  await removeAvatarFiles(user.id);
+  await removeAvatarAt(previous);
   return ok({ avatarUrl: null });
 }
