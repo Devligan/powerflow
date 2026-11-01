@@ -7,7 +7,8 @@ import {
   settlementPointName,
 } from "@/lib/ercot/types";
 import { deliveryCentralToUtc } from "@/lib/ercot/mis";
-import { parseDec } from "@/lib/money";
+import { parseDbDec, parseDec } from "@/lib/money";
+import type { HourlyPrice } from "@/lib/market-stats";
 
 export interface MarketView {
   id: string;
@@ -284,9 +285,9 @@ export async function getMarketPrices(
   let series: PricePoint[];
   if (asOf) {
     // Replay: observations visible by the clock, over a window that tracks
-    // the CLOCK (not the wall clock). Intervals may deliver after the clock —
+    // the CLOCK (not the wall clock). Intervals may deliver after the clock â€”
     // a day-ahead curve published by the clock is exactly what a trader
-    // would have seen — so the upper bound is forward-looking.
+    // would have seen â€” so the upper bound is forward-looking.
     const horizonFrom = new Date(asOf.getTime() - 48 * 3600_000);
     const horizonTo = new Date(asOf.getTime() + 48 * 3600_000);
     const pricesRes = await admin
@@ -347,12 +348,58 @@ export async function getMarketPrices(
   };
 }
 
+const PAGE = 1000; // PostgREST's default max-rows: larger .limit()s are silently capped.
+
+/**
+ * Hourly history for one (market, product) over [fromMs, toMs), as of a clock:
+ * the latest publication of each interval visible at `asOf` (all of them when
+ * live). Paged, because weeks of revisions run past one response.
+ */
+export async function getHourlyHistory(
+  marketId: string,
+  product: string,
+  fromMs: number,
+  toMs: number,
+  asOf?: Date | null
+): Promise<HourlyPrice[]> {
+  const admin = supabaseAdmin();
+  const latest = new Map<string, { published: string; price: number }>();
+  for (let offset = 0; ; offset += PAGE) {
+    let q = admin
+      .from("market_prices")
+      .select("id, delivery_timestamp, price, published_at")
+      .eq("market_id", marketId)
+      .eq("product", product)
+      .gte("delivery_timestamp", new Date(fromMs).toISOString())
+      .lt("delivery_timestamp", new Date(toMs).toISOString());
+    if (asOf) q = q.lte("published_at", asOf.toISOString());
+    const { data, error } = await q
+      .order("delivery_timestamp")
+      .order("id")
+      .range(offset, offset + PAGE - 1);
+    if (error) throw new Error(error.message);
+    for (const r of data ?? []) {
+      const prev = latest.get(r.delivery_timestamp);
+      if (!prev || prev.published < r.published_at) {
+        latest.set(r.delivery_timestamp, {
+          published: r.published_at,
+          price: Number(parseDbDec(String(r.price))) / 1e6,
+        });
+      }
+    }
+    if (!data || data.length < PAGE) break;
+  }
+  return [...latest.entries()]
+    .map(([ts, v]) => ({ t: Date.parse(ts), price: v.price }))
+    .sort((a, b) => a.t - b.t);
+}
+
 export interface MarketStatus {
   latestRuns: Array<Record<string, unknown>>;
   latestPriceAt: string | null;
   latestPriceSource: string | null;
   mode: string;
-  /** ERCOT_REPLAY | ERCOT_LIVE — the two data regimes (both actual ERCOT). */
+  /** ERCOT_REPLAY | ERCOT_LIVE â€” the two data regimes (both actual ERCOT). */
   dataMode: string;
 }
 

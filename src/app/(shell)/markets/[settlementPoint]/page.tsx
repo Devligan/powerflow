@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
+import { MarketIntel, MarketIntelSkeleton } from "@/components/market-intel";
 import Link from "next/link";
 import { getMarketPrices, listMarketOptions } from "@/lib/markets";
 import { TradePanel } from "@/components/trade-panel";
@@ -144,6 +146,13 @@ export default async function MarketDetailPage({
           simNowMs={asOf ? asOf.getTime() : undefined}
         />
       </div>
+
+      {/* Streams in after the ticket: weeks of history, not on the trade path. */}
+      {clock && (
+        <Suspense fallback={<MarketIntelSkeleton />}>
+          <MarketIntel marketId={market.id} nowMs={Date.parse(clock.now)} asOf={asOf} />
+        </Suspense>
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   type SettlementRule,
 } from "@/lib/ercot/types";
 import type { VolumeUnit } from "@/lib/trading/accounting";
+import { centralHourEnding } from "@/lib/ercot/hour-ending";
 
 /** $1,234.56 */
 export function usd(v: string | number | bigint, places = 2): string {
@@ -44,14 +45,8 @@ export function centralWindowLabel(startMs: number, endMs: number): string {
       ? `${day} · ${time(startMs)} – ${time(endMs)} ${endZone}`
       : `${day} · ${time(startMs)} ${startZone} – ${time(endMs)} ${endZone}`;
   if (endMs - startMs === 3_600_000) {
-    // Hour ending, numbered from the Central hour the interval *starts* in —
-    // the inverse of deliveryCentralToUtc. On the fall-back day HE2 occurs
-    // twice (the second is ERCOT's repeated hour); in spring HE3 is skipped.
-    const centralH = (ms: number) =>
-      Number(new Intl.DateTimeFormat("en-US", { timeZone: CENTRAL, hour: "numeric", hourCycle: "h23" }).format(ms));
-    const startHour = centralH(startMs);
-    const repeated = centralH(startMs - 3_600_000) === startHour;
-    label += ` · HE${startHour + 1}${repeated ? " (repeated)" : ""}`;
+    const { he, repeated } = centralHourEnding(startMs);
+    label += ` · HE${he}${repeated ? " (repeated)" : ""}`;
   }
   return label;
 }
