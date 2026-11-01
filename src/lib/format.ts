@@ -32,17 +32,26 @@ export function centralWindowLabel(startMs: number, endMs: number): string {
   }).format(startMs);
   const time = (ms: number) =>
     new Intl.DateTimeFormat("en-US", { timeZone: CENTRAL, hour: "numeric", minute: "2-digit" }).format(ms);
-  const zone =
+  const zone = (ms: number) =>
     new Intl.DateTimeFormat("en-US", { timeZone: CENTRAL, timeZoneName: "short" })
-      .formatToParts(startMs)
+      .formatToParts(ms)
       .find((p) => p.type === "timeZoneName")?.value ?? "CT";
-  let label = `${day} · ${time(startMs)} – ${time(endMs)} ${zone}`;
+  const startZone = zone(startMs);
+  const endZone = zone(endMs);
+  // Across a DST change the two ends sit in different offsets; name both.
+  let label =
+    startZone === endZone
+      ? `${day} · ${time(startMs)} – ${time(endMs)} ${endZone}`
+      : `${day} · ${time(startMs)} ${startZone} – ${time(endMs)} ${endZone}`;
   if (endMs - startMs === 3_600_000) {
-    // Hour ending: the Central hour the interval ends in, 1–24 (midnight = 24).
-    const endHour = Number(
-      new Intl.DateTimeFormat("en-US", { timeZone: CENTRAL, hour: "numeric", hourCycle: "h23" }).format(endMs)
-    );
-    label += ` · HE${endHour === 0 ? 24 : endHour}`;
+    // Hour ending, numbered from the Central hour the interval *starts* in —
+    // the inverse of deliveryCentralToUtc. On the fall-back day HE2 occurs
+    // twice (the second is ERCOT's repeated hour); in spring HE3 is skipped.
+    const centralH = (ms: number) =>
+      Number(new Intl.DateTimeFormat("en-US", { timeZone: CENTRAL, hour: "numeric", hourCycle: "h23" }).format(ms));
+    const startHour = centralH(startMs);
+    const repeated = centralH(startMs - 3_600_000) === startHour;
+    label += ` · HE${startHour + 1}${repeated ? " (repeated)" : ""}`;
   }
   return label;
 }

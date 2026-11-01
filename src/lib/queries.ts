@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { parseDbDec } from "@/lib/money";
+import { format, parseDbDec } from "@/lib/money";
 import { settlementState, type SettlementState } from "@/lib/settlement";
 import {
   portfolioMetrics,
@@ -350,7 +350,9 @@ export async function getTrades(
         }))
     );
     for (const t of replay.trades) {
-      realizedById.set(t.id, String(t.realizedPnL));
+      // A decimal string, like every other DB-shaped field here: the bigint is
+      // already at the 1e6 scale, so String() would read back a million times too large.
+      realizedById.set(t.id, format(t.realizedPnL, 6));
     }
   }
 

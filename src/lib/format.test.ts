@@ -28,6 +28,30 @@ describe("centralWindowLabel", () => {
       centralWindowLabel(Date.parse("2026-11-02T00:00:00Z"), Date.parse("2026-11-02T01:00:00Z"))
     ).toBe("Sun, Nov 1 · 6:00 PM – 7:00 PM CST · HE19");
   });
+
+  it("numbers the fall-back hours as ERCOT does: HE2 twice, the second repeated", () => {
+    expect(
+      centralWindowLabel(Date.parse("2026-11-01T05:00:00Z"), Date.parse("2026-11-01T06:00:00Z"))
+    ).toBe("Sun, Nov 1 · 12:00 AM – 1:00 AM CDT · HE1");
+    expect(
+      centralWindowLabel(Date.parse("2026-11-01T06:00:00Z"), Date.parse("2026-11-01T07:00:00Z"))
+    ).toBe("Sun, Nov 1 · 1:00 AM CDT – 1:00 AM CST · HE2");
+    expect(
+      centralWindowLabel(Date.parse("2026-11-01T07:00:00Z"), Date.parse("2026-11-01T08:00:00Z"))
+    ).toBe("Sun, Nov 1 · 1:00 AM – 2:00 AM CST · HE2 (repeated)");
+    expect(
+      centralWindowLabel(Date.parse("2026-11-01T08:00:00Z"), Date.parse("2026-11-01T09:00:00Z"))
+    ).toBe("Sun, Nov 1 · 2:00 AM – 3:00 AM CST · HE3");
+  });
+
+  it("skips HE3 on the spring-forward day", () => {
+    expect(
+      centralWindowLabel(Date.parse("2027-03-14T07:00:00Z"), Date.parse("2027-03-14T08:00:00Z"))
+    ).toBe("Sun, Mar 14 · 1:00 AM CST – 3:00 AM CDT · HE2");
+    expect(
+      centralWindowLabel(Date.parse("2027-03-14T08:00:00Z"), Date.parse("2027-03-14T09:00:00Z"))
+    ).toBe("Sun, Mar 14 · 3:00 AM – 4:00 AM CDT · HE4");
+  });
 });
 
 describe("signedUsd", () => {

@@ -573,7 +573,7 @@ export function TradePanel({
           <br />
           {tradedProduct} priced through{" "}
           <span className="mono t-dim">
-            {pricedThrough != null ? `${dateTime(pricedThrough)} UTC` : "—"}
+            {pricedThrough != null ? dateTime(pricedThrough) : "—"}
           </span>
           .
         </p>
