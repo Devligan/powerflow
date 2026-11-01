@@ -123,6 +123,9 @@ const FRIENDLY = {
     "Delivery must start on a settlement-interval boundary.",
   DELIVERY_IN_PAST: "That delivery period has already started, so it can no longer be traded.",
   DELIVERY_TOO_FAR_OUT: "That delivery is too far in the future (max 35 days).",
+  DAM_CLOSED: "Day-ahead bids for that operating day closed at 10:00 AM Central the day before.",
+  DAM_ORDER_REQUIRED:
+    "Day-ahead positions are bids: place an order before 10:00 AM Central the day before, and it fills when the market clears.",
   PRICE_UNAVAILABLE: "No market price is available to execute against.",
   ACCOUNT_NOT_FOUND: "Paper account not found.",
   INSUFFICIENT_CAPITAL: "Not enough virtual cash to cover this buy.",
