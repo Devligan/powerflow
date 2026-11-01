@@ -89,12 +89,16 @@ export function SimClockWidget() {
             className="input mono text-sm"
             value={target}
             onChange={(e) => setTarget(e.target.value)}
-            aria-label="Simulation time"
+            aria-label="Simulation time (UTC)"
+            title="UTC, like the clock beside it"
           />
+          <span className="caption t-mute">UTC</span>
           <button
             className="btn btn-sm"
             disabled={busy || !target}
-            onClick={() => apply(new Date(target).toISOString())}
+            // datetime-local has no zone and `new Date()` would read it as the
+            // browser's local time; the desk's clock is UTC, so pin it there.
+            onClick={() => apply(new Date(`${target}Z`).toISOString())}
           >
             Jump
           </button>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { parseDec, format } from "@/lib/money";
 import {
@@ -644,7 +645,11 @@ export function TradePanel({
           <div className="note note-ok">
             Working {placed.side === "BUY" ? "buy" : "sell"} for{" "}
             <span className="mono">{placed.limitPrice}</span> — resting until the
-            print crosses. View it under <span className="mono">Orders</span>.
+            print crosses. View it under{" "}
+            <Link href="/orders" className="mono underline">
+              Orders
+            </Link>
+            .
           </div>
         )}
 

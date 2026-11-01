@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
 import { format, parseDbDec } from "@/lib/money";
-import { dateTime } from "@/lib/format";
+import { centralWindowLabel, dateTime, legsLabel } from "@/lib/format";
 import { OrderCancelButton } from "@/components/order-cancel-button";
 
 export const dynamic = "force-dynamic";
@@ -24,16 +24,26 @@ const STATUS_TONE: Record<string, string> = {
 export default async function OrdersPage() {
   const user = await getSessionUser();
   const db = await createClient();
-  const { data } = user
-    ? await db
-        .from("paper_orders")
-        .select(
-          "id, market_id, product, instrument, side, quantity_mwh, limit_price, status, delivery_start, delivery_end, filled_trade_id, created_at"
-        )
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(100)
-    : { data: [] };
+  const [{ data }, { data: markets }] = await Promise.all([
+    user
+      ? db
+          .from("paper_orders")
+          .select(
+            "id, market_id, counter_market_id, product, instrument, side, quantity_mwh, limit_price, status, delivery_start, delivery_end, filled_trade_id, created_at"
+          )
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(100)
+      : Promise.resolve({ data: [] }),
+    db.from("markets").select("id, settlement_point"),
+  ]);
+
+  const pointById = new Map((markets ?? []).map((m) => [m.id, m.settlement_point]));
+  const legs = (o: { market_id: string; counter_market_id: string | null }) =>
+    legsLabel(
+      pointById.get(o.market_id) ?? null,
+      o.counter_market_id ? pointById.get(o.counter_market_id) ?? null : null
+    );
 
   const orders = data ?? [];
   const open = orders.filter((o) => o.status === "OPEN");
@@ -66,11 +76,13 @@ export default async function OrdersPage() {
                   <span className="t-mute">@ limit</span>
                   <span className="mono">${format(parseDbDec(o.limit_price), 2)}</span>
                   <span className="t-mute">·</span>
+                  <span className="mono font-medium">{legs(o)}</span>
                   <span className="text-[12px]">
                     {o.instrument} · {o.product}
                   </span>
                   <span className="caption t-mute">
-                    delivery {dateTime(o.delivery_start)}
+                    delivery{" "}
+                    {centralWindowLabel(Date.parse(o.delivery_start), Date.parse(o.delivery_end))}
                   </span>
                 </div>
                 <OrderCancelButton orderId={o.id} />
@@ -100,6 +112,8 @@ export default async function OrdersPage() {
                   <span className="mono">{format(parseDbDec(o.quantity_mwh), 2)}</span>
                   <span className="t-mute">@</span>
                   <span className="mono">{format(parseDbDec(o.limit_price), 2)}</span>
+                  <span className="t-mute">·</span>
+                  <span className="mono">{legs(o)}</span>
                   <span className="t-mute">· {o.instrument}</span>
                   <span className="caption t-mute">
                     placed {dateTime(o.created_at)}
