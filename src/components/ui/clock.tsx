@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { centralParts } from "@/lib/format";
 
 /*
  * A clock is an external system, not component state, so it is read through
@@ -27,28 +28,27 @@ function getServerSnapshot(): null {
 }
 
 /**
- * The desk clock, in UTC.
+ * The desk clock, on ERCOT's market time (US Central, CDT or CST).
  *
- * Every timestamp in this application is UTC (market data, delivery windows,
- * settlement), so the clock is the one place that is stated once instead of
- * repeated on every row.
+ * Instants are stored in UTC, but every time the desk shows is Central, the
+ * clock ERCOT schedules and settles on, so this is the one place the zone is
+ * stated in full.
  */
-export function UtcClock() {
+export function MarketClock() {
   const seconds = useSyncExternalStore<number | null>(
     subscribe,
     getSnapshot,
     getServerSnapshot
   );
+  const p = seconds === null ? null : centralParts(seconds * 1000);
 
   return (
     <span
       className="mono t-mute text-[11px]"
-      title="Coordinated Universal Time. Every timestamp on this desk is UTC."
+      title="ERCOT market time (US Central). Every time on this desk is Central."
     >
-      {seconds === null
-        ? "--:--:--"
-        : new Date(seconds * 1000).toISOString().slice(11, 19)}
-      <span className="t-mute opacity-60">Z</span>
+      {p ? `${p.hh}:${p.mm}:${p.ss}` : "--:--:--"}
+      <span className="ml-1 t-mute opacity-60">{p?.zone ?? "CT"}</span>
     </span>
   );
 }

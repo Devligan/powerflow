@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 /**
@@ -37,8 +38,11 @@ export function LeaderboardOptIn({ optedIn }: { optedIn: boolean }) {
     <div className="card flex flex-wrap items-center justify-between gap-3">
       <p className="text-[13px] t-dim">
         {optedIn
-          ? "You are listed in the standings. Only your name and aggregate figures are shown."
-          : "You are not listed. Join to show your name and aggregate figures — never your positions or trades."}
+          ? "You are listed in the standings. Only your name, picture and aggregate figures are shown."
+          : "Your account is private, so you are not listed. Join to show your name and aggregate figures — never your positions or trades."}{" "}
+        <Link href="/settings#profile" className="t-accent hover:underline">
+          Edit your profile
+        </Link>
       </p>
       <span className="flex items-center gap-2">
         {error && <span role="alert" className="text-[11px] t-short">{error}</span>}

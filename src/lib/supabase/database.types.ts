@@ -81,9 +81,12 @@ export type Database = {
         display_name: string | null;
         avatar_url: string | null;
         leaderboard_opt_in: boolean;
+        /** NULL until the trader chose their name on /welcome (0035). */
+        onboarded_at: string | null;
         created_at: string;
         updated_at: string;
       };
+      /** Service role only since 0035; sessions write through update_profile. */
       Insert: {
         id: string;
         username: string;
@@ -91,11 +94,13 @@ export type Database = {
         avatar_url?: string | null;
         leaderboard_opt_in?: boolean;
       };
+      /** Service role only since 0035; sessions write through update_profile. */
       Update: {
         username?: string;
         display_name?: string | null;
         avatar_url?: string | null;
         leaderboard_opt_in?: boolean;
+        onboarded_at?: string | null;
       };
       Relationships: [{ foreignKeyName: "profiles_id_fkey"; columns: ["id"]; isOneToOne: true; referencedRelation: "users"; referencedColumns: ["id"] }];
     };
@@ -434,6 +439,21 @@ export type Database = {
     ensure_user_records: {
       Args: { p_user_id: string; p_email: string };
       Returns: undefined;
+    };
+    /** The caller renames themselves and is marked onboarded (0035). */
+    update_profile: {
+      Args: { p_username: string; p_display_name: string };
+      Returns: { username: string; display_name: string; onboarded: boolean };
+    };
+    /** Service role only: record an uploaded picture, or null (0035). */
+    set_profile_avatar: {
+      Args: { p_user_id: string; p_avatar_url: string | null };
+      Returns: undefined;
+    };
+    /** The caller joins or leaves the standings (0032). */
+    set_leaderboard_opt_in: {
+      Args: { p_opt_in: boolean };
+      Returns: boolean;
     };
     /** Move the account's simulation clock (0020). Own account only. */
     set_sim_clock: {

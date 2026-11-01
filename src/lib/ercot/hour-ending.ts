@@ -60,6 +60,27 @@ export function hourEndingStartUtc(day: string, he: number): number | null {
   return null;
 }
 
+export interface OperatingHour extends HourEnding {
+  /** UTC start of the hour. */
+  startMs: number;
+}
+
+/**
+ * Every hour of a Central operating day, in delivery order: 24 normally, 23
+ * on the spring-forward day (no HE3), 25 on the fall-back day (HE2 twice).
+ */
+export function operatingDayHours(day: string): OperatingHour[] {
+  const first = hourEndingStartUtc(day, 1);
+  if (first == null) return [];
+  const out: OperatingHour[] = [];
+  for (let t = first; out.length < 25; t += HOUR_MS) {
+    const h = centralHourEnding(t);
+    if (h.day !== day) break;
+    out.push({ ...h, startMs: t });
+  }
+  return out;
+}
+
 /** ERCOT's on-peak hours: HE7–HE22 (06:00–22:00 Central). */
 export function isPeakHour(he: number): boolean {
   return he >= 7 && he <= 22;

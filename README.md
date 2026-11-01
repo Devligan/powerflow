@@ -63,6 +63,12 @@ with virtual cash, a full risk engine, immutable audit trail, and analytics.
   no two requests can overspend the same account.
 - Dedicated analytics, leaderboard (opt-in, aggregate-only), market charting,
   and an observable ingestion pipeline (`ingestion_runs`).
+- Accounts: new traders choose a display name, username and picture on
+  `/welcome`; `/settings` edits them and handles privacy (a private account is
+  off the standings), email and password changes (confirmed by email), signing
+  out other devices, a CSV export, and permanent deletion.
+- Every time the desk shows is ERCOT market time (US Central, CDT/CST, with
+  hour-ending on delivery windows); instants are stored and computed in UTC.
 - Automatic cash settlement of delivered positions at their own instrument
   price, equity-neutral and idempotent, with unpriced intervals deferred and
   surfaced rather than settled at a guess.
@@ -597,6 +603,19 @@ instrument that cannot be marked is reported as **unpriced, never zero**.
 - Leaderboard is computed by a `SECURITY DEFINER` function (returning raw
   `user_id`s) and is reached only from server code with the service role; the
   browser-facing RPC is not exposed.
+- Profiles are written only through definer functions (migration 0035): the
+  own-row insert/update policies and table write grants are gone, so a session
+  cannot point its avatar at an arbitrary URL or flip its standings flag
+  without an audit row. `update_profile` validates names (mirrored in
+  `src/lib/profile.ts`); `set_profile_avatar` is service-role-only and is
+  called after `/api/account/avatar` has checked the upload's actual bytes.
+  Pictures live in the public `avatars` bucket, which has no write policies.
+- Account changes are confirmed by email. An email change is Supabase's own
+  two-sided confirmation; a password is set only from a session opened by an
+  emailed recovery link within the last 30 minutes (read from the verified
+  token's `amr` claim, `src/lib/account.ts`), after which other sessions are
+  signed out. Account deletion requires typing the username and cascades
+  through every user table (0005), with stored pictures removed first.
 - Service-role usage is isolated to trusted server code. Cron is secret-guarded.
   Sign-out is POST-only.
 - Before launch: confirm Supabase Auth (email confirmations, rate limits),

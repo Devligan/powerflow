@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { centralLocalToUtc, shortDate } from "@/lib/format";
 
 /**
  * The simulation clock control.
@@ -70,7 +71,7 @@ export function SimClockWidget() {
         <div>
           <div className="caption t-mute">Simulation clock</div>
           <div className="mono text-lg font-medium">
-            {clock ? clock.now.slice(0, 19).replace("T", " ") + "Z" : "…"}
+            {clock ? shortDate(clock.now) : "…"}
             <span className={`ml-2 badge ${replay ? "badge-amber" : "badge-green"}`}>
               {replay ? "REPLAY" : "LIVE"}
             </span>
@@ -89,16 +90,23 @@ export function SimClockWidget() {
             className="input mono text-sm"
             value={target}
             onChange={(e) => setTarget(e.target.value)}
-            aria-label="Simulation time (UTC)"
-            title="UTC, like the clock beside it"
+            aria-label="Simulation time (US Central)"
+            title="ERCOT market time (US Central), like the clock beside it"
           />
-          <span className="caption t-mute">UTC</span>
+          <span className="caption t-mute">Central</span>
           <button
             className="btn btn-sm"
             disabled={busy || !target}
             // datetime-local has no zone and `new Date()` would read it as the
-            // browser's local time; the desk's clock is UTC, so pin it there.
-            onClick={() => apply(new Date(`${target}Z`).toISOString())}
+            // browser's local time; the desk runs on Central, so pin it there.
+            onClick={() => {
+              const ms = centralLocalToUtc(target);
+              if (ms == null) {
+                setError("That time does not exist in Central (it falls in the daylight-saving gap).");
+                return;
+              }
+              apply(new Date(ms).toISOString());
+            }}
           >
             Jump
           </button>

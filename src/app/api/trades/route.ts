@@ -120,7 +120,7 @@ const FRIENDLY = {
   DELIVERY_WINDOW_INVALID:
     "A settlement window must be a whole number of settlement intervals.",
   DELIVERY_MUST_BE_ALIGNED:
-    "Delivery must start on a settlement-interval boundary (UTC).",
+    "Delivery must start on a settlement-interval boundary.",
   DELIVERY_IN_PAST: "Delivery already started — that interval has settled.",
   DELIVERY_TOO_FAR_OUT: "That delivery is too far in the future (max 35 days).",
   PRICE_UNAVAILABLE: "No market price is available to execute against.",

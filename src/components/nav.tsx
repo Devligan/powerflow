@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Brand } from "@/components/brand";
-import { UtcClock } from "@/components/ui/clock";
+import { MarketClock } from "@/components/ui/clock";
+import { Avatar } from "@/components/ui/avatar";
 
 const NAV = [
   { href: "/dashboard", label: "Desk" },
@@ -27,9 +28,11 @@ const NAV = [
 export function Nav({
   user,
   displayName,
+  avatarUrl,
 }: {
   user: boolean;
   displayName: string;
+  avatarUrl: string | null;
 }) {
   const pathname = usePathname();
 
@@ -61,14 +64,23 @@ export function Nav({
             shell footer instead. */}
         <div className="ml-auto flex items-center gap-3">
           <span className="hidden border-l border-white/10 pl-3 sm:block">
-            <UtcClock />
+            <MarketClock />
           </span>
 
           {user ? (
             <>
-              <span className="caption hidden max-w-[10rem] truncate xl:block">
-                {displayName || "trader"}
-              </span>
+              <Link
+                href="/settings"
+                aria-current={isActive("/settings") ? "page" : undefined}
+                title="Account settings"
+                className="flex items-center gap-2 rounded-full hover:opacity-90"
+              >
+                <Avatar url={avatarUrl} name={displayName} size={26} />
+                <span className="caption hidden max-w-[10rem] truncate xl:block">
+                  {displayName || "trader"}
+                </span>
+                <span className="sr-only">Account settings</span>
+              </Link>
               <form action="/auth/signout" method="post">
                 <button type="submit" className="btn btn-sm">
                   Sign out

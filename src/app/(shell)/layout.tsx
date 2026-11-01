@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getSessionUser, ensureUserRecords, getUserProfile } from "@/lib/auth";
 import { Nav } from "@/components/nav";
 import { SetupBanner } from "@/components/setup-banner";
@@ -18,6 +19,10 @@ export default async function ShellLayout({
       await ensureUserRecords(user);
       profile = await getUserProfile(user.id).catch(() => null);
     }
+    // A trader picks their name before reaching the desk (0035). Strictly
+    // null: on a database without the column it is undefined, and nobody
+    // must be trapped on /welcome by a deploy that ran ahead of a migration.
+    if (profile && profile.onboarded_at === null) redirect("/welcome");
   }
 
   return (
@@ -26,6 +31,7 @@ export default async function ShellLayout({
       <Nav
         user={Boolean(user)}
         displayName={profile?.display_name ?? profile?.username ?? ""}
+        avatarUrl={profile?.avatar_url ?? null}
       />
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-7">
         {children}
@@ -38,7 +44,7 @@ export default async function ShellLayout({
             <Link href="/terms" className="hover:underline">Terms</Link>
           </p>
           <p className="caption">
-            All timestamps UTC · prices are actual ERCOT MIS publications
+            Times in ERCOT market time (US Central) · prices are actual ERCOT MIS publications
           </p>
         </div>
       </footer>

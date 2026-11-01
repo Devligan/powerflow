@@ -12,10 +12,14 @@ import {
   usd,
   num,
   signedUsd,
-  centralHourZone,
+  centralTime,
   centralWindowLabel,
 } from "@/lib/format";
-import { centralHourEnding } from "@/lib/ercot/hour-ending";
+import {
+  centralHourEnding,
+  hourEndingStartUtc,
+  operatingDayHours,
+} from "@/lib/ercot/hour-ending";
 import {
   DEFAULT_INSTRUMENT,
   DEFAULT_MARKET_PRODUCT,
@@ -217,6 +221,29 @@ export function TradePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [marketId, instrumentCode, chosenProduct, counterMarketId, side, quantity, dateStr, hour, intervals, stripHours, orderNonce]
   );
+
+  // The ticket holds its start as a UTC date and hour (what the engine and
+  // the order-form helpers take), but a trader picks ERCOT's operating day
+  // and hour ending, so the controls translate in both directions.
+  const operatingDay = delivery ? centralHourEnding(delivery.startMs).day : dateStr;
+  const dayHours = operatingDayHours(operatingDay);
+
+  function setDeliveryStart(ms: number) {
+    if (!Number.isFinite(ms)) return;
+    const d = new Date(ms);
+    setDateStr(d.toISOString().slice(0, 10));
+    setHour(d.getUTCHours());
+  }
+
+  /** Move to another operating day, keeping the hour ending where it exists. */
+  function pickOperatingDay(day: string) {
+    const he = delivery ? centralHourEnding(delivery.startMs).he : 1;
+    const ms =
+      hourEndingStartUtc(day, he) ??
+      hourEndingStartUtc(day, Math.min(he + 1, 24)) ??
+      hourEndingStartUtc(day, 1);
+    if (ms != null) setDeliveryStart(ms);
+  }
 
   function applyBlock(shape: BlockShape) {
     if (!delivery) return;
@@ -567,36 +594,33 @@ export function TradePanel({
         <div className="grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
           <div>
             <label className="label" htmlFor="delivery-date">
-              {intervals > 1 ? "Window start · UTC" : "Delivery · UTC"}
+              {intervals > 1 ? "Window start · operating day" : "Operating day"}
             </label>
             <input
               id="delivery-date"
               type="date"
               required
               className="input"
-              value={dateStr}
-              onChange={(e) => setDateStr(e.target.value)}
+              value={operatingDay}
+              onChange={(e) => pickOperatingDay(e.target.value)}
             />
           </div>
           <div>
             <label className="label" htmlFor="delivery-hour">
-              Start hour · UTC
+              {intervals > 1 ? "Starting hour ending" : "Hour ending"}
             </label>
             <select
               id="delivery-hour"
               className="input mono"
-              value={hour}
-              onChange={(e) => setHour(Number(e.target.value))}
+              value={delivery ? String(delivery.startMs) : ""}
+              onChange={(e) => setDeliveryStart(Number(e.target.value))}
             >
-              {Array.from({ length: 24 }, (_, i) => {
-                const hh = String(i).padStart(2, "0");
-                const ms = Date.parse(`${dateStr}T${hh}:00:00Z`);
-                return (
-                  <option key={i} value={i}>
-                    {hh}:00{Number.isNaN(ms) ? "" : ` · ${centralHourZone(ms)}`}
-                  </option>
-                );
-              })}
+              {dayHours.map((h) => (
+                <option key={h.startMs} value={String(h.startMs)}>
+                  HE{String(h.he).padStart(2, "0")}
+                  {h.repeated ? " (repeated)" : ""} · {centralTime(h.startMs)}
+                </option>
+              ))}
             </select>
           </div>
           {!isWindow && (

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { getMarketPrices, listMarketOptions } from "@/lib/markets";
 import { TradePanel } from "@/components/trade-panel";
 import { PriceChart } from "@/components/price-chart";
-import { dateTime, sourceInfo } from "@/lib/format";
+import { dateTime, shortDate, sourceInfo } from "@/lib/format";
 import { Lamp } from "@/components/ui/lamp";
 import { requireUser } from "@/lib/auth";
 import { getSimClock } from "@/lib/sim-clock";
@@ -92,7 +92,7 @@ export default async function MarketDetailPage({
         <p className="note">
           Replay · showing only observations ERCOT had published by
           <span className="moni">
-            {clock!.now.slice(0, 19).replace("T", " ")}Z</span
+            {" "}{shortDate(clock!.now)}</span
           >
           .
         </p>

@@ -70,6 +70,8 @@ export interface ProfileRow {
   display_name: string | null;
   avatar_url: string | null;
   leaderboard_opt_in: boolean;
+  /** NULL until the trader has chosen their name on /welcome (0035). */
+  onboarded_at: string | null;
   created_at: string;
   updated_at: string;
 }

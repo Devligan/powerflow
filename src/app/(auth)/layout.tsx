@@ -1,6 +1,6 @@
 import { Brand } from "@/components/brand";
 import { Lamp } from "@/components/ui/lamp";
-import { UtcClock } from "@/components/ui/clock";
+import { MarketClock } from "@/components/ui/clock";
 
 /**
  * The auth surface.
@@ -47,7 +47,7 @@ export default function AuthLayout({
         </div>
 
         <p className="caption">
-          <UtcClock /> · all timestamps UTC
+          <MarketClock /> · ERCOT market time (US Central)
         </p>
       </aside>
 

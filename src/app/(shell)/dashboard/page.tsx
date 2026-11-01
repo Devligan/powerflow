@@ -18,6 +18,7 @@ import {
   legsLabel,
   positionUnit,
   volumeUnitLabel,
+  centralTime,
 } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -169,7 +170,7 @@ export default async function DashboardPage() {
                         {inst ? inst.shortLabel : p.instrument}
                       </td>
                       <td className="mono t-mute">
-                        {p.deliveryStart.slice(11, 16)}Z
+                        {centralTime(p.deliveryStart)}
                       </td>
                       <td className="mono whitespace-nowrap text-right">
                         {num(p.quantityMwh)}{" "}

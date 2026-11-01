@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { parseDec, format } from "@/lib/money";
-import { sourceInfo, usd, signedUsd } from "@/lib/format";
+import { sourceInfo, usd, signedUsd, centralTime } from "@/lib/format";
 import { Lamp } from "@/components/ui/lamp";
 import { FlashValue } from "@/components/ui/flash-value";
 
@@ -195,7 +195,7 @@ export function MarketsStrip() {
         {error
           ? "Market data unavailable right now."
           : ts
-            ? `Updated ${new Date(ts).toISOString().slice(11, 19)}Z · actual ERCOT settlement point prices`
+            ? `Updated ${centralTime(ts, true)} · actual ERCOT settlement point prices`
             : ""}
       </p>
     </div>

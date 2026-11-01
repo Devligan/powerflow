@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { parseDec, format } from "@/lib/money";
+import { shortDate } from "@/lib/format";
 
 export interface ChartPoint {
   deliveryTimestamp: string;
@@ -23,9 +24,9 @@ const ACCENT = "#e2a33d";
 const REFERENCE = "rgb(230 227 221 / 0.55)";
 const WASH = "rgb(226 163 61 / 0.07)";
 
-/** 2026-09-22 14:00Z */
+/** 2026-09-22 09:00 CDT */
 function stamp(iso: string): string {
-  return `${iso.slice(0, 10)} ${iso.slice(11, 16)}Z`;
+  return shortDate(iso);
 }
 
 const money = (v: bigint) => `$${format(v, 2)}`;

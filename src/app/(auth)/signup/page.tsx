@@ -43,11 +43,14 @@ function SignupForm() {
       if (error) throw new Error(error.message);
       // Confirmation-dependent: if a session was issued, proceed; otherwise
       // tell the user to confirm their inbox.
+      // Either way the account chooses its trader name next (/welcome).
       if (data?.session) {
-        router.push(next);
+        router.push(`/welcome?next=${encodeURIComponent(next)}`);
         router.refresh();
       } else {
-        setMessage("Check your inbox to confirm your email, then sign in.");
+        setMessage(
+          "Check your inbox and follow the link to confirm your email. You will choose your trader name next."
+        );
         setBusy(false);
       }
     } catch (err) {
@@ -61,7 +64,8 @@ function SignupForm() {
       <div className="border-b border-white/10 px-6 py-4">
         <h1 className="card-title mb-0">Open an account</h1>
         <p className="mt-1.5 text-[12px] t-mute">
-          Credited with $100,000 virtual cash on creation.
+          Credited with $100,000 virtual cash on creation. You choose your
+          trader name and picture right after.
         </p>
       </div>
 

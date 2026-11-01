@@ -115,18 +115,115 @@ export function timeAgo(iso: string | null | undefined): string {
   return `${d}d ago`;
 }
 
-export function dateTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toUTCString().replace("GMT", "UTC");
+/*
+ * Every instant is stored and computed in UTC, but the desk shows it on
+ * ERCOT's own clock: Central prevailing time, with the abbreviation in effect
+ * on that date (CDT or CST), so the fall-back day's two 1 AMs never read alike.
+ */
+const CENTRAL_PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: CENTRAL,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+  timeZoneName: "short",
+});
+
+function toMs(v: string | number | Date | null | undefined): number | null {
+  if (v == null || v === "") return null;
+  const ms = v instanceof Date ? v.getTime() : typeof v === "number" ? v : Date.parse(v);
+  return Number.isNaN(ms) ? null : ms;
 }
 
-export function shortDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toISOString().slice(0, 16).replace("T", " ").concat("Z");
+/** The Central wall-clock fields of an instant. */
+export function centralParts(ms: number): {
+  date: string;
+  hh: string;
+  mm: string;
+  ss: string;
+  zone: string;
+} {
+  const p = Object.fromEntries(CENTRAL_PARTS.formatToParts(ms).map((x) => [x.type, x.value]));
+  return {
+    date: `${p.year}-${p.month}-${p.day}`,
+    hh: p.hour === "24" ? "00" : p.hour,
+    mm: p.minute,
+    ss: p.second,
+    zone: p.timeZoneName ?? "CT",
+  };
+}
+
+/** "2026-11-01" — the Central calendar date of an instant. */
+export function centralDate(v: string | number | Date | null | undefined): string {
+  const ms = toMs(v);
+  return ms == null ? "—" : centralParts(ms).date;
+}
+
+/** "14:05 CST", or "14:05:09 CST" with seconds. */
+export function centralTime(
+  v: string | number | Date | null | undefined,
+  withSeconds = false
+): string {
+  const ms = toMs(v);
+  if (ms == null) return "—";
+  const p = centralParts(ms);
+  return `${p.hh}:${p.mm}${withSeconds ? `:${p.ss}` : ""} ${p.zone}`;
+}
+
+/** "Sun, Nov 1, 2026, 2:05 PM CST" */
+export function dateTime(iso: string | null | undefined): string {
+  const ms = toMs(iso);
+  if (ms == null) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: CENTRAL,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(ms);
+}
+
+/** "2026-11-01 14:05 CST" — compact and sortable, for tables. */
+export function shortDate(iso: string | number | null | undefined): string {
+  const ms = toMs(iso);
+  if (ms == null) return "—";
+  const p = centralParts(ms);
+  return `${p.date} ${p.hh}:${p.mm} ${p.zone}`;
+}
+
+/**
+ * A `datetime-local` value ("2026-11-01T14:30") read as Central wall time,
+ * as a UTC instant. The fall-back day's repeated hour resolves to its first
+ * occurrence; a time inside the spring-forward gap does not exist → null.
+ */
+export function centralLocalToUtc(local: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(local);
+  if (!m) return null;
+  const [, y, mo, d, h, mi, s] = m;
+  const wall = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s ?? 0));
+  for (const offsetHours of [5, 6]) {
+    const t = wall + offsetHours * 3_600_000;
+    const p = centralParts(t);
+    if (p.date === `${y}-${mo}-${d}` && p.hh === h && p.mm === mi) return t;
+  }
+  return null;
+}
+
+/** The inverse: a UTC instant as a Central `datetime-local` value. */
+export function utcToCentralLocal(ms: number): string {
+  const p = centralParts(ms);
+  return `${p.date}T${p.hh}:${p.mm}`;
+}
+
+/** The UTC instant a Central calendar day starts (midnight Central). */
+export function centralDayStartUtc(day: string): number | null {
+  return centralLocalToUtc(`${day}T00:00`);
 }
 
 /**

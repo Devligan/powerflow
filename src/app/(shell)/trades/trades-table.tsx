@@ -10,7 +10,20 @@ import {
   legsLabel,
   positionUnit,
   volumeUnitLabel,
+  centralDayStartUtc,
 } from "@/lib/format";
+
+/** The filter dates are Central calendar days: the first or last instant of one. */
+function dayBound(day: string, edge: "start" | "end"): string {
+  if (edge === "start") {
+    const start = centralDayStartUtc(day);
+    return new Date(start ?? Date.parse(`${day}T00:00:00Z`)).toISOString();
+  }
+  const [y, m, d] = day.split("-").map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  const end = centralDayStartUtc(next);
+  return new Date((end ?? Date.parse(`${next}T00:00:00Z`)) - 1).toISOString();
+}
 
 interface TradeItem {
   id: string;
@@ -52,8 +65,8 @@ export function TradesTable() {
   const filterParams = new URLSearchParams();
   if (side) filterParams.set("side", side);
   if (marketId) filterParams.set("marketId", marketId);
-  if (dateFrom) filterParams.set("dateFrom", new Date(`${dateFrom}T00:00:00Z`).toISOString());
-  if (dateTo) filterParams.set("dateTo", new Date(`${dateTo}T23:59:59Z`).toISOString());
+  if (dateFrom) filterParams.set("dateFrom", dayBound(dateFrom, "start"));
+  if (dateTo) filterParams.set("dateTo", dayBound(dateTo, "end"));
 
   useEffect(() => {
     let alive = true;
@@ -66,10 +79,8 @@ export function TradesTable() {
       });
       if (side) params.set("side", side);
       if (marketId) params.set("marketId", marketId);
-      if (dateFrom)
-        params.set("dateFrom", new Date(`${dateFrom}T00:00:00Z`).toISOString());
-      if (dateTo)
-        params.set("dateTo", new Date(`${dateTo}T23:59:59Z`).toISOString());
+      if (dateFrom) params.set("dateFrom", dayBound(dateFrom, "start"));
+      if (dateTo) params.set("dateTo", dayBound(dateTo, "end"));
 
       const [tradesRes, marketsRes] = await Promise.all([
         fetch(`/api/trades?${params}`, { cache: "no-store" }),
@@ -194,7 +205,7 @@ export function TradesTable() {
           <table className="table">
             <thead>
               <tr>
-                <th>Time (UTC)</th>
+                <th>Time</th>
                 <th>Market / legs</th>
                 <th>Instrument</th>
                 <th>Side</th>
@@ -281,7 +292,7 @@ export function TradesTable() {
                         {r === 0n ? "—" : sign(r)}
                       </td>
                       <td className="mono t-mute">
-                        {t.deliveryStart.slice(0, 16).replace("T", " ")}Z
+                        {shortDate(t.deliveryStart)}
                       </td>
                       <td>
                         <span className="badge badge-neutral">{t.status}</span>

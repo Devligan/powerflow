@@ -1,9 +1,10 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { parseDbDec } from "@/lib/money";
 import { getSessionUser } from "@/lib/auth";
-import { usd, bpsToPercent } from "@/lib/format";
+import { usd, bpsToPercent, centralDate } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { LeaderboardOptIn } from "@/components/leaderboard-opt-in";
+import { Avatar } from "@/components/ui/avatar";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,18 @@ export default async function LeaderboardPage({
   ]);
 
   const { rows, error } = result;
+
+  // Pictures for the listed traders only (get_leaderboard predates avatars).
+  const listedIds = rows.map((r) => String(r.user_id));
+  const avatars = new Map<string, string>();
+  if (listedIds.length > 0) {
+    const { data } = await supabaseAdmin()
+      .from("profiles")
+      .select("id, avatar_url")
+      .in("id", listedIds)
+      .not("avatar_url", "is", null);
+    for (const p of data ?? []) avatars.set(p.id as string, p.avatar_url as string);
+  }
 
   // The viewer's own setting, for the join/leave control.
   const optedIn = user
@@ -125,6 +138,11 @@ export default async function LeaderboardPage({
                         </td>
                         <td className="font-medium">
                           <span className="flex items-center gap-2">
+                            <Avatar
+                              url={avatars.get(row.user_id)}
+                              name={row.display_name || row.username}
+                              size={22}
+                            />
                             {row.display_name || row.username || "trader"}
                             {isMe && (
                               <span className="badge badge-amber">You</span>
@@ -150,7 +168,7 @@ export default async function LeaderboardPage({
                         </td>
                         <td className="mono text-right">{row.trades_count}</td>
                         <td className="mono t-mute">
-                          {row.joined_at.slice(0, 10)}
+                          {centralDate(row.joined_at)}
                         </td>
                       </tr>
                     );

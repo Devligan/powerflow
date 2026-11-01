@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Brand } from "@/components/brand";
 import { MarketsStrip } from "@/components/markets-strip";
 import { Lamp } from "@/components/ui/lamp";
-import { UtcClock } from "@/components/ui/clock";
+import { MarketClock } from "@/components/ui/clock";
 import { getSessionUser } from "@/lib/auth";
 
 /**
@@ -93,7 +93,7 @@ export default async function Home() {
           <Brand tag="paper trading" />
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden border-l border-white/10 pl-3 sm:block">
-              <UtcClock />
+              <MarketClock />
             </span>
             {user ? (
               <Link href="/dashboard" className="btn btn-primary btn-sm">
@@ -233,7 +233,7 @@ export default async function Home() {
             <Link href="/terms" className="hover:underline">Terms</Link>
           </p>
           <p className="caption">
-            All timestamps UTC · actual ERCOT market data, simulated trading
+            Times in ERCOT market time (US Central) · actual ERCOT market data, simulated trading
           </p>
         </div>
       </footer>

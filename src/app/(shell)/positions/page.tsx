@@ -11,6 +11,7 @@ import {
   positionUnit,
   volumeUnitLabel,
   centralWindowLabel,
+  centralDate,
 } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { RiskLadder } from "@/components/risk-ladder";
@@ -89,10 +90,8 @@ export default async function PositionsPage() {
                       </td>
                       <td className="mono whitespace-nowrap t-mute">
                         {inst?.rule === "AVERAGE"
-                          ? `${p.deliveryStart.slice(0, 10)} → ${p.deliveryEnd.slice(0, 10)}`
-                          : showClosed
-                            ? shortDate(p.deliveryStart)
-                            : `${p.deliveryStart.slice(0, 16).replace("T", " ")}Z`}
+                          ? `${centralDate(p.deliveryStart)} → ${centralDate(p.deliveryEnd)}`
+                          : shortDate(p.deliveryStart)}
                         {/* ERCOT's own clock: Central time and hour ending. */}
                         <div className="text-[10.5px] normal-case">
                           {centralWindowLabel(Date.parse(p.deliveryStart), Date.parse(p.deliveryEnd))}

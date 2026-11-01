@@ -13,6 +13,7 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const next = safeNextPath(searchParams.get("next"));
   const callbackError = describeCallbackError(searchParams.get("error"));
+  const deleted = searchParams.get("deleted") === "1";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +61,12 @@ export function LoginForm() {
         {/* A form failure, or the reason the OAuth callback sent the visitor
             back here (?error=…) in words they can act on — never GoTrue's
             internal wording. One alert at a time. */}
+        {deleted && !error && (
+          <div role="status" className="note note-ok">
+            Your account and all of its data have been deleted.
+          </div>
+        )}
+
         {(error ?? callbackError) && (
           <div role="alert" className="note note-error">
             {error ?? callbackError}
@@ -85,9 +92,14 @@ export function LoginForm() {
             />
           </div>
           <div>
-            <label className="label" htmlFor="password">
-              Password
-            </label>
+            <div className="flex items-baseline justify-between">
+              <label className="label" htmlFor="password">
+                Password
+              </label>
+              <Link href="/forgot-password" className="text-[11.5px] t-mute hover:underline">
+                Forgot password?
+              </Link>
+            </div>
             <input
               id="password"
               type="password"
