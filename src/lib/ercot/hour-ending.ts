@@ -118,6 +118,46 @@ export function firstOpenOperatingDay(nowMs: number): string {
   return day;
 }
 
+/**
+ * NERC holidays, which the power industry trades as weekend days (a 2x16
+ * peak, not 5x16): New Year's Day, Memorial Day, Independence Day, Labor Day,
+ * Thanksgiving and Christmas. One that falls on a Sunday is observed on the
+ * Monday; a Saturday one is not moved.
+ */
+export function isNercHoliday(day: string): boolean {
+  const [y, m, d] = day.split("-").map(Number);
+  const dow = (yy: number, mm: number, dd: number) => new Date(Date.UTC(yy, mm - 1, dd)).getUTCDay();
+  const nthWeekday = (mm: number, weekday: number, n: number) => {
+    const first = dow(y, mm, 1);
+    return 1 + ((weekday - first + 7) % 7) + (n - 1) * 7;
+  };
+  const lastWeekday = (mm: number, weekday: number) => {
+    const days = new Date(Date.UTC(y, mm, 0)).getUTCDate();
+    const lastDow = dow(y, mm, days);
+    return days - ((lastDow - weekday + 7) % 7);
+  };
+  const fixed: Array<[number, number]> = [[1, 1], [7, 4], [12, 25]];
+  for (const [mm, dd] of fixed) {
+    if (m === mm && d === dd && dow(y, mm, dd) !== 0) return true;
+    // Sunday holiday → Monday off.
+    if (dow(y, mm, dd) === 0 && m === mm && d === dd + 1) return true;
+  }
+  if (m === 5 && d === lastWeekday(5, 1)) return true; // Memorial Day
+  if (m === 9 && d === nthWeekday(9, 1, 1)) return true; // Labor Day
+  if (m === 11 && d === nthWeekday(11, 4, 4)) return true; // Thanksgiving
+  return false;
+}
+
+/**
+ * Whether an operating day trades as a peak weekday (5x16) or a weekend /
+ * NERC-holiday day (2x16). Off-peak hours (7x8) are the same every day.
+ */
+export function isPeakWeekday(day: string): boolean {
+  const [y, m, d] = day.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return dow >= 1 && dow <= 5 && !isNercHoliday(day);
+}
+
 /** ERCOT's on-peak hours: HE7–HE22 (06:00–22:00 Central). */
 export function isPeakHour(he: number): boolean {
   return he >= 7 && he <= 22;

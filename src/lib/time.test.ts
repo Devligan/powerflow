@@ -10,7 +10,13 @@ import {
   utcToLocal,
   windowLabel,
 } from "@/lib/time";
-import { damDeadlineUtc, firstOpenOperatingDay, operatingDayHours } from "@/lib/ercot/hour-ending";
+import {
+  damDeadlineUtc,
+  firstOpenOperatingDay,
+  isNercHoliday,
+  isPeakWeekday,
+  operatingDayHours,
+} from "@/lib/ercot/hour-ending";
 
 const CT = "America/Chicago";
 const PT = "America/Los_Angeles";
@@ -95,6 +101,23 @@ describe("day-ahead deadline (mirror of dam_gate, 0038)", () => {
   it("names the first operating day still open for bids", () => {
     expect(firstOpenOperatingDay(Date.parse("2026-11-01T15:59:00Z"))).toBe("2026-11-02"); // 09:59 CST
     expect(firstOpenOperatingDay(Date.parse("2026-11-01T16:00:00Z"))).toBe("2026-11-03"); // 10:00 CST
+  });
+});
+
+describe("peak calendar", () => {
+  it("knows the NERC holidays, with Sunday ones observed on Monday", () => {
+    for (const d of ["2026-01-01", "2026-05-25", "2026-07-04", "2026-09-07", "2026-11-26", "2026-12-25"]) {
+      expect(isNercHoliday(d), d).toBe(true);
+    }
+    expect(isNercHoliday("2027-12-27")).toBe(false); // Christmas 2027 is a Saturday: not moved
+    expect(isNercHoliday("2028-12-25")).toBe(true);
+    expect(isNercHoliday("2033-12-26")).toBe(true); // Christmas 2033 is a Sunday → Monday
+    expect(isNercHoliday("2026-11-25")).toBe(false);
+  });
+  it("trades weekdays as 5x16 and weekends/holidays as 2x16", () => {
+    expect(isPeakWeekday("2026-11-02")).toBe(true); // Monday
+    expect(isPeakWeekday("2026-11-01")).toBe(false); // Sunday
+    expect(isPeakWeekday("2026-11-26")).toBe(false); // Thanksgiving
   });
 });
 

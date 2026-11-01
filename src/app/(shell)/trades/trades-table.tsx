@@ -5,6 +5,7 @@ import Link from "next/link";
 import { parseDec } from "@/lib/money";
 import {
   sign,
+  usd,
   instrumentInfo,
   legsLabel,
   positionUnit,
@@ -286,7 +287,7 @@ export function TradesTable() {
                           {volumeUnitLabel(positionUnit(t.product))}
                         </span>
                       </td>
-                      <td className="mono text-right">${t.executionPrice}</td>
+                      <td className="mono text-right">{usd(t.executionPrice)}</td>
                       <td
                         className={`mono text-right ${r > 0n ? "pos" : r < 0n ? "neg" : ""}`}
                       >

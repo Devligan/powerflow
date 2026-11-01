@@ -162,7 +162,7 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
   }, 60_000);
 
   it("fills an auctioned CRR on the same path at the day-ahead spread instead", async () => {
-    const { data, error } = await client.rpc(
+    const { data, error } = await db.rpc(
       "execute_trade",
       trade({ p_instrument: "CRR_OBLIGATION" })
     );
@@ -180,7 +180,7 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
 
   it("refuses a path instrument asked to settle without a second point", async () => {
     const before = await countRows();
-    const { error } = await client.rpc(
+    const { error } = await db.rpc(
       "execute_trade",
       trade({ p_counter_market_id: null })
     );
@@ -191,7 +191,7 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
   }, 60_000);
 
   it("refuses a second point on an instrument that settles one", async () => {
-    const { error } = await client.rpc(
+    const { error } = await db.rpc(
       "execute_trade",
       trade({ p_instrument: "ENERGY_SPOT", p_product: "DAM_HOURLY" })
     );
@@ -206,7 +206,7 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
     const src = forward > 0 ? legB : legA;
     const sink = forward > 0 ? legA : legB;
 
-    const obligation = await client.rpc(
+    const obligation = await db.rpc(
       "execute_trade",
       trade({
         p_market_id: src,
@@ -217,7 +217,7 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
     expect(obligation.error).toBeNull();
     expect((obligation.data as Execution).execution_price).toBeLessThan(0);
 
-    const option = await client.rpc(
+    const option = await db.rpc(
       "execute_trade",
       trade({
         p_market_id: src,
@@ -225,8 +225,10 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
         p_instrument: "PTP_OPTION",
       })
     );
-    expect(option.error).toBeNull();
-    expect((option.data as Execution).execution_price).toBe(0);
+    // Retired (0039): in ERCOT's day-ahead market PTP options are held only by
+    // NOIEs, and an entry at max(DA spread, 0) = $0 bought real-time
+    // congestion optionality for nothing.
+    expect(String(option.error?.message)).toContain("INSTRUMENT_NOT_TRADABLE");
   }, 60_000);
 });
 

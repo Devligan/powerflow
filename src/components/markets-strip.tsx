@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { parseDec, format } from "@/lib/money";
+import { parseDec } from "@/lib/money";
 import { sourceInfo, usd, signedUsd } from "@/lib/format";
 import { localTime } from "@/lib/time";
 import { useTimeZone } from "@/components/time-zone";
@@ -145,7 +145,7 @@ export function MarketsStrip() {
 
               <div className="mt-2 flex items-baseline gap-1">
                 <FlashValue
-                  value={price != null ? `$${format(price, 2)}` : "—"}
+                  value={price != null ? usd(price) : "—"}
                   className={`mono text-[15px] font-medium ${up ? "pos" : down ? "neg" : "t-fg"}`}
                 />
                 {up && (

@@ -30,7 +30,7 @@ function stamp(iso: string, tz: string): string {
   return shortDate(iso, tz);
 }
 
-const money = (v: bigint) => `$${format(v, 2)}`;
+const money = (v: bigint) => (v < 0n ? `−$${format(-v, 2)}` : `$${format(v, 2)}`);
 
 /**
  * The forward curve, with what actually happened drawn against it.

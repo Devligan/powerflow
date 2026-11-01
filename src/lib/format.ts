@@ -6,9 +6,11 @@ import {
 } from "@/lib/ercot/types";
 import type { VolumeUnit } from "@/lib/trading/accounting";
 
-/** $1,234.56 */
+/** $1,234.56, or −$12.50: the sign goes ahead of the currency symbol, as
+ *  negative power prices (routine in ERCOT's west) are quoted. */
 export function usd(v: string | number | bigint, places = 2): string {
-  return `$${formatGrouped(parseDec(v), places)}`;
+  const n = parseDec(v);
+  return n < 0n ? `−$${formatGrouped(-n, places)}` : `$${formatGrouped(n, places)}`;
 }
 
 /** +$1,234.56 / −$1,234.56 — the sign ahead of the currency symbol, for

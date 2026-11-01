@@ -336,7 +336,7 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
 
   it("a rejected trade writes nothing at all", async () => {
     const before = { cash: await cash(), ...(await counts()) };
-    const { error } = await client.rpc(
+    const { error } = await db.rpc(
       "execute_trade",
       trade({ p_quantity_mwh: 1000, p_delivery_start: farStart(), p_delivery_end: farEnd() })
     );
@@ -348,7 +348,7 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
   }, 60_000);
 
   it("refuses an order for an interval the feed has not priced", async () => {
-    const { error } = await client.rpc(
+    const { error } = await db.rpc(
       "execute_trade",
       trade({ p_delivery_start: farStart(), p_delivery_end: farEnd() })
     );

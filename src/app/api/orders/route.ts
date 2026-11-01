@@ -4,8 +4,11 @@ import { getSessionUser } from "@/lib/auth";
 import { fail, ok, m } from "@/lib/api";
 import { parseDbDec, parseDec } from "@/lib/money";
 import {
+  BID_PRICE_CAP,
+  BID_PRICE_FLOOR,
   DEFAULT_INSTRUMENT,
   DEFAULT_MARKET_PRODUCT,
+  DESK_INSTRUMENT_CODES,
   getInstrument,
 } from "@/lib/ercot/types";
 import {
@@ -82,9 +85,10 @@ const OrderRequest = z.object({
   // clears at. Otherwise a LIMIT (0038).
   limitPrice: z
     .string()
-    .regex(/^\d+(\.\d{1,6})?$/, "Limit price must be a positive decimal number")
-    .refine((v) => parseDec(v) > 0n, {
-      message: "Limit price must be > 0",
+    .regex(/^-?\d+(\.\d{1,6})?$/, "Limit price must be a number")
+    // ERCOT's bid/offer bounds: negative prices are ordinary in the west.
+    .refine((v) => parseDec(v) >= parseDec(String(BID_PRICE_FLOOR)) && parseDec(v) <= parseDec(String(BID_PRICE_CAP)), {
+      message: `Limit price must be between -$${-BID_PRICE_FLOOR} and $${BID_PRICE_CAP.toLocaleString("en-US")}/MWh`,
     })
     .nullish(),
   deliveryStart: z.string().datetime(),
@@ -106,7 +110,7 @@ const FRIENDLY: Record<string, string> = {
   PRODUCT_NOT_TRADABLE: "That product is not open for trading yet.",
   SIDE_INVALID: "Side must be BUY or SELL.",
   QUANTITY_INVALID: "Quantity must be a positive number.",
-  LIMIT_PRICE_INVALID: "Limit price must be a positive number.",
+  LIMIT_PRICE_INVALID: "Limit price must be between -$250 and $5,000/MWh.",
   DELIVERY_INVALID: "The delivery window is invalid.",
   DELIVERY_IN_PAST: "That delivery period has already started, so it can no longer be traded.",
   DELIVERY_TOO_FAR_OUT: "That delivery is too far in the future (max 35 days).",
@@ -133,6 +137,12 @@ export async function POST(req: Request) {
 
   const instrument = getInstrument(o.instrument);
   if (!instrument) return fail("That is not an instrument this desk trades.", 422);
+  if (!DESK_INSTRUMENT_CODES.includes(instrument.code)) {
+    return fail(
+      "The desk offers virtual INC/DEC bids and day-ahead PTP obligations. Other instruments enter and settle on the same day-ahead price, so they cannot make or lose money.",
+      422
+    );
+  }
 
   // The trade's product follows the same derivation as execution: the caller
   // names a series for single-leg instruments; derived instruments clear in

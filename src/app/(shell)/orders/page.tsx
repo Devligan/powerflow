@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
 import { format, parseDbDec } from "@/lib/money";
-import { legsLabel } from "@/lib/format";
+import { legsLabel, usd } from "@/lib/format";
 import { dateTime, windowLabel } from "@/lib/time";
 import { getViewerTimeZone } from "@/lib/time-zone-server";
 import { OrderCancelButton } from "@/components/order-cancel-button";
@@ -84,7 +84,7 @@ export default async function OrdersPage() {
                   ) : (
                     <>
                       <span className="t-mute">@ limit</span>
-                      <span className="mono">${format(parseDbDec(o.limit_price), 2)}</span>
+                      <span className="mono">{usd(parseDbDec(o.limit_price))}</span>
                     </>
                   )}
                   <span className="t-mute">·</span>

@@ -15,6 +15,7 @@ import {
   getProduct,
   normalizePriceRecord,
   tradableInstruments,
+  deskInstruments,
   tradableProducts,
   truncateToHour,
 } from "@/lib/ercot/types";
@@ -742,11 +743,22 @@ describe("instrument catalog", () => {
       "INDEX_SWAP",
       "PRICE_OPTION",
       "PTP_OBLIGATION",
-      "PTP_OPTION",
       "VIRTUAL",
     ];
     expect(tradableInstruments().map((i) => i.code).sort()).toEqual(expected);
     expect(getInstrument("AS_CAPACITY")?.tradable).toBe(false);
+    // NOIE-only in ERCOT's DAM, and a free option at a $0 entry (0039).
+    expect(getInstrument("PTP_OPTION")?.tradable).toBe(false);
+  });
+
+  it("offers on the desk only bids that settle against real time", () => {
+    // Every desk instrument enters at the day-ahead clearing and settles in
+    // real time; anything settling on its own entry price can only make $0.
+    expect(deskInstruments().map((i) => i.code)).toEqual(["VIRTUAL", "PTP_OBLIGATION"]);
+    for (const i of deskInstruments()) {
+      expect(["CONVERGENCE", "CONGESTION_CONVERGENCE"]).toContain(i.settlementRule);
+      expect(i.tradable).toBe(true);
+    }
   });
 });
 

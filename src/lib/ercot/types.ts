@@ -391,7 +391,9 @@ export const INSTRUMENTS: readonly InstrumentDef[] = [
   // day-ahead spread and settled at the real-time spread, so it carries the
   // *convergence* of congestion across the path.
   { code: "PTP_OBLIGATION", label: "Day-ahead PTP obligation (DA to RT congestion)", shortLabel: "DA PTP obligation", kind: "PTP_SPREAD", venue: "DAM", legs: 2, settlementRule: "CONGESTION_CONVERGENCE", optionType: "OBLIGATION", productFromTrade: false, tradable: true },
-  { code: "PTP_OPTION", label: "Day-ahead PTP option (DA to RT congestion)", shortLabel: "DA PTP option", kind: "PTP_SPREAD", venue: "DAM", legs: 2, settlementRule: "CONGESTION_CONVERGENCE", optionType: "OPTION", productFromTrade: false, tradable: true },
+  // Retired (0039): in ERCOT's DAM, PTP options are for NOIEs only, and an entry
+  // at max(DA spread, 0) bought real-time congestion optionality for nothing.
+  { code: "PTP_OPTION", label: "Day-ahead PTP option (DA to RT congestion)", shortLabel: "DA PTP option", kind: "PTP_SPREAD", venue: "DAM", legs: 2, settlementRule: "CONGESTION_CONVERGENCE", optionType: "OPTION", productFromTrade: false, tradable: false },
   // A CRR bought in the auction settles on the day-ahead spread alone — Nodal
   // Protocols 7.9.1.1 pays the owner "the difference in the Day-Ahead
   // Settlement Point Price between the sink Settlement Point and the source
@@ -421,6 +423,28 @@ export function requireInstrument(code: string): InstrumentDef {
 export function tradableInstruments(): InstrumentDef[] {
   return INSTRUMENTS.filter((i) => i.tradable);
 }
+
+/**
+ * What the desk offers: exactly what a QSE with no assets can bid into
+ * ERCOT's day-ahead market — virtual INC/DEC bids and DA PTP obligations.
+ * Each enters at the day-ahead clearing and settles in real time, so the
+ * result is a genuine bet on the DA→RT spread.
+ *
+ * The engine still knows the other instruments (positions already held in
+ * them settle normally), but they are not offered: each enters and settles
+ * on the same published day-ahead price, so it can never make or lose money.
+ * A real term desk prices forwards off a forward curve (ICE/OTC) and CRRs
+ * in ERCOT's auctions — data PowerFlow does not have.
+ */
+export const DESK_INSTRUMENT_CODES: readonly string[] = ["VIRTUAL", "PTP_OBLIGATION"];
+
+export function deskInstruments(): InstrumentDef[] {
+  return DESK_INSTRUMENT_CODES.map((c) => requireInstrument(c));
+}
+
+/** ERCOT's bid/offer price bounds for day-ahead energy bids, $/MWh. */
+export const BID_PRICE_FLOOR = -250;
+export const BID_PRICE_CAP = 5000;
 
 export const DEFAULT_INSTRUMENT = "ENERGY_SPOT";
 

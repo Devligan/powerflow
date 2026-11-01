@@ -274,7 +274,7 @@ describe.skipIf(!dbTestsEnabled())("historical replay on actual ERCOT data (live
     await setClock(tMid);
     expect(new Date(tMid) < new Date(rtHour.get(hour)!.publishedAt)).toBe(true);
 
-    const { error: rtError } = await client.rpc(
+    const { error: rtError } = await db.rpc(
       "execute_trade",
       trade({
         p_instrument: "ENERGY_SPOT",
@@ -313,7 +313,7 @@ describe.skipIf(!dbTestsEnabled())("historical replay on actual ERCOT data (live
     expect(revErr).toBeNull();
     revisionIds.push(rev!.id as string);
 
-    const { error } = await client.rpc(
+    const { error } = await db.rpc(
       "execute_trade",
       trade({
         p_instrument: "ENERGY_SPOT",
@@ -395,7 +395,7 @@ describe.skipIf(!dbTestsEnabled())("historical replay on actual ERCOT data (live
     // Open while the hour runs (before the original final exists).
     const tOpen2 = new Date(new Date(hour2).getTime() + 20 * 60_000).toISOString();
     await setClock(tOpen2);
-    const { error: openError } = await client.rpc(
+    const { error: openError } = await db.rpc(
       "execute_trade",
       trade({ p_quantity_mwh: 5, p_delivery_start: hour2, p_delivery_end: hour2End })
     );
