@@ -1,7 +1,12 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, useSyncExternalStore, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import {
+  browserTimeZone,
+  saveTimeZoneChoice,
+  useTimeZoneSetting,
+} from "@/components/time-zone";
 
 /*
  * The interactive parts of Settings. Every one calls a route handler: the
@@ -28,6 +33,87 @@ function Alert({ text }: { text: string | null }) {
     <p role="alert" className="text-[12px] t-short">
       {text}
     </p>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+
+const COMMON_ZONES = [
+  "America/Chicago",
+  "America/New_York",
+  "America/Denver",
+  "America/Phoenix",
+  "America/Los_Angeles",
+  "Europe/London",
+  "Asia/Kolkata",
+  "Asia/Singapore",
+  "Australia/Sydney",
+];
+
+const noSubscribe = () => () => {};
+
+let zoneListCache: string[] | null = null;
+/** Common zones first, then every zone the browser knows. Stable per page load. */
+function zoneList(): string[] {
+  if (zoneListCache) return zoneListCache;
+  const intl = Intl as unknown as { supportedValuesOf?: (key: string) => string[] };
+  let all: string[] = [];
+  try {
+    all = intl.supportedValuesOf?.("timeZone") ?? [];
+  } catch {
+    all = [];
+  }
+  zoneListCache = [...COMMON_ZONES, ...all.filter((z) => !COMMON_ZONES.includes(z))];
+  return zoneListCache;
+}
+
+/**
+ * Which zone the site shows times in: this browser's own (the default, which
+ * follows travel and system changes) or one chosen here. The choice is kept
+ * per browser.
+ */
+export function TimeZoneSetting() {
+  const router = useRouter();
+  const { tz, manual } = useTimeZoneSetting();
+  // Browser-only facts: the server renders without them, the client fills
+  // them in, so the two never disagree during hydration.
+  const detected = useSyncExternalStore(noSubscribe, browserTimeZone, () => null);
+  const zones = useSyncExternalStore(noSubscribe, zoneList, () => COMMON_ZONES);
+  const options = manual && !zones.includes(tz) ? [tz, ...zones] : zones;
+
+  function choose(value: string) {
+    saveTimeZoneChoice(value === "auto" ? null : value);
+    router.refresh();
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className="label" htmlFor="time-zone">
+        Time zone
+      </label>
+      <select
+        id="time-zone"
+        className="input"
+        value={manual ? tz : "auto"}
+        onChange={(e) => choose(e.target.value)}
+      >
+        <option value="auto">
+          Automatic — this browser{detected ? ` (${detected.replace(/_/g, " ")})` : ""}
+        </option>
+        <optgroup label="Choose a zone">
+          {options.map((z) => (
+            <option key={z} value={z}>
+              {z.replace(/_/g, " ")}
+            </option>
+          ))}
+        </optgroup>
+      </select>
+      <p className="text-[11px] t-mute">
+        Every time on the site is shown in this zone. ERCOT&apos;s operating
+        days and hour-ending numbers (HE1–HE24) stay on Central time, because
+        that is how the market defines them.
+      </p>
+    </div>
   );
 }
 

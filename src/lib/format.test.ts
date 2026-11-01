@@ -3,11 +3,13 @@ import {
   instrumentInfo,
   legsLabel,
   positionUnit,
-  centralWindowLabel,
   signedUsd,
   volumeUnitLabel,
 } from "@/lib/format";
 import { INSTRUMENTS, PRODUCTS } from "@/lib/ercot/types";
+import { windowLabel } from "@/lib/time";
+
+const centralWindowLabel = (start: number, end: number) => windowLabel(start, end, "America/Chicago");
 
 describe("centralWindowLabel", () => {
   it("names a UTC hour in Central terms, with the hour ending", () => {

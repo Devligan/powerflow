@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { centralLocalToUtc, shortDate } from "@/lib/format";
+import { localToUtc, shortDate, zoneName, zonedParts } from "@/lib/time";
+import { useTimeZone } from "@/components/time-zone";
 
 /**
  * The simulation clock control.
@@ -22,6 +23,7 @@ interface ClockState {
 
 export function SimClockWidget() {
   const router = useRouter();
+  const tz = useTimeZone();
   const [clock, setClock] = useState<ClockState | null>(null);
   const [target, setTarget] = useState<string>("");
   const [busy, setBusy] = useState(false);
@@ -71,7 +73,7 @@ export function SimClockWidget() {
         <div>
           <div className="caption t-mute">Simulation clock</div>
           <div className="mono text-lg font-medium">
-            {clock ? shortDate(clock.now) : "…"}
+            {clock ? shortDate(clock.now, tz) : "…"}
             <span className={`ml-2 badge ${replay ? "badge-amber" : "badge-green"}`}>
               {replay ? "REPLAY" : "LIVE"}
             </span>
@@ -90,19 +92,21 @@ export function SimClockWidget() {
             className="input mono text-sm"
             value={target}
             onChange={(e) => setTarget(e.target.value)}
-            aria-label="Simulation time (US Central)"
-            title="ERCOT market time (US Central), like the clock beside it"
+            aria-label={`Simulation time (${zoneName(tz)})`}
+            title={`Your time zone (${zoneName(tz)}), like the clock beside it`}
           />
-          <span className="caption t-mute">Central</span>
+          <span className="caption t-mute">
+            {clock ? zonedParts(Date.parse(clock.wallNow), tz).zone : ""}
+          </span>
           <button
             className="btn btn-sm"
             disabled={busy || !target}
             // datetime-local has no zone and `new Date()` would read it as the
-            // browser's local time; the desk runs on Central, so pin it there.
+            // browser's zone; read it in the zone the desk is shown in.
             onClick={() => {
-              const ms = centralLocalToUtc(target);
+              const ms = localToUtc(target, tz);
               if (ms == null) {
-                setError("That time does not exist in Central (it falls in the daylight-saving gap).");
+                setError("That time does not exist in your time zone (it falls in a daylight-saving gap).");
                 return;
               }
               apply(new Date(ms).toISOString());

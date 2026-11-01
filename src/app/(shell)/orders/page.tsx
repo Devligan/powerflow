@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
 import { format, parseDbDec } from "@/lib/money";
-import { centralWindowLabel, dateTime, legsLabel } from "@/lib/format";
+import { legsLabel } from "@/lib/format";
+import { dateTime, windowLabel } from "@/lib/time";
+import { getViewerTimeZone } from "@/lib/time-zone-server";
 import { OrderCancelButton } from "@/components/order-cancel-button";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +25,7 @@ const STATUS_TONE: Record<string, string> = {
  */
 export default async function OrdersPage() {
   const user = await getSessionUser();
+  const { tz } = await getViewerTimeZone();
   const db = await createClient();
   const [{ data }, { data: markets }] = await Promise.all([
     user
@@ -82,7 +85,7 @@ export default async function OrdersPage() {
                   </span>
                   <span className="caption t-mute">
                     delivery{" "}
-                    {centralWindowLabel(Date.parse(o.delivery_start), Date.parse(o.delivery_end))}
+                    {windowLabel(Date.parse(o.delivery_start), Date.parse(o.delivery_end), tz)}
                   </span>
                 </div>
                 <OrderCancelButton orderId={o.id} />
@@ -116,7 +119,7 @@ export default async function OrdersPage() {
                   <span className="mono">{legs(o)}</span>
                   <span className="t-mute">· {o.instrument}</span>
                   <span className="caption t-mute">
-                    placed {dateTime(o.created_at)}
+                    placed {dateTime(o.created_at, tz)}
                   </span>
                 </div>
                 <span className={STATUS_TONE[o.status] ?? "badge badge-neutral"}>

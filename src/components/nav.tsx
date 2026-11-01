@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Brand } from "@/components/brand";
-import { MarketClock } from "@/components/ui/clock";
+import { LocalClock } from "@/components/ui/clock";
 import { Avatar } from "@/components/ui/avatar";
 
 const NAV = [
@@ -64,7 +64,7 @@ export function Nav({
             shell footer instead. */}
         <div className="ml-auto flex items-center gap-3">
           <span className="hidden border-l border-white/10 pl-3 sm:block">
-            <MarketClock />
+            <LocalClock />
           </span>
 
           {user ? (

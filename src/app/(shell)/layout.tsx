@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser, ensureUserRecords, getUserProfile } from "@/lib/auth";
 import { Nav } from "@/components/nav";
+import { ZoneCaption } from "@/components/ui/clock";
 import { SetupBanner } from "@/components/setup-banner";
 
 export default async function ShellLayout({
@@ -44,7 +45,7 @@ export default async function ShellLayout({
             <Link href="/terms" className="hover:underline">Terms</Link>
           </p>
           <p className="caption">
-            Times in ERCOT market time (US Central) · prices are actual ERCOT MIS publications
+            Times in <ZoneCaption /> · prices are actual ERCOT MIS publications
           </p>
         </div>
       </footer>

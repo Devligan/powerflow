@@ -18,13 +18,15 @@ import {
   legsLabel,
   positionUnit,
   volumeUnitLabel,
-  centralTime,
 } from "@/lib/format";
+import { localTime } from "@/lib/time";
+import { getViewerTimeZone } from "@/lib/time-zone-server";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const user = await requireUser();
+  const { tz } = await getViewerTimeZone();
   const [snapshot, status, profile] = await Promise.all([
     getPortfolioSnapshot(user.id).catch(() => null),
     getMarketStatus().catch(() => null),
@@ -173,7 +175,7 @@ export default async function DashboardPage() {
                         {inst ? inst.shortLabel : p.instrument}
                       </td>
                       <td className="mono t-mute">
-                        {centralTime(p.deliveryStart)}
+                        {localTime(p.deliveryStart, tz)}
                       </td>
                       <td className="mono whitespace-nowrap text-right">
                         {num(p.quantityMwh)}{" "}

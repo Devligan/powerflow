@@ -1,7 +1,9 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { parseDbDec } from "@/lib/money";
 import { getSessionUser } from "@/lib/auth";
-import { usd, bpsToPercent, centralDate } from "@/lib/format";
+import { usd, bpsToPercent } from "@/lib/format";
+import { localDate } from "@/lib/time";
+import { getViewerTimeZone } from "@/lib/time-zone-server";
 import { getPublicStandings, type StandingsRow } from "@/lib/standings";
 import { PageHeader } from "@/components/ui/page-header";
 import { LeaderboardOptIn } from "@/components/leaderboard-opt-in";
@@ -20,6 +22,7 @@ export default async function LeaderboardPage({
   // Rows carry no user ids or usernames: this page's payload is public, and
   // React keys and props are serialised into it (src/lib/standings.ts).
   const user = await getSessionUser().catch(() => null);
+  const { tz } = await getViewerTimeZone();
   let rows: StandingsRow[] = [];
   let error: string | null = null;
   try {
@@ -120,7 +123,7 @@ export default async function LeaderboardPage({
                         </td>
                         <td className="mono text-right">{row.tradesCount}</td>
                         <td className="mono t-mute">
-                          {centralDate(row.joinedAt)}
+                          {localDate(row.joinedAt, tz)}
                         </td>
                       </tr>
                     );

@@ -2,7 +2,8 @@
 
 import { useMemo, useRef, useState } from "react";
 import { parseDec, format } from "@/lib/money";
-import { shortDate } from "@/lib/format";
+import { shortDate } from "@/lib/time";
+import { useTimeZone } from "@/components/time-zone";
 
 export interface ChartPoint {
   deliveryTimestamp: string;
@@ -24,9 +25,9 @@ const ACCENT = "#e2a33d";
 const REFERENCE = "rgb(230 227 221 / 0.55)";
 const WASH = "rgb(226 163 61 / 0.07)";
 
-/** 2026-09-22 09:00 CDT */
-function stamp(iso: string): string {
-  return shortDate(iso);
+/** 2026-09-22 09:00 CDT, on the viewer's clock */
+function stamp(iso: string, tz: string): string {
+  return shortDate(iso, tz);
 }
 
 const money = (v: bigint) => `$${format(v, 2)}`;
@@ -55,6 +56,7 @@ export function PriceChart({
   /** Draw a "now" rule at this instant when it falls inside the axis. */
   nowMs?: number;
 }) {
+  const tz = useTimeZone();
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [hover, setHover] = useState<number | null>(null);
 
@@ -146,7 +148,7 @@ export function PriceChart({
             {money(spread)}
           </span>
         )}
-        <span className="caption">{stamp(new Date(shown.t).toISOString())}</span>
+        <span className="caption">{stamp(new Date(shown.t).toISOString(), tz)}</span>
         <span className="caption ml-auto">{hover != null ? "Hovering interval" : "Latest interval"}</span>
       </div>
 
@@ -207,10 +209,10 @@ export function PriceChart({
 
         <line x1={PAD_L} x2={W - PAD_R} y1={BASE} y2={BASE} stroke={AXIS} />
         <text x={PAD_L} y={H - 7} fontSize="9" fill="var(--text-mute)" className="mono">
-          {stamp(new Date(geo.tLo).toISOString())}
+          {stamp(new Date(geo.tLo).toISOString(), tz)}
         </text>
         <text x={W - PAD_R} y={H - 7} textAnchor="end" fontSize="9" fill="var(--text-mute)" className="mono">
-          {stamp(new Date(geo.tLo + geo.span).toISOString())}
+          {stamp(new Date(geo.tLo + geo.span).toISOString(), tz)}
         </text>
       </svg>
 

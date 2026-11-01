@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Archivo, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
+import { getViewerTimeZone } from "@/lib/time-zone-server";
+import { TimeZoneProvider } from "@/components/time-zone";
 
 /*
  * Three faces, three jobs. Archivo carries structure, IBM Plex Sans carries
@@ -50,17 +52,23 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Every time on the site is shown in the viewer's own zone (src/lib/time.ts).
+  const { tz, manual } = await getViewerTimeZone();
   return (
     <html
       lang="en"
       className={`${archivo.variable} ${plexSans.variable} ${plexMono.variable} h-full`}
     >
-      <body className="flex min-h-full flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        <TimeZoneProvider tz={tz} manual={manual}>
+          {children}
+        </TimeZoneProvider>
+      </body>
     </html>
   );
 }

@@ -67,8 +67,11 @@ with virtual cash, a full risk engine, immutable audit trail, and analytics.
   `/welcome`; `/settings` edits them and handles privacy (a private account is
   off the standings), email and password changes (confirmed by email), signing
   out other devices, a CSV export, and permanent deletion.
-- Every time the desk shows is ERCOT market time (US Central, CDT/CST, with
-  hour-ending on delivery windows); instants are stored and computed in UTC.
+- Every time the site shows is in the viewer's own time zone (detected from the
+  browser and kept in the `pf_tz` cookie so server-rendered pages agree, or
+  chosen in Settings); see `src/lib/time.ts`. ERCOT's operating days and
+  hour-ending numbers stay on Central time, since that is how the market
+  defines them. Instants are stored and computed in UTC.
 - Automatic cash settlement of delivered positions at their own instrument
   price, equity-neutral and idempotent, with unpriced intervals deferred and
   surfaced rather than settled at a guess.

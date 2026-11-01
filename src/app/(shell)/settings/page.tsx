@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser, getUserProfile } from "@/lib/auth";
-import { centralDate, dateTime } from "@/lib/format";
+import { dateTime, localDate } from "@/lib/time";
+import { getViewerTimeZone } from "@/lib/time-zone-server";
 import { PageHeader } from "@/components/ui/page-header";
 import { AvatarEditor } from "@/components/account/avatar-editor";
 import { ProfileForm } from "@/components/account/profile-form";
@@ -10,6 +11,7 @@ import {
   PasswordChange,
   PrivacyToggle,
   SignOutOthers,
+  TimeZoneSetting,
 } from "./settings-sections";
 
 export const dynamic = "force-dynamic";
@@ -65,6 +67,7 @@ export default async function SettingsPage({
 }) {
   const params = await searchParams;
   const user = await requireUser();
+  const { tz } = await getViewerTimeZone();
   const profile = await getUserProfile(user.id);
   if (!profile) throw new Error("Your profile could not be loaded.");
 
@@ -109,6 +112,7 @@ export default async function SettingsPage({
       <nav aria-label="Settings sections" className="flex flex-wrap gap-x-4 gap-y-1 text-[12px]">
         {[
           ["profile", "Profile"],
+          ["display", "Time zone"],
           ["privacy", "Privacy"],
           ["sign-in", "Sign-in & security"],
           ["data", "Your data"],
@@ -134,6 +138,14 @@ export default async function SettingsPage({
             leaderboardOptIn: profile.leaderboard_opt_in,
           }}
         />
+      </Section>
+
+      <Section
+        id="display"
+        title="Time zone"
+        description="The clock every time on the site is shown in."
+      >
+        <TimeZoneSetting />
       </Section>
 
       <Section
@@ -168,7 +180,7 @@ export default async function SettingsPage({
             )}
           </ul>
           <p className="mt-2 text-[11px] t-mute">
-            Last sign-in {user.last_sign_in_at ? dateTime(user.last_sign_in_at) : "—"}.
+            Last sign-in {user.last_sign_in_at ? dateTime(user.last_sign_in_at, tz) : "—"}.
           </p>
         </div>
         <div className="border-t border-white/10 pt-4">
@@ -179,7 +191,7 @@ export default async function SettingsPage({
       <Section id="data" title="Your data" description="A copy of your activity, any time.">
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-1.5 text-[12.5px]">
           <dt className="t-mute">Member since</dt>
-          <dd className="mono">{centralDate(profile.created_at)}</dd>
+          <dd className="mono">{localDate(profile.created_at, tz)}</dd>
         </dl>
         <a href="/api/trades/export" className="btn btn-sm inline-flex">
           Download trade blotter (CSV)

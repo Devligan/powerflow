@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { parseDec, format } from "@/lib/money";
-import { sourceInfo, usd, signedUsd, centralTime } from "@/lib/format";
+import { sourceInfo, usd, signedUsd } from "@/lib/format";
+import { localTime } from "@/lib/time";
+import { useTimeZone } from "@/components/time-zone";
 import { Lamp } from "@/components/ui/lamp";
 import { FlashValue } from "@/components/ui/flash-value";
 
@@ -26,6 +28,7 @@ interface MarketStripItem {
  * never signalled by colour alone.
  */
 export function MarketsStrip() {
+  const tz = useTimeZone();
   const [items, setItems] = useState<MarketStripItem[]>([]);
   const [ts, setTs] = useState<number | null>(null);
   const [error, setError] = useState<boolean>(false);
@@ -195,7 +198,7 @@ export function MarketsStrip() {
         {error
           ? "Market data unavailable right now."
           : ts
-            ? `Updated ${centralTime(ts, true)} · actual ERCOT settlement point prices`
+            ? `Updated ${localTime(ts, tz, true)} · actual ERCOT settlement point prices`
             : ""}
       </p>
     </div>

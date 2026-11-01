@@ -5,14 +5,13 @@ import {
   usd,
   sign,
   num,
-  shortDate,
   instrumentInfo,
   legsLabel,
   positionUnit,
   volumeUnitLabel,
-  centralWindowLabel,
-  centralDate,
 } from "@/lib/format";
+import { localDate, shortDate, windowLabel } from "@/lib/time";
+import { getViewerTimeZone } from "@/lib/time-zone-server";
 import { PageHeader } from "@/components/ui/page-header";
 import { RiskLadder } from "@/components/risk-ladder";
 import { buildLadder } from "@/lib/risk-ladder";
@@ -21,6 +20,7 @@ export const dynamic = "force-dynamic";
 
 export default async function PositionsPage() {
   const user = await requireUser();
+  const { tz } = await getViewerTimeZone();
   const positions = await getPositionsView(user.id);
   const open = positions.filter((p) => p.isOpen);
   const flat = positions.filter((p) => !p.isOpen);
@@ -90,17 +90,17 @@ export default async function PositionsPage() {
                       </td>
                       <td className="mono whitespace-nowrap t-mute">
                         {inst?.rule === "AVERAGE"
-                          ? `${centralDate(p.deliveryStart)} → ${centralDate(p.deliveryEnd)}`
-                          : shortDate(p.deliveryStart)}
-                        {/* ERCOT's own clock: Central time and hour ending. */}
+                          ? `${localDate(p.deliveryStart, tz)} → ${localDate(p.deliveryEnd, tz)}`
+                          : shortDate(p.deliveryStart, tz)}
+                        {/* The viewer's clock, with ERCOT's hour ending. */}
                         <div className="text-[10.5px] normal-case">
-                          {centralWindowLabel(Date.parse(p.deliveryStart), Date.parse(p.deliveryEnd))}
+                          {windowLabel(Date.parse(p.deliveryStart), Date.parse(p.deliveryEnd), tz)}
                         </div>
                       </td>
                       <td className="whitespace-nowrap">
                         {p.settlement === "SETTLED" ? (
                           <span className="badge badge-neutral">
-                            Settled {p.settledAt ? shortDate(p.settledAt) : ""}
+                            Settled {p.settledAt ? shortDate(p.settledAt, tz) : ""}
                           </span>
                         ) : p.settlement === "AWAITING" ? (
                           // Due and priced: the next sweep cashes it out.

@@ -2,7 +2,7 @@ import { getSessionUser } from "@/lib/auth";
 import { fail } from "@/lib/api";
 import { format, parseDbDec } from "@/lib/money";
 import { getTrades } from "@/lib/queries";
-import { centralWindowLabel } from "@/lib/format";
+import { MARKET_TIME_ZONE, windowLabel } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -71,7 +71,9 @@ export async function GET(req: Request) {
           format((qty * price) / 1_000_000n, 6),
           r.delivery_start,
           r.delivery_end,
-          centralWindowLabel(Date.parse(r.delivery_start), Date.parse(r.delivery_end)),
+          // ERCOT's own clock, matching the column name: a reconciliation
+          // file must read the same for every reader, wherever they are.
+          windowLabel(Date.parse(r.delivery_start), Date.parse(r.delivery_end), MARKET_TIME_ZONE),
           r.status,
           r.realized_pnl,
         ]

@@ -5,23 +5,23 @@ import Link from "next/link";
 import { parseDec } from "@/lib/money";
 import {
   sign,
-  shortDate,
   instrumentInfo,
   legsLabel,
   positionUnit,
   volumeUnitLabel,
-  centralDayStartUtc,
 } from "@/lib/format";
+import { dayStartUtc, shortDate } from "@/lib/time";
+import { useTimeZone } from "@/components/time-zone";
 
-/** The filter dates are Central calendar days: the first or last instant of one. */
-function dayBound(day: string, edge: "start" | "end"): string {
+/** The filter dates are calendar days in the viewer's zone: the first or last instant of one. */
+function dayBound(day: string, edge: "start" | "end", tz: string): string {
   if (edge === "start") {
-    const start = centralDayStartUtc(day);
+    const start = dayStartUtc(day, tz);
     return new Date(start ?? Date.parse(`${day}T00:00:00Z`)).toISOString();
   }
   const [y, m, d] = day.split("-").map(Number);
   const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
-  const end = centralDayStartUtc(next);
+  const end = dayStartUtc(next, tz);
   return new Date((end ?? Date.parse(`${next}T00:00:00Z`)) - 1).toISOString();
 }
 
@@ -50,6 +50,7 @@ interface MarketItem {
 const PAGE = 50;
 
 export function TradesTable() {
+  const tz = useTimeZone();
   const [trades, setTrades] = useState<TradeItem[]>([]);
   const [markets, setMarkets] = useState<MarketItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -65,8 +66,8 @@ export function TradesTable() {
   const filterParams = new URLSearchParams();
   if (side) filterParams.set("side", side);
   if (marketId) filterParams.set("marketId", marketId);
-  if (dateFrom) filterParams.set("dateFrom", dayBound(dateFrom, "start"));
-  if (dateTo) filterParams.set("dateTo", dayBound(dateTo, "end"));
+  if (dateFrom) filterParams.set("dateFrom", dayBound(dateFrom, "start", tz));
+  if (dateTo) filterParams.set("dateTo", dayBound(dateTo, "end", tz));
 
   useEffect(() => {
     let alive = true;
@@ -79,8 +80,8 @@ export function TradesTable() {
       });
       if (side) params.set("side", side);
       if (marketId) params.set("marketId", marketId);
-      if (dateFrom) params.set("dateFrom", dayBound(dateFrom, "start"));
-      if (dateTo) params.set("dateTo", dayBound(dateTo, "end"));
+      if (dateFrom) params.set("dateFrom", dayBound(dateFrom, "start", tz));
+      if (dateTo) params.set("dateTo", dayBound(dateTo, "end", tz));
 
       const [tradesRes, marketsRes] = await Promise.all([
         fetch(`/api/trades?${params}`, { cache: "no-store" }),
@@ -102,7 +103,7 @@ export function TradesTable() {
     return () => {
       alive = false;
     };
-  }, [offset, side, marketId, dateFrom, dateTo, refreshKey]);
+  }, [offset, side, marketId, dateFrom, dateTo, refreshKey, tz]);
 
   return (
     <div className="space-y-4">
@@ -244,7 +245,7 @@ export function TradesTable() {
                   const legB = inst?.legs === 2 ? t.counterSettlementPoint : null;
                   return (
                     <tr key={t.id}>
-                      <td className="mono t-mute">{shortDate(t.createdAt)}</td>
+                      <td className="mono t-mute">{shortDate(t.createdAt, tz)}</td>
                       <td className="mono">
                         <Link
                           href={`/markets/${t.settlementPoint}`}
@@ -292,7 +293,7 @@ export function TradesTable() {
                         {r === 0n ? "—" : sign(r)}
                       </td>
                       <td className="mono t-mute">
-                        {shortDate(t.deliveryStart)}
+                        {shortDate(t.deliveryStart, tz)}
                       </td>
                       <td>
                         <span className="badge badge-neutral">{t.status}</span>

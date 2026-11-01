@@ -5,16 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { parseDec, format } from "@/lib/money";
 import {
-  dateTime,
   volumeUnitLabel,
   positionUnit,
   instrumentInfo,
   usd,
   num,
   signedUsd,
-  centralTime,
-  centralWindowLabel,
 } from "@/lib/format";
+import { dateTime, localTime, windowLabel } from "@/lib/time";
+import { useTimeZone } from "@/components/time-zone";
 import {
   centralHourEnding,
   hourEndingStartUtc,
@@ -93,6 +92,7 @@ export function TradePanel({
   simNowMs?: number;
 }) {
   const router = useRouter();
+  const tz = useTimeZone();
   const [instrumentCode, setInstrumentCode] = useState(DEFAULT_INSTRUMENT);
   // The page's series anchors the ticket, but only an orderable series can be
   // traded (0025: the RT references are not). Snap the initial choice into
@@ -594,7 +594,7 @@ export function TradePanel({
         <div className="grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
           <div>
             <label className="label" htmlFor="delivery-date">
-              {intervals > 1 ? "Window start · operating day" : "Operating day"}
+              {intervals > 1 ? "Window start · ERCOT operating day" : "ERCOT operating day"}
             </label>
             <input
               id="delivery-date"
@@ -618,7 +618,7 @@ export function TradePanel({
               {dayHours.map((h) => (
                 <option key={h.startMs} value={String(h.startMs)}>
                   HE{String(h.he).padStart(2, "0")}
-                  {h.repeated ? " (repeated)" : ""} · {centralTime(h.startMs)}
+                  {h.repeated ? " (repeated)" : ""} · {localTime(h.startMs, tz)}
                 </option>
               ))}
             </select>
@@ -649,8 +649,8 @@ export function TradePanel({
           {delivery && (
             <p className="caption col-span-2 normal-case tracking-normal t-dim">
               {legs.length > 1 && lastLeg
-                ? centralWindowLabel(delivery.startMs, lastLeg.endMs)
-                : centralWindowLabel(delivery.startMs, delivery.endMs)}
+                ? windowLabel(delivery.startMs, lastLeg.endMs, tz)
+                : windowLabel(delivery.startMs, delivery.endMs, tz)}
             </p>
           )}
         </div>
@@ -685,7 +685,7 @@ export function TradePanel({
                   Around the clock
                 </button>
                 <span className="text-[11px] t-mute">
-                  for {delivery ? centralHourEnding(delivery.startMs).day : "—"} (Central)
+                  for ERCOT operating day {delivery ? centralHourEnding(delivery.startMs).day : "—"}
                 </span>
               </div>
             )}
@@ -705,7 +705,7 @@ export function TradePanel({
           <br />
           {tradedProduct} priced through{" "}
           <span className="mono t-dim">
-            {pricedThrough != null ? dateTime(pricedThrough) : "—"}
+            {pricedThrough != null ? dateTime(pricedThrough, tz) : "—"}
           </span>
           .
         </p>

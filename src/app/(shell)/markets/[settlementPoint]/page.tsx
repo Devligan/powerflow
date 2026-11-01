@@ -5,7 +5,9 @@ import Link from "next/link";
 import { getMarketPrices, listMarketOptions } from "@/lib/markets";
 import { TradePanel } from "@/components/trade-panel";
 import { PriceChart } from "@/components/price-chart";
-import { dateTime, shortDate, sourceInfo } from "@/lib/format";
+import { sourceInfo } from "@/lib/format";
+import { dateTime, shortDate } from "@/lib/time";
+import { getViewerTimeZone } from "@/lib/time-zone-server";
 import { Lamp } from "@/components/ui/lamp";
 import { requireUser } from "@/lib/auth";
 import { getSimClock } from "@/lib/sim-clock";
@@ -19,6 +21,7 @@ export default async function MarketDetailPage({
   params: Promise<{ settlementPoint: string }>;
 }) {
   const user = await requireUser();
+  const { tz } = await getViewerTimeZone();
   const { settlementPoint } = await params;
   const clock = await getSimClock(user.id).catch(() => null);
   const asOf = clock && clock.mode === "REPLAY" ? new Date(clock.now) : null;
@@ -92,7 +95,7 @@ export default async function MarketDetailPage({
         <p className="note">
           Replay · showing only observations ERCOT had published by
           <span className="moni">
-            {" "}{shortDate(clock!.now)}</span
+            {" "}{shortDate(clock!.now, tz)}</span
           >
           .
         </p>
@@ -113,7 +116,7 @@ export default async function MarketDetailPage({
             <h2 className="card-title mb-0">Day-ahead curve vs real time</h2>
             {forwardLast && (
               <span className="caption">
-                day-ahead through {dateTime(forwardPricedThrough!)}
+                day-ahead through {dateTime(forwardPricedThrough!, tz)}
               </span>
             )}
           </div>
@@ -130,7 +133,7 @@ export default async function MarketDetailPage({
             spread on this point is paid.
             {latest && (
               <>
-                {" "}Latest real-time hour {dateTime(latest.deliveryTimestamp)} ·{" "}
+                {" "}Latest real-time hour {dateTime(latest.deliveryTimestamp, tz)} ·{" "}
                 {sourceInfo(latest.source).label}.
               </>
             )}
