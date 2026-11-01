@@ -37,8 +37,10 @@ export async function POST(req: Request) {
   const storage = admin.storage.from(AVATAR_BUCKET);
   const { error: upError } = await storage.upload(path, bytes, {
     contentType: type,
-    // Every upload has a new name, so the old URL never serves new bytes.
-    cacheControl: "31536000",
+    // Every upload has a new name, so a cached copy is never stale; but a
+    // removed picture should stop being served soon, so the CDN keeps it for
+    // an hour, not a year.
+    cacheControl: "3600",
     upsert: false,
   });
   if (upError) return fail("The picture could not be stored. Please try again.", 502);

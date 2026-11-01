@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/auth";
+import { requireUser, getUserProfile } from "@/lib/auth";
 import { getPortfolioSnapshot } from "@/lib/queries";
 import { getMarketStatus } from "@/lib/markets";
 import { MarketsStrip } from "@/components/markets-strip";
@@ -25,13 +25,16 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const [snapshot, status] = await Promise.all([
+  const [snapshot, status, profile] = await Promise.all([
     getPortfolioSnapshot(user.id).catch(() => null),
     getMarketStatus().catch(() => null),
+    getUserProfile(user.id).catch(() => null),
   ]);
 
   const met = snapshot?.metrics;
-  const account = user.user_metadata?.display_name || user.email || "trader";
+  // The chosen display name, never the email: the desk is what gets shared
+  // on a screen or in a screenshot.
+  const account = profile?.display_name || "trader";
 
   const stats: Array<{ label: string; value: string; tone?: "pos" | "neg" }> = [
     {
