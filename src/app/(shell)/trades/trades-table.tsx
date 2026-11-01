@@ -49,6 +49,12 @@ export function TradesTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const filterParams = new URLSearchParams();
+  if (side) filterParams.set("side", side);
+  if (marketId) filterParams.set("marketId", marketId);
+  if (dateFrom) filterParams.set("dateFrom", new Date(`${dateFrom}T00:00:00Z`).toISOString());
+  if (dateTo) filterParams.set("dateTo", new Date(`${dateTo}T23:59:59Z`).toISOString());
+
   useEffect(() => {
     let alive = true;
     async function load() {
@@ -94,13 +100,19 @@ export function TradesTable() {
       <section className="card">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="card-title mb-0">Query</h2>
-          <button
-            type="button"
-            className="btn btn-sm"
-            onClick={() => setRefreshKey((k) => k + 1)}
-          >
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Same filters as the table, every page, exact decimals. */}
+            <a className="btn btn-sm" href={`/api/trades/export?${filterParams}`} download>
+              Export CSV
+            </a>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setRefreshKey((k) => k + 1)}
+            >
+              Refresh
+            </button>
+          </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>

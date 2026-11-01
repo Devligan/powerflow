@@ -305,6 +305,8 @@ export interface TradeFilters {
   dateTo?: string;
   offset?: number;
   limit?: number;
+  /** Every matching trade in one page (export); the replay is the same. */
+  all?: boolean;
 }
 
 export async function getTrades(
@@ -312,7 +314,7 @@ export async function getTrades(
   filters: TradeFilters = {}
 ): Promise<{ rows: TradeRow[]; total: number }> {
   const admin = supabaseAdmin();
-  const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200);
+  const limit = filters.all ? Number.MAX_SAFE_INTEGER : Math.min(Math.max(filters.limit ?? 50, 1), 200);
   const offset = Math.max(filters.offset ?? 0, 0);
 
   // Realized P&L per trade is attributed by replaying history through the

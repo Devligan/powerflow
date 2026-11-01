@@ -13,6 +13,8 @@ import {
   centralWindowLabel,
 } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
+import { RiskLadder } from "@/components/risk-ladder";
+import { buildLadder } from "@/lib/risk-ladder";
 
 export const dynamic = "force-dynamic";
 
@@ -163,6 +165,23 @@ export default async function PositionsPage() {
         position has delivered it is cashed out automatically at its own
         instrument price, recording realized P&L without you closing it.
       </PageHeader>
+      <RiskLadder
+        ladder={buildLadder(
+          open.map((p) => {
+            const inst = instrumentInfo(p.instrument);
+            return {
+              instrument: p.instrument,
+              legs: legsLabel(p.settlementPoint, inst?.legs === 2 ? p.counterSettlementPoint : null),
+              instrumentLabel: inst?.shortLabel ?? p.instrument,
+              deliveryStart: p.deliveryStart,
+              deliveryEnd: p.deliveryEnd,
+              quantityMwh: p.quantityMwh,
+              unrealizedPnl: p.unrealizedPnl,
+              marked: p.markPrice != null,
+            };
+          })
+        )}
+      />
       {table("Open positions", open, false)}
       {flat.length > 0 && table("Closed and full history", flat, true)}
     </div>

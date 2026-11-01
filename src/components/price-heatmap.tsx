@@ -74,7 +74,7 @@ export function PriceHeatmap({ rows, todayDay }: { rows: HeatRow[]; todayDay: st
             <tr className="caption">
               <th className="sticky left-0 z-10 bg-[var(--ink-panel)] pr-2 text-left font-normal">Day</th>
               {HOURS.map((h) => (
-                <th key={h} className="min-w-[1.4rem] text-center font-normal">
+                <th key={h} className="min-w-[1.3rem] text-center font-normal">
                   {h}
                 </th>
               ))}
@@ -102,8 +102,8 @@ export function PriceHeatmap({ rows, todayDay }: { rows: HeatRow[]; todayDay: st
                     {c == null ? "" : Math.round(c)}
                   </td>
                 ))}
-                <td className="whitespace-nowrap pl-2 text-right">{r.peak == null ? "—" : usd(r.peak)}</td>
-                <td className="whitespace-nowrap pl-2 text-right t-dim">{r.atc == null ? "—" : usd(r.atc)}</td>
+                <td className="whitespace-nowrap pl-2 text-right">{r.peak == null ? "—" : r.peak.toFixed(2)}</td>
+                <td className="whitespace-nowrap pl-2 text-right t-dim">{r.atc == null ? "—" : r.atc.toFixed(2)}</td>
               </tr>
             ))}
           </tbody>

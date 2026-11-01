@@ -44,6 +44,17 @@ describe("centralWindowLabel", () => {
     ).toBe("Sun, Nov 1 · 2:00 AM – 3:00 AM CST · HE3");
   });
 
+  it("names the end day of a multi-hour window that crosses midnight", () => {
+    // Around-the-clock on the fall-back day: 25 hours, CDT into CST.
+    expect(
+      centralWindowLabel(Date.parse("2026-11-01T05:00:00Z"), Date.parse("2026-11-02T06:00:00Z"))
+    ).toBe("Sun, Nov 1 · 12:00 AM CDT – Mon, Nov 2 12:00 AM CST");
+    // On-peak stays inside the day.
+    expect(
+      centralWindowLabel(Date.parse("2026-11-02T12:00:00Z"), Date.parse("2026-11-03T04:00:00Z"))
+    ).toBe("Mon, Nov 2 · 6:00 AM – 10:00 PM CST");
+  });
+
   it("skips HE3 on the spring-forward day", () => {
     expect(
       centralWindowLabel(Date.parse("2027-03-14T07:00:00Z"), Date.parse("2027-03-14T08:00:00Z"))

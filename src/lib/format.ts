@@ -30,12 +30,14 @@ export function centralHourZone(ms: number): string {
  * effect on that date, and the hour-ending number for a one-hour window.
  */
 export function centralWindowLabel(startMs: number, endMs: number): string {
-  const day = new Intl.DateTimeFormat("en-US", {
-    timeZone: CENTRAL,
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  }).format(startMs);
+  const dayOf = (ms: number) =>
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: CENTRAL,
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    }).format(ms);
+  const day = dayOf(startMs);
   const time = (ms: number) =>
     new Intl.DateTimeFormat("en-US", { timeZone: CENTRAL, hour: "numeric", minute: "2-digit" }).format(ms);
   const zone = (ms: number) =>
@@ -44,11 +46,16 @@ export function centralWindowLabel(startMs: number, endMs: number): string {
       .find((p) => p.type === "timeZoneName")?.value ?? "CT";
   const startZone = zone(startMs);
   const endZone = zone(endMs);
+  // A multi-hour window that ends on a later day names that day, or a 24-hour
+  // block reads "1:00 AM – 1:00 AM". A single hour ending at midnight does not.
+  const endDay = dayOf(endMs);
+  const end =
+    endMs - startMs > 3_600_000 && endDay !== day ? `${endDay} ${time(endMs)}` : time(endMs);
   // Across a DST change the two ends sit in different offsets; name both.
   let label =
     startZone === endZone
-      ? `${day} · ${time(startMs)} – ${time(endMs)} ${endZone}`
-      : `${day} · ${time(startMs)} ${startZone} – ${time(endMs)} ${endZone}`;
+      ? `${day} · ${time(startMs)} – ${end} ${endZone}`
+      : `${day} · ${time(startMs)} ${startZone} – ${end} ${endZone}`;
   if (endMs - startMs === 3_600_000) {
     const { he, repeated } = centralHourEnding(startMs);
     label += ` · HE${he}${repeated ? " (repeated)" : ""}`;
