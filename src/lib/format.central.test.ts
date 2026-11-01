@@ -55,6 +55,17 @@ describe("operatingDayHours", () => {
     expect(fallBack).toHaveLength(25);
     expect(fallBack.filter((h) => h.he === 2).map((h) => h.repeated)).toEqual([false, true]);
   });
+  it("offers every ticket start as an option of its own operating day", () => {
+    // The ticket's hour <select> is keyed by start instant within the
+    // operating day of the current delivery; a start missing from that list
+    // would leave the control blank. Sweep both DST weekends hour by hour.
+    for (const from of ["2026-03-07T00:00:00Z", "2026-10-31T00:00:00Z"]) {
+      for (let t = Date.parse(from); t < Date.parse(from) + 72 * 3_600_000; t += 3_600_000) {
+        const day = centralDate(t);
+        expect(operatingDayHours(day).map((h) => h.startMs), new Date(t).toISOString()).toContain(t);
+      }
+    }
+  });
   it("starts HE1 at Central midnight", () => {
     expect(operatingDayHours("2026-07-01")[0]).toMatchObject({
       he: 1,
