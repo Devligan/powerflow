@@ -127,8 +127,8 @@ export default async function Home() {
             <p className="mt-6 max-w-xl text-[15px] leading-relaxed t-dim">
               PowerFlow is a paper-trading desk for the ERCOT market. Bid
               virtuals and point-to-point obligations into the day-ahead market
-              before it closes, and every position settles against ERCOT's
-              actual real-time price.
+              before it closes, and every position settles against the actual
+              ERCOT real-time price.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
