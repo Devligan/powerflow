@@ -57,14 +57,14 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
       .single();
     marketId = market!.id;
 
-    // The newest clearing that was published ahead of its delivery, at least
-    // a day back so its gate is in the past on every account's clock.
+    // The newest clearing published ahead of its delivery. Any such hour will
+    // do: the clock replays it, and a fresh database holds only a day or two.
     const { data: rows, error } = await db
       .from("market_prices")
       .select("delivery_timestamp, delivery_end, price, published_at")
       .eq("market_id", marketId)
       .eq("product", PRODUCT)
-      .lt("delivery_timestamp", new Date(Date.now() - 24 * 3_600_000).toISOString())
+      .lte("published_at", new Date().toISOString())
       .order("delivery_timestamp", { ascending: false })
       .limit(48);
     if (error) throw new Error(error.message);
