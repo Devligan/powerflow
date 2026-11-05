@@ -22,13 +22,13 @@ export async function GET() {
 export async function PUT(req: Request) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
-  const body = (await req.json().catch(() => ({}))) as { to?: string | null };
+  const body = (await req.json().catch(() => null)) as { to?: string | null } | null;
   try {
-    const result = await setSimClock(user.id, body.to ?? null);
+    const result = await setSimClock(user.id, body?.to ?? null);
     if (!result.ok) {
       return fail(result.message, result.code === "ACCOUNT_NOT_FOUND" ? 404 : 422);
     }
-    await sweepOrders();
+    await sweepOrders(user.id);
     return ok({ clock: result.clock });
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Failed to set clock", 500);
@@ -37,14 +37,15 @@ export async function PUT(req: Request) {
 
 /**
  * Moving the clock can carry it past a day-ahead clearing: bids placed before
- * the deadline should then fill now, not at the next scheduled sweep. The
- * sweep judges every order on its own account's clock (0038) and only fills
- * what has cleared by then, so running it early can never fill a bid sooner
- * than its clearing. Best effort: the scheduled sweep catches anything missed.
+ * the deadline should then fill now, not at the next scheduled sweep. Only
+ * this account's book moved, so only it is swept (0042): one user's clock must
+ * not run a sweep over everyone's. Orders are judged on their own account's
+ * clock (0038), so running it early can never fill a bid sooner than its
+ * clearing. Best effort: the scheduled sweep catches anything missed.
  */
-async function sweepOrders() {
+async function sweepOrders(userId: string) {
   try {
-    await supabaseAdmin().rpc("fill_crossing_limit_orders", { p_limit: 200 });
+    await supabaseAdmin().rpc("fill_crossing_limit_orders", { p_limit: 500, p_user_id: userId });
   } catch {
     // ignored: the scheduled sweep runs every 15 minutes
   }
@@ -59,6 +60,7 @@ export async function DELETE() {
     if (!result.ok) {
       return fail(result.message, result.code === "ACCOUNT_NOT_FOUND" ? 404 : 422);
     }
+    await sweepOrders(user.id);
     return ok({ clock: result.clock });
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Failed to clear clock", 500);

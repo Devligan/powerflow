@@ -42,6 +42,17 @@ export default async function LeaderboardPage({
         ).data?.leaderboard_opt_in
       )
     : null;
+  const replayed = user
+    ? Boolean(
+        (
+          await supabaseAdmin()
+            .from("paper_accounts")
+            .select("replay_tainted_at")
+            .eq("user_id", user.id)
+            .maybeSingle()
+        ).data?.replay_tainted_at
+      )
+    : false;
 
   return (
     <div className="space-y-5">
@@ -54,7 +65,7 @@ export default async function LeaderboardPage({
         of anyone else are exposed.
       </PageHeader>
 
-      {optedIn != null && <LeaderboardOptIn optedIn={optedIn} />}
+      {optedIn != null && <LeaderboardOptIn optedIn={optedIn} replayed={replayed} />}
 
       {error ? (
         <div className="card text-[13px] t-dim">

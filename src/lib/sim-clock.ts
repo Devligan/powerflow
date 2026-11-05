@@ -49,8 +49,8 @@ export async function getSimClock(userId: string): Promise<SimClock | null> {
 }
 
 const ClockTarget = z.object({
-  // An absolute instant. The engine refuses nonsense downstream; here we
-  // only pin the type. Null clears back to live mode.
+  // An absolute instant in the past: the engine refuses anything else, so
+  // here we only pin the type. Null clears back to live mode.
   to: z.string().datetime().nullish(),
 });
 
@@ -61,7 +61,7 @@ export type SetClockResult =
 const FRIENDLY: Record<string, string> = {
   FORBIDDEN: "You can only set your own simulation clock.",
   ACCOUNT_NOT_FOUND: "Paper account not found.",
-  SIM_CLOCK_INVALID: "That simulation time is not valid.",
+  SIM_CLOCK_INVALID: "Replay can only go back in time, to a date after 2000.",
 };
 
 /** Set the account's simulation time (null = back to live mode). */

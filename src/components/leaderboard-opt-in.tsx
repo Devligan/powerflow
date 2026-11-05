@@ -8,7 +8,14 @@ import { useRouter } from "next/navigation";
  * Join or leave the standings. The server records the change; the page
  * re-renders so the table reflects it at once.
  */
-export function LeaderboardOptIn({ optedIn }: { optedIn: boolean }) {
+export function LeaderboardOptIn({
+  optedIn,
+  replayed = false,
+}: {
+  optedIn: boolean;
+  /** This account's results depended on the replay clock, so they do not rank. */
+  replayed?: boolean;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +44,9 @@ export function LeaderboardOptIn({ optedIn }: { optedIn: boolean }) {
   return (
     <div className="card flex flex-wrap items-center justify-between gap-3">
       <p className="text-[13px] t-dim">
-        {optedIn
+        {replayed
+          ? "This account traded in replay, where outcomes are already known, so it does not rank in the standings."
+          : optedIn
           ? "You are listed in the standings. Only your name, picture and aggregate figures are shown."
           : "Your account is private, so you are not listed. Join to show your name and aggregate figures — never your positions or trades."}{" "}
         <Link href="/settings#profile" className="t-accent hover:underline">

@@ -85,6 +85,10 @@ export function SimClockWidget() {
                 }${clock.offsetSeconds}s`
               : "Following the wall clock"}
           </div>
+          <div className="caption t-mute">
+            Practice freely: bids placed in replay, or a book carried into it,
+            take the account off the public standings.
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <input
