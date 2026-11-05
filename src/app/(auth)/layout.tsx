@@ -25,14 +25,14 @@ export default function AuthLayout({
             A trading desk for the ERCOT power curve.
           </h2>
           <p className="mt-4 text-[13px] leading-relaxed t-dim">
-            Day-ahead and real-time hourly series, 15-minute intervals, spreads
-            and block forwards, filled and settled by the same engine.
+            Virtual bids and point-to-point obligations in the day-ahead market,
+            settled against actual real-time prices.
           </p>
 
           <ul className="mt-8 space-y-3 border-t border-white/10 pt-6">
             {[
               "$100,000 virtual cash on account creation",
-              "$500,000 gross exposure cap, checked server-side",
+              "Bids hold collateral, sized on recent price gaps at each point",
               "Positions settled automatically at delivery",
               "Actual ERCOT prices, every one labelled with its report and publication time",
             ].map((line) => (

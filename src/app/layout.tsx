@@ -31,7 +31,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 const DESCRIPTION =
-  "Paper-trade ERCOT hub and load-zone power: hourly day-ahead and real-time series, 15-minute intervals, spreads and block forwards, settled by a real matching engine against actual ERCOT prices.";
+  "Paper-trade ERCOT's day-ahead market: virtual bids and point-to-point obligations at hubs and load zones, settled against actual ERCOT real-time prices.";
 
 export const metadata: Metadata = {
   // Resolves the generated preview image and canonical links to absolute URLs.

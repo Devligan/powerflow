@@ -30,7 +30,7 @@ const PUBLIC_PATHS = [
 // "/auth/" is a prefix, not a path: the OAuth and email-link callback
 // (/auth/callback) is reached by a visitor who is not signed in *yet*, and
 // sending them to /login would drop the code they arrived with.
-const PUBLIC_PREFIXES = ["/leaderboard", "/markets", "/auth/"];
+const PUBLIC_PREFIXES = ["/leaderboard", "/auth/"];
 
 export async function proxy(request: NextRequest) {
   const isApi = request.nextUrl.pathname.startsWith("/api/");
