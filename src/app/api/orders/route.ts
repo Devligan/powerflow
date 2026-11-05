@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
-import { fail, ok, m } from "@/lib/api";
+import { fail, ok, m, serverError } from "@/lib/api";
+import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 import { parseDbDec, parseDec } from "@/lib/money";
 import {
   BID_PRICE_CAP,
@@ -42,7 +43,7 @@ export async function GET(req: Request) {
   if (status) query = query.eq("status", status);
 
   const { data, error } = await query;
-  if (error) return fail(error.message, 500);
+  if (error) return serverError("orders list", error.message, "Your orders could not be loaded.");
 
   return ok({
     orders: (data ?? []).map((o) => ({
@@ -128,6 +129,8 @@ export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
 
+  if (await overLimit(LIMITS.orders, user.id)) return tooManyRequests(LIMITS.orders);
+
   let body: unknown;
   try {
     body = await req.json();
@@ -175,7 +178,8 @@ export async function POST(req: Request) {
   if (error) {
     const raw = error.message;
     const code = Object.keys(FRIENDLY).find((k) => raw.includes(k));
-    return fail(code ? FRIENDLY[code] : raw, 422);
+    if (code) return fail(FRIENDLY[code], 422);
+    return serverError("order placement", raw, "The order could not be placed. Please try again.");
   }
 
   return ok({ orderId: data }, 201);

@@ -45,7 +45,7 @@ export async function passwordLinkStatus(): Promise<
  * has nothing of ours to delete.
  */
 export async function removeAvatarAt(url: string | null | undefined): Promise<void> {
-  const path = avatarPathFromUrl(url, AVATAR_BUCKET);
+  const path = avatarPathFromUrl(url, AVATAR_BUCKET, process.env.NEXT_PUBLIC_SUPABASE_URL);
   if (!path) return;
   await supabaseAdmin().storage.from(AVATAR_BUCKET).remove([path]);
 }

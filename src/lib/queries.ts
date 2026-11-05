@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { format, parseDbDec } from "@/lib/money";
 import { settlementState, type SettlementState } from "@/lib/settlement";
@@ -307,6 +308,22 @@ export interface TradeFilters {
   limit?: number;
   /** Every matching trade in one page (export); the replay is the same. */
   all?: boolean;
+}
+
+const isoInstant = z.string().refine((v) => !Number.isNaN(Date.parse(v)));
+const TradeQuery = z.object({
+  marketId: z.string().uuid().optional(),
+  side: z.enum(["BUY", "SELL"]).optional(),
+  dateFrom: isoInstant.optional(),
+  dateTo: isoInstant.optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+/** The blotter's query string, or null when any part of it is malformed. */
+export function parseTradeFilters(params: URLSearchParams): TradeFilters | null {
+  const parsed = TradeQuery.safeParse(Object.fromEntries(params));
+  return parsed.success ? parsed.data : null;
 }
 
 export async function getTrades(

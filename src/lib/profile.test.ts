@@ -79,6 +79,15 @@ describe("avatarPathFromUrl", () => {
     expect(avatarPathFromUrl("https://lh3.googleusercontent.com/a/abc")).toBeNull();
     expect(avatarPathFromUrl(`${base}../other/x.png`)).toBeNull();
     expect(avatarPathFromUrl(null)).toBeNull();
+    expect(avatarPathFromUrl("not a url")).toBeNull();
+    expect(avatarPathFromUrl(`${base}a/b.png`)).toBeNull();
+    expect(avatarPathFromUrl(`${base}%2e%2e%2fother.png`)).toBeNull();
+  });
+  it("ignores another host's URL that merely looks like our bucket", () => {
+    const ours = "https://proj.supabase.co";
+    const path = "/storage/v1/object/public/avatars/3f2a.webp";
+    expect(avatarPathFromUrl(`${ours}${path}`, "avatars", ours)).toBe("3f2a.webp");
+    expect(avatarPathFromUrl(`https://evil.example${path}`, "avatars", ours)).toBeNull();
   });
 });
 

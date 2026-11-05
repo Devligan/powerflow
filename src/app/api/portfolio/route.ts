@@ -1,6 +1,6 @@
 import { getPortfolioSnapshot } from "@/lib/queries";
 import { getSessionUser } from "@/lib/auth";
-import { fail, ok, m } from "@/lib/api";
+import { serverError, fail, ok, m } from "@/lib/api";
 import { parseDbDec } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
@@ -73,6 +73,6 @@ export async function GET() {
       })),
     });
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Failed to load portfolio", 500);
+    return serverError("portfolio", e, "Your portfolio could not be loaded.");
   }
 }

@@ -106,14 +106,28 @@ export function avatarExtension(type: AvatarType): string {
  */
 export function avatarPathFromUrl(
   url: string | null | undefined,
-  bucket = "avatars"
+  bucket = "avatars",
+  /** This project's Supabase origin: only its own URLs name our files. */
+  storageOrigin?: string
 ): string | null {
   if (!url) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (storageOrigin && parsed.origin !== new URL(storageOrigin).origin) return null;
   const marker = `/storage/v1/object/public/${bucket}/`;
-  const at = url.indexOf(marker);
-  if (at < 0) return null;
-  const path = decodeURIComponent(url.slice(at + marker.length).split("?")[0]);
-  return path && !path.includes("..") ? path : null;
+  if (!parsed.pathname.startsWith(marker)) return null;
+  let path: string;
+  try {
+    path = decodeURIComponent(parsed.pathname.slice(marker.length));
+  } catch {
+    return null;
+  }
+  // The bucket is flat, so a real object has no separators in its name.
+  return path && !/[/\\]|\.\./.test(path) ? path : null;
 }
 
 /* ---------------------------------------------------------------------

@@ -1,7 +1,7 @@
 import { getSessionUser } from "@/lib/auth";
-import { fail } from "@/lib/api";
+import { fail, serverError } from "@/lib/api";
 import { format, parseDbDec } from "@/lib/money";
-import { getTrades } from "@/lib/queries";
+import { getTrades, parseTradeFilters } from "@/lib/queries";
 import { MARKET_TIME_ZONE, windowLabel } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -39,18 +39,11 @@ export async function GET(req: Request) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
 
-  const url = new URL(req.url);
-  const side = url.searchParams.get("side");
-  if (side && side !== "BUY" && side !== "SELL") return fail("Invalid side", 422);
+  const filters = parseTradeFilters(new URL(req.url).searchParams);
+  if (!filters) return fail("Invalid filter", 422);
 
   try {
-    const { rows } = await getTrades(user.id, {
-      marketId: url.searchParams.get("marketId") ?? undefined,
-      side: (side as "BUY" | "SELL" | null) ?? undefined,
-      dateFrom: url.searchParams.get("dateFrom") ?? undefined,
-      dateTo: url.searchParams.get("dateTo") ?? undefined,
-      all: true,
-    });
+    const { rows } = await getTrades(user.id, { ...filters, all: true });
 
     const lines = [COLUMNS.join(",")];
     for (const r of rows) {
@@ -91,6 +84,6 @@ export async function GET(req: Request) {
       },
     });
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Export failed", 500);
+    return serverError("trades export", e, "The export could not be created.");
   }
 }

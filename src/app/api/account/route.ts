@@ -29,13 +29,15 @@ export async function DELETE(req: Request) {
     return fail("Type your username exactly to confirm.", 422);
   }
 
-  await removeAvatarAt(profile.avatar_url);
   const { error } = await supabaseAdmin().auth.admin.deleteUser(user.id);
   if (error) {
     // The id only, never the email: server logs are not the place for it.
     console.error(`[account] delete failed for ${user.id}: ${error.message}`);
     return fail("Your account could not be deleted. Please try again.", 500);
   }
+  // After the account is gone: a failed delete must leave the profile's
+  // picture intact, and a file left behind harms nobody.
+  await removeAvatarAt(profile.avatar_url);
 
   // The user is gone, so the server-side revoke may fail; the cookies are
   // cleared either way.

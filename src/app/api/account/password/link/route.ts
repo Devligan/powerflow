@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
 import { ok, fail } from "@/lib/api";
 import { authCallbackUrl } from "@/lib/account";
+import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,8 @@ export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
   if (!user.email) return fail("This account has no email address to confirm with.", 422);
+
+  if (await overLimit(LIMITS.accountEmail, user.id)) return tooManyRequests(LIMITS.accountEmail);
 
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(user.email, {

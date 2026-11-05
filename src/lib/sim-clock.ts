@@ -64,6 +64,8 @@ const FRIENDLY: Record<string, string> = {
   SIM_CLOCK_INVALID: "Replay can only go back in time, to a date after 2000.",
 };
 
+const GENERIC = "The clock could not be changed. Please try again.";
+
 /** Set the account's simulation time (null = back to live mode). */
 export async function setSimClock(
   userId: string,
@@ -83,11 +85,7 @@ export async function setSimClock(
     });
     if (error) {
       const code = String(error.message ?? "").trim();
-      return {
-        ok: false,
-        code,
-        message: FRIENDLY[code] ?? error.message,
-      };
+      return { ok: false, code, message: FRIENDLY[code] ?? GENERIC };
     }
   } else {
     const { error } = await supabase.rpc("set_sim_clock", {
@@ -96,11 +94,7 @@ export async function setSimClock(
     });
     if (error) {
       const code = String(error.message ?? "").trim();
-      return {
-        ok: false,
-        code,
-        message: FRIENDLY[code] ?? error.message,
-      };
+      return { ok: false, code, message: FRIENDLY[code] ?? GENERIC };
     }
   }
 

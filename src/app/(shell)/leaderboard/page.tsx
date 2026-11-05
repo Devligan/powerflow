@@ -4,7 +4,7 @@ import { getSessionUser } from "@/lib/auth";
 import { usd, bpsToPercent } from "@/lib/format";
 import { localDate } from "@/lib/time";
 import { getViewerTimeZone } from "@/lib/time-zone-server";
-import { getPublicStandings, type StandingsRow } from "@/lib/standings";
+import { getPublicStandings, standingsSize, type StandingsRow } from "@/lib/standings";
 import { PageHeader } from "@/components/ui/page-header";
 import { LeaderboardOptIn } from "@/components/leaderboard-opt-in";
 import { Avatar } from "@/components/ui/avatar";
@@ -17,7 +17,7 @@ export default async function LeaderboardPage({
   searchParams: Promise<{ top?: string }>;
 }) {
   const { top } = await searchParams;
-  const n = Math.min(Math.max(Number(top ?? "100"), 1), 100);
+  const n = standingsSize(top);
 
   // Rows carry no user ids or usernames: this page's payload is public, and
   // React keys and props are serialised into it (src/lib/standings.ts).

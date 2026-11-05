@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
-import { fail, ok } from "@/lib/api";
+import { fail, ok, serverError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +31,7 @@ export async function DELETE(
       return fail("Only an open order can be cancelled.", 409);
     if (raw.includes("FORBIDDEN"))
       return fail("You are not allowed to cancel this order.", 403);
-    return fail(raw, 500);
+    return serverError("order cancel", raw, "The order could not be cancelled. Please try again.");
   }
 
   return ok({ cancelled: data === true });

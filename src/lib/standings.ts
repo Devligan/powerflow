@@ -44,6 +44,12 @@ interface RawRow {
   joined_at: string;
 }
 
+/** How many rows to show: a whole number from 1 to 100, else the default. */
+export function standingsSize(raw: string | null | undefined): number {
+  const n = Number(raw ?? "100");
+  return Number.isInteger(n) ? Math.min(Math.max(n, 1), 100) : 100;
+}
+
 export async function getPublicStandings(
   top: number,
   viewerId: string | null = null

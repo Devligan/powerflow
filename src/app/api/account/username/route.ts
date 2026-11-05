@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
 import { ok, fail } from "@/lib/api";
 import { normalizeUsername, usernameProblem } from "@/lib/profile";
+import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,9 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
+
+  // Without a limit, this answers "who has an account here?" at any speed.
+  if (await overLimit(LIMITS.usernameCheck, user.id)) return tooManyRequests(LIMITS.usernameCheck);
 
   const name = normalizeUsername(new URL(req.url).searchParams.get("name") ?? "");
   const admin = supabaseAdmin();

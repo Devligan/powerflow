@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
 import { ok, fail } from "@/lib/api";
+import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 import {
   describeProfileError,
   displayNameProblem,
@@ -26,6 +27,8 @@ const Body = z.object({
 export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
+
+  if (await overLimit(LIMITS.profile, user.id)) return tooManyRequests(LIMITS.profile);
 
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail("Expected { username, displayName }", 422);

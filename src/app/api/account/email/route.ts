@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
 import { ok, fail } from "@/lib/api";
 import { authCallbackUrl } from "@/lib/account";
+import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,8 @@ export async function POST(req: Request) {
   if (email === user.email?.toLowerCase()) {
     return fail("That is already your email address.", 422);
   }
+
+  if (await overLimit(LIMITS.accountEmail, user.id)) return tooManyRequests(LIMITS.accountEmail);
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.updateUser(
