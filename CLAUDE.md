@@ -29,6 +29,14 @@ npx tsx scripts/setup-scheduler.ts                                 # apply 0029 
 - DB suites run against whatever project `.env` points at and create real users; teardown is centralised in `src/lib/testing/setup.ts`. Each DB suite claims a market no other suite writes to (repricing and the settlement sweep would otherwise break each other's assertions) — keep that when adding one.
 - `npm run db:types` regenerates `src/lib/supabase/database.types.ts` after a schema change.
 
+## Delivery
+
+Master deploys to production through Vercel, so changes reach it by pull request: branch, push, let CI (`.github/workflows/ci.yml`) go green, merge. CI runs `scripts/ci-guards.mjs` (append-only migrations, definer-function hygiene, mojibake), lint, types, the offline suites, the build, a production-dependency audit, a secret scan, and every migration plus the DB suites on a disposable Supabase stack.
+
+Run DB suites the same way locally rather than against production: `npx supabase start -x studio,imgproxy,mailpit,edge-runtime,logflare,vector,postgres-meta,supavisor`, then set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` from `npx supabase status` (ambient values win over `.env`), plus `ERCOT_SOURCE=ERCOT_MIS`, `INGEST_MAX_RECORDS=40000` and `INGEST_MAX_LOOKBACK_HOURS=96` so the preflight ingests up to ERCOT's present.
+
+A migration a change depends on is applied to production before its PR merges (`scripts/run-migration.ts`), after a dry run inside a rolled-back transaction, so each one must stay compatible with the code already live.
+
 ## Architecture
 
 **The database is the engine; TypeScript mirrors it.** All money-moving logic lives in `SECURITY DEFINER` SQL functions in `supabase/migrations/` (`execute_trade`, `instrument_price`, `position_marks`, `account_margin`, `settle_delivered_positions`, `place_limit_order`, `cancel_order`, `fill_crossing_limit_orders`, `promote_rtm_finals`, `set_sim_clock`). Route handlers in `src/app/api/**` validate input (zod) and call these RPCs; they never compute fill prices or mutate `trades`/`positions`/`paper_accounts`/`audit_events` directly (RLS + immutability triggers forbid it). `src/lib/trading/{accounting,instruments,margin}.ts` re-implement the same rules for previews, analytics and the read side, and are pinned to the SQL by the `sql-*.test.ts` DB suites. A change to engine semantics normally needs: a new migration, the matching TS mirror change, and both test layers.

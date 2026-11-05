@@ -1,0 +1,96 @@
+name: CI
+
+# Every change reaches production through master (Vercel deploys it), so this
+# is the gate in front of production. Third-party actions are pinned to commit
+# SHAs: a moved tag must not be able to run new code with this repository's token.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint, types, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Repository guards
+        run: node scripts/ci-guards.mjs
+        env:
+          # The comparison point: a PR's base, or the previous head of master.
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+        env:
+          # Placeholders: the build reads no data, it only needs them present.
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: placeholder-service-key
+      - name: Dependency audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  database:
+    name: Migrations and engine suites (disposable Supabase)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Applies every migration, in order, to an empty database: a migration
+      # that only works on top of production's history fails here.
+      - name: Start Supabase
+        run: npx supabase start -x studio,imgproxy,mailpit,edge-runtime,logflare,vector,postgres-meta,supavisor
+      - name: Point the suites at it
+        run: |
+          eval "$(npx supabase status -o env)"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+          } >> "$GITHUB_ENV"
+      # The suites run the production adapter's real ingestion first, so the
+      # engine is exercised on actual ERCOT data at its true head.
+      - name: Database suites
+        run: npm run test:db
+        env:
+          ERCOT_SOURCE: ERCOT_MIS
+          INGEST_MAX_RECORDS: 40000
+          INGEST_WINDOW_HOURS: 48
+          INGEST_MAX_LOOKBACK_HOURS: 96
+      - name: Stop Supabase
+        if: always()
+        run: npx supabase stop --no-backup

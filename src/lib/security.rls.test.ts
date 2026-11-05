@@ -416,7 +416,9 @@ describe.skipIf(!dbTestsEnabled())("authorization boundary (live database)", () 
         expect(error!.code).toBe("42501");
       }
 
-      // The supported path still works.
+      // The supported path still works. Standings are opt-in (0032), so the
+      // victim joins them first: an empty board would prove nothing.
+      await db.from("profiles").update({ leaderboard_opt_in: true }).eq("id", victim.id);
       const { data, error } = await db.rpc("get_leaderboard", { p_top: 5 });
       expect(error).toBeNull();
       expect((data ?? []).length).toBeGreaterThan(0);

@@ -130,8 +130,8 @@ async function main() {
   for (const [label, sqlText] of queries) {
     try {
       await run(sqlText, label);
-    } catch (e: any) {
-      console.error(`\n!!! ${label} failed:`, e?.message ?? e);
+    } catch (e) {
+      console.error(`\n!!! ${label} failed:`, e instanceof Error ? e.message : e);
     }
   }
 }

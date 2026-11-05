@@ -14,12 +14,13 @@ import {
  * A limit order is a commitment to a price, validated with the same rules
  * as an instant trade; the sweep fills it when the interval's actual print
  * crosses. The printed price is the fill — never the limit — and the fill
- * goes through execute_trade, so idempotency, cash, position and audit
- * guarantees are the instant engine's, unchanged.
+ * goes through execute_trade, so idempotency, position and audit guarantees
+ * are the instant engine's, unchanged.
  *
- * Everything here runs on the live DAM series (the orderable forward
- * market): the tested interval is always a published-but-undelivered hour,
- * which the D-1 posting guarantees exists at any wall-clock instant.
+ * Bids close at 10:00 Central the day before (0038) and clear ~13:30, so no
+ * single instant has both an open gate and a visible price. The accounts here
+ * replay a recent hour instead: placed on a clock before its gate, swept on a
+ * clock after it cleared and before delivery, exactly as a live bid lives.
  */
 describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
   const PRODUCT = "DAM_HOURLY";
@@ -31,10 +32,14 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
   let clientA: SupabaseClient;
   let clientB: SupabaseClient;
   let marketId: string;
-  /** A published, undelivered interval and its actual print. */
+  /** A recent cleared hour, and its actual print. */
   let deliveryStart: string;
   let deliveryEnd: string;
   let print: number;
+  /** An hour before the bid deadline, when the hour can still be bid for. */
+  let beforeGate: string;
+  /** After the clearing was published, before delivery. */
+  let afterClearing: string;
   let createdUserIds: string[] = [];
 
   beforeAll(async () => {
@@ -52,22 +57,31 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
       .single();
     marketId = market!.id;
 
-    // The D-1 posting guarantees a published, undelivered DAM hour at any
-    // instant: pick the earliest one. (Delivery end strictly in the future,
-    // publication already visible.)
+    // The newest clearing that was published ahead of its delivery, at least
+    // a day back so its gate is in the past on every account's clock.
     const { data: rows, error } = await db
       .from("market_prices")
-      .select("delivery_timestamp, delivery_end, price")
+      .select("delivery_timestamp, delivery_end, price, published_at")
       .eq("market_id", marketId)
       .eq("product", PRODUCT)
-      .gt("delivery_end", new Date().toISOString())
-      .order("delivery_timestamp", { ascending: true })
-      .limit(1);
+      .lt("delivery_timestamp", new Date(Date.now() - 24 * 3_600_000).toISOString())
+      .order("delivery_timestamp", { ascending: false })
+      .limit(48);
     if (error) throw new Error(error.message);
-    expect(rows, "no published future DAM interval — D-1 posting missing").toBeTruthy();
-    deliveryStart = rows![0].delivery_timestamp as string;
-    deliveryEnd = rows![0].delivery_end as string;
-    print = Number(rows![0].price);
+    const cleared = (rows ?? []).find(
+      (r) => Date.parse(r.published_at as string) < Date.parse(r.delivery_timestamp as string)
+    );
+    expect(cleared, "no DAM hour published ahead of its delivery").toBeTruthy();
+    deliveryStart = cleared!.delivery_timestamp as string;
+    deliveryEnd = cleared!.delivery_end as string;
+    print = Number(cleared!.price);
+
+    const { data: gate, error: gateErr } = await db.rpc("dam_gate", {
+      p_delivery_start: deliveryStart,
+    });
+    if (gateErr) throw new Error(gateErr.message);
+    beforeGate = new Date(Date.parse(gate as string) - 3_600_000).toISOString();
+    afterClearing = new Date(Date.parse(cleared!.published_at as string) + 60_000).toISOString();
   }, 30_000);
 
   afterAll(async () => {
@@ -91,7 +105,7 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
     client.rpc("place_limit_order", {
       p_user_id: userId,
       p_market_id: marketId,
-      p_instrument: "ENERGY_SPOT",
+      p_instrument: "VIRTUAL",
       p_product: PRODUCT,
       p_counter_market_id: null,
       p_side: "BUY",
@@ -102,6 +116,11 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
       ...over,
     });
 
+  const setClock = async (client: SupabaseClient, userId: string, iso: string) => {
+    const { error } = await client.rpc("set_sim_clock", { p_user_id: userId, p_iso: iso });
+    expect(error).toBeNull();
+  };
+
   const sweep = async () => {
     const { data, error } = await db.rpc("fill_crossing_limit_orders", {});
     expect(error).toBeNull();
@@ -109,10 +128,12 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
   };
 
   it("fills a crossing buy at the actual print, through the instant engine", async () => {
+    await setClock(clientA, userA.id, beforeGate);
     const { data: orderId, error } = await place(clientA, userA.id);
     expect(error).toBeNull();
     expect(orderId).toBeTruthy();
 
+    await setClock(clientA, userA.id, afterClearing);
     const summary = await sweep();
     expect(summary.filled).toBeGreaterThanOrEqual(1);
 
@@ -142,7 +163,7 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
       .eq("user_id", userA.id)
       .eq("market_id", marketId)
       .eq("product", PRODUCT)
-      .eq("instrument", "ENERGY_SPOT")
+      .eq("instrument", "VIRTUAL")
       .eq("delivery_start", deliveryStart)
       .single();
     expect(Number(pos!.quantity_mwh)).toBe(10);
@@ -160,12 +181,14 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
   }, 60_000);
 
   it("leaves a non-crossing order open, and cancellation closes it", async () => {
-    // A buy far below the print cannot cross on a real series this small.
+    // A buy well below the print cannot cross.
+    await setClock(clientA, userA.id, beforeGate);
     const { data: orderId, error } = await place(clientA, userA.id, {
-      p_limit_price: (print / 2).toFixed(2),
+      p_limit_price: (print - 20).toFixed(2),
     });
     expect(error).toBeNull();
 
+    await setClock(clientA, userA.id, afterClearing);
     await sweep();
     const { data: order } = await db
       .from("paper_orders")
@@ -189,12 +212,14 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
   }, 60_000);
 
   it("expires an order past its expiry on the sweep", async () => {
+    // Expiry is on the account's clock, so it is set from that clock.
+    await setClock(clientA, userA.id, beforeGate);
     const { data: orderId, error } = await place(clientA, userA.id, {
-      p_limit_price: (print / 2).toFixed(2),
-      p_expires_at: new Date(Date.now() + 1_500).toISOString(),
+      p_limit_price: (print - 20).toFixed(2),
+      p_expires_at: new Date(Date.parse(beforeGate) + 3_000).toISOString(),
     });
     expect(error).toBeNull();
-    await new Promise((r) => setTimeout(r, 1_700));
+    await new Promise((r) => setTimeout(r, 3_200));
     const summary = await sweep();
     expect(summary.expired).toBeGreaterThanOrEqual(1);
     const { data: order } = await db
@@ -210,8 +235,9 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
     const { error: foreignErr } = await place(clientA, userB.id);
     expect(foreignErr!.message).toContain("FORBIDDEN");
     // …nor cancel another user's order.
+    await setClock(clientB, userB.id, beforeGate);
     const { data: mine } = await place(clientB, userB.id, {
-      p_limit_price: (print / 2).toFixed(2),
+      p_limit_price: (print - 20).toFixed(2),
     });
     const { error: stealErr } = await clientA.rpc("cancel_order", {
       p_user_id: userB.id,
