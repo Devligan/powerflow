@@ -1,7 +1,3 @@
-// dotenv is optional here: the RUNME block sources .env into the process
-// environment before invoking tsx, so this import is best-effort and never
-// required for the probe's runtime behavior.
-try { require('dotenv/config'); } catch {}
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 
@@ -89,7 +85,7 @@ async function main(deliveryStart: string, deliveryEnd: string) {
     p_client_order_id: 'probe-' + crypto.randomUUID(),
   });
   console.log('execute_trade', t.status, JSON.stringify(t.error ?? t.data).slice(0, 600));
-  if (/DELIVERY_MUST_BE_ALIGNED/.test(String((t.data as any)?.message ?? ''))) {
+  if (/DELIVERY_MUST_BE_ALIGNED/.test(String((t.data as { message?: string } | null)?.message ?? ''))) {
     console.log('NOTE: delivery window is not aligned to the product interval; retrying with floored windows');
     const fs = Math.floor(new Date(deliveryStart).getTime() / (60 * 1000)) * (60 * 1000);
     const fe = fs + 3600_000;

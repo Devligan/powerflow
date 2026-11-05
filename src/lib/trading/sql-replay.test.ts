@@ -257,7 +257,7 @@ describe.skipIf(!dbTestsEnabled())("historical replay on actual ERCOT data (live
     const pos = (await position(hour))!;
     expect(pos.qty).toBe(10);
     near(pos.avg, dayAhead); // entry = the DA leg, from the fixture
-    near(await cash(), startingCash - 10 * dayAhead);
+    near(await cash(), startingCash); // margined (0041): opening moves no cash
     expect(pos.realized).toBe(0);
     expect(pos.settledAt).toBeNull();
   }, 60_000);
@@ -348,10 +348,11 @@ describe.skipIf(!dbTestsEnabled())("historical replay on actual ERCOT data (live
     const mark = await markFor(pos.id);
     near(mark!.price, fin); // the same position, repriced by a real publication
 
-    // Full decomposition on real data: equity − starting cash = realized + unrealized.
-    const cashNow = await cash();
-    const unrealized = 10 * (fin - dayAhead);
-    near(cashNow + 10 * fin - startingCash, 0 + unrealized);
+    // Full decomposition on real data: equity − starting cash = realized +
+    // unrealized. A margined position is worth its P&L (0041), so cash is
+    // still the starting balance and the whole result is the mark's move.
+    near(await cash(), startingCash);
+    near(10 * (mark!.price - dayAhead), 10 * (fin - dayAhead));
   }, 60_000);
 
   it("settles at the actual final price with exact realized P&L", async () => {
@@ -368,7 +369,7 @@ describe.skipIf(!dbTestsEnabled())("historical replay on actual ERCOT data (live
     expect(pos.qty).toBe(0);
     near(pos.realized, 10 * (fin - dayAhead)); // the DA→RT convergence, realized once
     expect(pos.settledAt).not.toBeNull();
-    near(await cash(), startingCash - 10 * dayAhead + 10 * fin); // entry debit, then settlement credit
+    near(await cash(), startingCash + 10 * (fin - dayAhead)); // settlement pays the P&L only (0041)
 
     // The settlement trade cites the final value as its execution price.
     const { data: settled } = await db
@@ -392,8 +393,8 @@ describe.skipIf(!dbTestsEnabled())("historical replay on actual ERCOT data (live
     const fin2 = rtHour.get(hour2)!;
     const revised = num(fin2.price) + 4.25;
 
-    // Open while the hour runs (before the original final exists).
-    const tOpen2 = new Date(new Date(hour2).getTime() + 20 * 60_000).toISOString();
+    // Open before the hour starts: nothing trades once delivery has (0037).
+    const tOpen2 = new Date(new Date(hour2).getTime() - 20 * 60_000).toISOString();
     await setClock(tOpen2);
     const { error: openError } = await db.rpc(
       "execute_trade",

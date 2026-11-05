@@ -169,28 +169,13 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     return data ?? [];
   };
 
-  /** Equity from trusted data: cash + Σ mark × signed qty over open positions.
-   *  Marks come from the engine's own `position_marks` so an instrument price is
-   *  never recomputed here from a point price. */
+  /** Equity as the engine computes it: `account_margin` values each instrument
+   *  by its own rule, so a margined position counts its P&L, not its notional
+   *  (0041), and nothing here can drift from the number the UI shows. */
   const openEquity = async (): Promise<number> => {
-    const [acct, pos, marks] = await Promise.all([
-      db.from("paper_accounts").select("cash_balance").eq("user_id", user.id).single(),
-      db.from("positions").select("id, quantity_mwh").eq("user_id", user.id).neq("quantity_mwh", 0),
-      client.rpc("position_marks", { p_user_id: user.id }),
-    ]);
-    const markById = new Map(
-      ((marks.data ?? []) as Array<{ position_id: string; mark_price: string | null }>).map((m) => [
-        m.position_id,
-        m.mark_price,
-      ])
-    );
-    let marked = 0;
-    for (const p of pos.data ?? []) {
-      const mark = markById.get(p.id as string);
-      if (mark == null) continue;
-      marked += Number(mark) * Number(p.quantity_mwh);
-    }
-    return Number(acct.data!.cash_balance) + marked;
+    const { data, error } = await client.rpc("account_margin", { p_user_id: user.id });
+    if (error) throw new Error(error.message);
+    return Number((data as Array<{ equity: string }>)[0].equity);
   };
 
   /**
@@ -337,8 +322,8 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     expect(pos!.settlementTradeId).not.toBeNull();
     near(pos!.realized, (settlementPrice - entryPrice) * 10);
 
-    // A long is sold at settlement.
-    near((await cash()) - cashBefore, settlementPrice * 10);
+    // A margined position settles its P&L only; it never put up cash (0041).
+    near((await cash()) - cashBefore, (settlementPrice - entryPrice) * 10);
 
     // Settlement moves equity by exactly the realized P&L — the DA→RT basis
     // jump — and by nothing else: no double-counted mark, no leaked cash.
@@ -384,8 +369,8 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     // price realizes negative P&L for the short.
     near(pos!.realized, (settlementPrice - entryPrice) * -10);
 
-    // Buying the short back settles in cash at the real-time price.
-    near((await cash()) - cashBefore, settlementPrice * -10);
+    // Margined (0041): the short is paid its P&L, not the notional.
+    near((await cash()) - cashBefore, (entryPrice - settlementPrice) * 10);
     near((await openEquity()) - equityBefore, (entryPrice - settlementPrice) * 10);
 
     const mine = await settledTradesAt(start);
@@ -561,7 +546,7 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
   it("settles exactly once when two sweeps run concurrently", async () => {
     const start = slot(16);
     const end = shift(start, 1);
-    await fill({
+    const { entryPrice } = await fill({
       p_instrument: "DART_SPREAD",
       p_side: "BUY",
       p_delivery_start: start,
@@ -579,8 +564,8 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     const pos = await positionAt(marketId, start, "DART_SPREAD");
     expect(pos!.settledAt).not.toBeNull();
     expect(await settledTradesAt(start)).toHaveLength(1);
-    // Cash moved once, for the closing side only.
-    near((await cash()) - cashBefore, settlementPrice * 10);
+    // Cash moved once: the position's P&L, never twice (0041).
+    near((await cash()) - cashBefore, (settlementPrice - entryPrice) * 10);
   });
 
   it("leaves a delivered position open and reports it when its interval is unpriced", async () => {
