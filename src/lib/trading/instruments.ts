@@ -12,7 +12,10 @@ import type { InstrumentDef, OptionType, SettlementRule } from "@/lib/ercot/type
  *
  * This module mirrors `public.instrument_price(...)`, defined in migration 0008
  * and amended in 0017 to add the congestion-convergence rule. The SQL is
- * authoritative; this must match it, which is pinned by tests.
+ * authoritative. For the two convergence rules this returns the PAYOFF per MWh;
+ * since 0021 the engine reaches the same number as (its value leg − the entry
+ * price), holding the position at the day-ahead leg and marking the real-time
+ * one, so do not read these two as a position's mark.
  *
  * Sign conventions (these are the part worth being explicit about):
  *

@@ -109,11 +109,15 @@ export function mulScalar(a: Num, k: number | bigint): bigint {
   return asRaw(a) * BigInt(k);
 }
 
-/** Exactly divide two scaled values, rounded to nearest. */
+/** Exactly divide two scaled values, rounded to nearest (half away from zero,
+ *  as `parseDbDec` rounds). bigint division truncates toward zero, so rounding
+ *  works on magnitudes: a negative average price must not drift up. */
 export function div(a: Num, b: Num): bigint {
   const den = asRaw(b);
   if (den === 0n) throw new Error("division by zero");
-  return (asRaw(a) * SCALE + den / 2n) / den;
+  const num = asRaw(a) * SCALE;
+  const rounded = (abs(num) + abs(den) / 2n) / abs(den);
+  return num < 0n !== den < 0n ? -rounded : rounded;
 }
 
 export function negate(n: bigint): bigint {

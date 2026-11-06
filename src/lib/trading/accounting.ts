@@ -6,6 +6,7 @@ import {
   mul,
   sub,
 } from "@/lib/money";
+import { centralHourEnding } from "@/lib/ercot/hour-ending";
 import { isMarginedInstrument, unitForProduct, type PriceUnit } from "@/lib/ercot/types";
 
 export type TradeSide = "BUY" | "SELL";
@@ -209,7 +210,8 @@ export interface SettlementEffect {
   /** Size of the closing trade, always positive. */
   quantityMwh: bigint;
   executionPrice: bigint;
-  /** Signed change to cash: +p×q for a long, −p×|q| for a short. */
+  /** Signed change to cash: p×q, or just the realized P&L for a margined
+   *  instrument, which put no cash up. */
   cashDelta: bigint;
   /** Realized P&L this settlement banks. */
   realizedDelta: bigint;
@@ -231,16 +233,20 @@ export interface SettlementEffect {
  *   cash     += p × q       (a long sells for p×q; a short buys back for −p×|q|)
  *   realized += (p − avg) × q   (which is (avg − p) × |q| when q < 0)
  *
+ * A margined instrument (0041) never moved its notional, so only its P&L moves
+ * now: pass `instrument` and cash changes by (p − avg) × q instead.
+ *
  * Settlement is equity-neutral when the settlement price equals the mark the
  * position already carried, because it converts unrealized P&L into cash +
  * realized. `settlement.test.ts` pins that against `portfolioMetrics`.
  *
- * Mirrors `public.settle_delivered_positions` in migration 0013. The SQL is
- * authoritative and this must match it.
+ * Mirrors `public.settle_delivered_positions`. The SQL is authoritative and
+ * this must match it.
  */
 export function settlePosition(
   position: Pick<PositionState, "quantityMwh" | "averageEntryPrice" | "realizedPnl">,
-  settlementPrice: bigint
+  settlementPrice: bigint,
+  instrument?: string
 ): SettlementEffect | null {
   const q = position.quantityMwh;
   if (q === 0n) return null;
@@ -253,7 +259,10 @@ export function settlePosition(
     side,
     quantityMwh: magnitude,
     executionPrice: settlementPrice,
-    cashDelta: mul(settlementPrice, q),
+    cashDelta:
+      instrument != null && isMarginedInstrument(instrument)
+        ? effect.realizedDelta
+        : mul(settlementPrice, q),
     realizedDelta: effect.realizedDelta,
     next: effect.next,
   };
@@ -318,6 +327,62 @@ export interface ReplayResult {
 }
 
 /**
+ * Trades in the order the engine applied them, which `created_at` alone does
+ * not give. A fill is stamped with the wall clock and a settlement with the
+ * account's simulation clock, so on a replay account a position's settlement
+ * sorts before the fill that opened it, and replaying that reads the close as a
+ * new position. A settlement ends its position, so it follows the position's
+ * last fill whatever its stamp says.
+ */
+export function inExecutionOrder<T>(
+  trades: T[],
+  read: (trade: T) => { key: string; status: string; at: string }
+): T[] {
+  const lastFill = new Map<string, number>();
+  for (const t of trades) {
+    const { key, status, at } = read(t);
+    if (status === "EXECUTED") {
+      lastFill.set(key, Math.max(lastFill.get(key) ?? 0, Date.parse(at)));
+    }
+  }
+  return trades
+    .map((trade, index) => {
+      const { key, status, at } = read(trade);
+      const own = Date.parse(at);
+      const closes = status !== "EXECUTED";
+      return { trade, index, closes, when: closes ? Math.max(own, lastFill.get(key) ?? own) : own };
+    })
+    .sort((a, b) => a.when - b.when || Number(a.closes) - Number(b.closes) || a.index - b.index)
+    .map((entry) => entry.trade);
+}
+
+/**
+ * Cumulative realized P&L at the end of each operating day, oldest first.
+ *
+ * P&L belongs to the Central operating day it was delivered in, which the UTC
+ * date is not: every hour from 18:00 Central on falls on the next UTC day. And
+ * the days have to be walked in order, because bids are placed in any order and
+ * a running total taken in trade order is not a daily series.
+ */
+export function cumulativeDailyPnl(
+  trades: ReadonlyArray<Pick<ReplayedTrade, "deliveryStart" | "realizedPnL">>
+): Array<{ day: string; pnl: bigint }> {
+  const byDay = new Map<string, bigint>();
+  for (const t of trades) {
+    if (t.realizedPnL === 0n) continue;
+    const { day } = centralHourEnding(Date.parse(t.deliveryStart));
+    byDay.set(day, (byDay.get(day) ?? 0n) + t.realizedPnL);
+  }
+  let running = 0n;
+  return [...byDay.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([day, pnl]) => {
+      running += pnl;
+      return { day, pnl: running };
+    });
+}
+
+/**
  * Replay an ordered trade history through the same weighted-average engine
  * used by the database RPC. Used for per-trade realized P&L, analytics and
  * reconstructable position state. Requires trades in execution order.
@@ -371,7 +436,8 @@ export interface InstrumentBreakdown {
 
 /**
  * Equity and P&L from trusted persisted data only.
- *   equity       = cash + Σ mark × |signed qty| - deficit
+ *   equity       = cash + Σ mark × signed qty - deficit, with a margined
+ *                  position counting only (mark - avg) × signed qty (0041)
  *   total_pnl    = equity - starting_cash
  *   realized     = Σ positions.realized_pnl
  *   unrealized   = Σ (mark - avg) × signed qty
@@ -459,7 +525,8 @@ export function portfolioMetrics(pf: PortfolioMark) {
     const unreal = unrealizedPnl(pos, mark);
     // A margined position (0041) put no cash up, so it is worth its P&L only.
     const mv = isMarginedInstrument(pos.instrument) ? unreal : mul(mark, pos.quantityMwh);
-    const gross = mul(mark, abs(pos.quantityMwh));
+    // A path's mark can be negative; its exposure cannot.
+    const gross = mul(abs(mark), abs(pos.quantityMwh));
     markedValue = add(markedValue, mv);
     unrealized = add(unrealized, unreal);
     grossNotional = add(grossNotional, gross);
