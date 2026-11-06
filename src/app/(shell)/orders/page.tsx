@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
+import { damDeadlineUtc } from "@/lib/ercot/hour-ending";
 import { format, parseDbDec } from "@/lib/money";
 import { legsLabel, usd } from "@/lib/format";
+import { getSimClock } from "@/lib/sim-clock";
 import { dateTime, windowLabel } from "@/lib/time";
 import { getViewerTimeZone } from "@/lib/time-zone-server";
 import { OrderCancelButton } from "@/components/order-cancel-button";
@@ -28,7 +30,7 @@ export default async function OrdersPage() {
   const user = await getSessionUser();
   const { tz } = await getViewerTimeZone();
   const db = await createClient();
-  const [{ data }, { data: markets }] = await Promise.all([
+  const [{ data }, { data: markets }, clock] = await Promise.all([
     user
       ? db
           .from("paper_orders")
@@ -40,7 +42,14 @@ export default async function OrdersPage() {
           .limit(100)
       : Promise.resolve({ data: [] }),
     db.from("markets").select("id, settlement_point"),
+    user ? getSimClock(user.id) : null,
   ]);
+
+  // The deadline is on the account's clock, as the engine reads it.
+  const locked = (deliveryStart: string) => {
+    const deadline = damDeadlineUtc(Date.parse(deliveryStart));
+    return clock != null && deadline != null && Date.parse(clock.now) >= deadline;
+  };
 
   const pointById = new Map((markets ?? []).map((m) => [m.id, m.settlement_point]));
   const legs = (o: { market_id: string; counter_market_id: string | null }) =>
@@ -61,7 +70,8 @@ export default async function OrdersPage() {
           Day-ahead bids close at 10:00 AM Central the day before each
           operating day. When ERCOT publishes the clearing prices, each order
           fills at the actual clearing price: always for an order at the
-          clearing price, and for a limit only when the price crosses it.
+          clearing price, and for a limit only when the price crosses it. A
+          bid can be withdrawn until the deadline, and not after.
         </p>
       </header>
 
@@ -97,7 +107,11 @@ export default async function OrdersPage() {
                     {windowLabel(Date.parse(o.delivery_start), Date.parse(o.delivery_end), tz)}
                   </span>
                 </div>
-                <OrderCancelButton orderId={o.id} />
+                {locked(o.delivery_start) ? (
+                  <span className="caption t-mute">Bids closed · awaiting the clearing</span>
+                ) : (
+                  <OrderCancelButton orderId={o.id} />
+                )}
               </div>
             ))}
           </div>

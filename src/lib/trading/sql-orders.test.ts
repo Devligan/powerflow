@@ -180,8 +180,8 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
     expect(count).toBe(1);
   }, 60_000);
 
-  it("leaves a non-crossing order open, and cancellation closes it", async () => {
-    // A buy well below the print cannot cross.
+  it("ends a non-crossing order at the clearing", async () => {
+    // A buy well below the print cannot cross, and the market only clears once.
     await setClock(clientA, userA.id, beforeGate);
     const { data: orderId, error } = await place(clientA, userA.id, {
       p_limit_price: (print - 20).toFixed(2),
@@ -189,13 +189,22 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
     expect(error).toBeNull();
 
     await setClock(clientA, userA.id, afterClearing);
-    await sweep();
+    const summary = await sweep();
+    expect(summary.expired).toBeGreaterThanOrEqual(1);
     const { data: order } = await db
       .from("paper_orders")
       .select("status")
       .eq("id", orderId!)
       .single();
-    expect(order!.status).toBe("OPEN");
+    expect(order!.status).toBe("EXPIRED");
+  }, 60_000);
+
+  it("closes an order on cancellation, before the deadline", async () => {
+    await setClock(clientA, userA.id, beforeGate);
+    const { data: orderId, error } = await place(clientA, userA.id, {
+      p_limit_price: (print - 20).toFixed(2),
+    });
+    expect(error).toBeNull();
 
     // The owner cancels; the second cancel is refused — the order is gone.
     const { data: okCancel, error: cancelErr } = await clientA.rpc(

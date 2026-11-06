@@ -49,9 +49,10 @@ with virtual cash, a full risk engine, immutable audit trail, and analytics.
   publishes the day-ahead clearing (~13:30), at the actual clearing price —
   a limit only if the price crosses it (buy at/below, sell at/above, ties
   fill). Nobody can buy a day-ahead interval at its already-published price,
-  and nothing trades once its delivery has started. Cancel any open order;
-  unfilled bids expire when delivery starts. Every fill, cancel and placement
-  is audited.
+  and nothing trades once its delivery has started. A bid can be withdrawn
+  until the deadline and not after, as in ERCOT; one the market clears through
+  ends at the clearing, and one that never prices ends when delivery starts.
+  Every fill, cancel and placement is audited.
 - Day-ahead **ancillary-service clearing prices** (REGUP, REGDN, RRS, NSPIN,
   ECRS) ingested from ERCOT's NP4-188-CD report — system-wide MCPC series,
   final on arrival. AS capacity remains a resource obligation (no assets on
@@ -236,8 +237,12 @@ before the delivery's operating day — on the account's own clock. A bid with
 no limit is a `MARKET` order (fill at whatever clears); otherwise `LIMIT`.
 When ERCOT publishes the clearing prices, the service-role sweep
 `fill_crossing_limit_orders` (run by every ingest, and right after a replay
-clock jump) fills each bid that crosses, judged on its own account's clock and
-at the price the fill will actually be made at. A user calling `execute_trade`
+clock jump) fills each bid that crosses, at the price the fill will actually be
+made at. A bid is judged on what had cleared while it stood in the market, on
+its own account's clock, not on when the sweep happens to run: a replay clock
+jumping past delivery, or ingestion catching up after an outage, still fills a
+bid ERCOT cleared the day before, and a clearing posted after delivery started
+never does. A user calling `execute_trade`
 directly for a day-ahead interval is refused (`DAM_ORDER_REQUIRED` before the
 deadline, `DAM_CLOSED` after): knowing the clearing price, and watching real
 time come in, before choosing a side was the edge this closes. And nothing is
@@ -359,6 +364,11 @@ maintenance margin, and the account's margin tier for the UI.
 There is no deposit path and no liquidation freeze: liquidating the last long
 leaves the account holding nothing, and freezing it there would be terminal. A
 deficit is a standing liability the account works off from later receipts.
+
+Bids post collateral (0040): MW × the 95th-percentile |RT − DA| at the point, at
+least $10/MW, held on every open bid and every open margined position. Together
+they must fit within the lesser of cash and equity, so an open loss or a deficit
+reduces what a new bid can post, and an open gain does not add to it.
 
 ## Market data
 
@@ -551,6 +561,18 @@ spread, a convergence trade and a window average:
 An **option** floors at zero (it can only pay out); an **obligation** pays both
 ways. A legless instrument still names a settlement point and interval to
 settle against — what it lacks is a *delivery* leg.
+
+A price here can be a spread, and a spread has wider bounds than either point:
+two points at their storage limits are $22,000 apart, which is what
+`trades.execution_price` allows.
+
+The table gives each rule's payoff. The two convergence rules reach it in two
+steps: a position is held at its day-ahead entry and marked at what it would
+settle at, so unrealized P&L is the mark less the entry. A virtual marks at the
+hourly real-time price and a PTP at the real-time spread; before the hour has
+posted they mark at its newest 15-minute prints, and before real time at the
+day-ahead leg they cleared at, so an open position is never unpriced for want of
+a real-time print.
 
 Two consequences worth knowing:
 
