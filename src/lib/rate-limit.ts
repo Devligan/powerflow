@@ -29,7 +29,8 @@ export const LIMITS = {
   accountEmail: { name: "account-email", max: 5, windowSeconds: 3600 },
   avatar: { name: "avatar", max: 10, windowSeconds: 3600 },
   clock: { name: "clock", max: 30, windowSeconds: 60 },
-  orders: { name: "orders", max: 60, windowSeconds: 60 },
+  // One ticket is up to 25 hours of 4 bid-curve steps: 100 requests.
+  orders: { name: "orders", max: 120, windowSeconds: 60 },
   profile: { name: "profile", max: 20, windowSeconds: 60 },
   usernameCheck: { name: "username-check", max: 60, windowSeconds: 60 },
   publicRead: { name: "public-read", max: 120, windowSeconds: 60 },
