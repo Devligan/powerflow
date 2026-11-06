@@ -20,7 +20,7 @@ export interface DartHour {
   he: number;
   /** Hours with both a day-ahead and a real-time price. */
   n: number;
-  /** Mean of RT − DA: positive means real time cleared above day-ahead (an INC earned). */
+  /** Mean of RT − DA: positive means real time cleared above day-ahead (a DEC earned). */
   mean: number | null;
   stdev: number | null;
   /** Share of hours where RT > DA, 0–1. */
