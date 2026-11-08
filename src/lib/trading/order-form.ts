@@ -13,11 +13,14 @@ import {
   resolveTradedProduct,
 } from "@/lib/trading/instruments";
 import {
+  DAM_BID_WINDOW_DAYS,
   centralHourEnding,
+  damBidWindowOpensUtc,
   damDeadlineUtc,
   firstOpenOperatingDay,
   hourEndingStartUtc,
   isDayAheadProduct,
+  lastOpenOperatingDay,
 } from "@/lib/ercot/hour-ending";
 
 /**
@@ -38,6 +41,10 @@ const HOUR_MS = 60 * MINUTE_MS;
 /** Matches the server's accepted quantity grammar and bound. */
 const QUANTITY_RE = /^\d+(\.\d{1,6})?$/;
 export const MAX_QUANTITY = 1000;
+/** ERCOT's smallest bid increment, 0.1 MW, at the money scale (0045). */
+const QUANTITY_STEP = 100_000n;
+/** ERCOT's minimum bid, per hour (NP4-450). */
+export const MIN_BID_MW = 1;
 /** Matches `delivery_start > v_exec_at + interval '35 days'` in execute_trade. */
 export const MAX_DAYS_OUT = 35;
 /** Default window for a block forward: a balance-of-day style 24 hours. */
@@ -263,6 +270,10 @@ export function checkOrderForm(input: OrderFormInput): OrderFormCheck {
   if (qty > BigInt(MAX_QUANTITY * 1_000_000)) {
     return { ok: false, message: `Quantity must not exceed ${MAX_QUANTITY}.` };
   }
+  // ERCOT takes bid quantities in steps of 0.1 MW (0045).
+  if (qty % QUANTITY_STEP !== 0n) {
+    return { ok: false, message: "ERCOT takes bid quantities in steps of 0.1 MW." };
+  }
 
   if (needsCounterPoint(input.instrument.settlementRule) && !input.counterMarketId) {
     return {
@@ -317,6 +328,14 @@ export function checkOrderForm(input: OrderFormInput): OrderFormCheck {
       return {
         ok: false,
         message: `Day-ahead bids for operating day ${day} closed at 10:00 AM Central the day before. The first day still open is ${firstOpenOperatingDay(now)}.`,
+      };
+    }
+    const opens = damBidWindowOpensUtc(input.delivery.startMs);
+    if (opens != null && now < opens) {
+      const day = centralHourEnding(input.delivery.startMs).day;
+      return {
+        ok: false,
+        message: `ERCOT takes bids for operating day ${day} from ${DAM_BID_WINDOW_DAYS} days ahead. The furthest day open now is ${lastOpenOperatingDay(now)}.`,
       };
     }
   } else if (input.priceProbe === "unpriced") {

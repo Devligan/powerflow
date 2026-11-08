@@ -123,6 +123,8 @@ const FRIENDLY: Record<string, string> = {
   CREDIT_LIMIT_EXCEEDED:
     "Not enough credit: the collateral on your open bids and positions plus this one would exceed your available funds (cash, less any open loss or deficit). Each MW holds the 95th-percentile day-ahead/real-time gap at its point (at least $10/MW).",
   DAM_CLOSED: "Day-ahead bids for that operating day closed at 10:00 AM Central the day before.",
+  DAM_NOT_OPEN: "ERCOT takes day-ahead bids for an operating day from fourteen days before it.",
+  QUANTITY_INCREMENT: "ERCOT takes bid quantities in steps of 0.1 MW.",
 };
 
 export async function POST(req: Request) {

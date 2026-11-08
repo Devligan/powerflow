@@ -217,7 +217,11 @@ describe("order ticket validation", () => {
     expect(checkOrderForm(ticket({ quantity: "-5" })).ok).toBe(false);
     expect(checkOrderForm(ticket({ quantity: "1e3" })).ok).toBe(false);
     expect(checkOrderForm(ticket({ quantity: "0.1234567" })).ok).toBe(false);
-    expect(checkOrderForm(ticket({ quantity: "0.123456" })).ok).toBe(true);
+    // ERCOT's grid is 0.1 MW (0045).
+    const offGrid = checkOrderForm(ticket({ quantity: "0.123456" }));
+    expect(!offGrid.ok && offGrid.message).toMatch(/0\.1 MW/);
+    expect(checkOrderForm(ticket({ quantity: "0.1" })).ok).toBe(true);
+    expect(checkOrderForm(ticket({ quantity: "12.5" })).ok).toBe(true);
     expect(checkOrderForm(ticket({ quantity: String(MAX_QUANTITY) })).ok).toBe(true);
     expect(checkOrderForm(ticket({ quantity: String(MAX_QUANTITY + 1) })).ok).toBe(false);
   });
@@ -247,6 +251,19 @@ describe("order ticket validation", () => {
     expect(late.ok).toBe(false);
     expect(!late.ok && late.message).toMatch(/closed at 10:00 AM Central/);
     expect(!late.ok && late.message).toMatch(/2026-11-04/);
+  });
+
+  it("takes a day's bids from fourteen days ahead, as ERCOT does (0045)", () => {
+    const virtual = requireInstrument("VIRTUAL");
+    // Operating day Nov 3 opens at 00:00 CDT on Oct 20 (05:00Z).
+    const he18 = buildWindow({ date: "2026-11-03", hour: 23, intervalMinutes: 60, intervals: 1 })!;
+    const bid = (now: string) =>
+      checkOrderForm(ticket({ instrument: virtual, product: "DAM_HOURLY", delivery: he18, now: Date.parse(now) }));
+    const early = bid("2026-10-20T04:59:00Z");
+    expect(early.ok).toBe(false);
+    expect(!early.ok && early.message).toMatch(/14 days ahead/);
+    expect(!early.ok && early.message).toMatch(/2026-11-02/);
+    expect(bid("2026-10-20T05:00:00Z")).toEqual({ ok: true });
   });
 
   it("closes trading when delivery starts, not when it ends (0037)", () => {
