@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  bpsToPercent,
   instrumentInfo,
   legsLabel,
   positionUnit,
+  sign,
   signedUsd,
+  tradeSideLabel,
+  usd,
   volumeUnitLabel,
 } from "@/lib/format";
 import { INSTRUMENTS, PRODUCTS } from "@/lib/ercot/types";
@@ -70,8 +74,46 @@ describe("centralWindowLabel", () => {
 describe("signedUsd", () => {
   it("puts the sign ahead of the currency symbol", () => {
     expect(signedUsd("-6.01")).toBe("−$6.01");
-    expect(signedUsd("1234.5")).toBe("+$1,234.5");
-    expect(signedUsd("0")).toBe("$0");
+    expect(signedUsd("1234.5")).toBe("+$1,234.50");
+    expect(signedUsd("0")).toBe("$0.00");
+  });
+});
+
+describe("money as a desk quotes it", () => {
+  it("shows $/MWh to the cent, rounded rather than cut", () => {
+    expect(usd("9.2")).toBe("$9.20");
+    expect(usd("100000")).toBe("$100,000.00");
+    expect(usd("-15.67")).toBe("−$15.67");
+    // 134.925 is +134.93 on a desk, not +134.92.
+    expect(sign("134.925")).toBe("+134.93");
+    expect(sign("-134.925")).toBe("−134.93");
+    // Something that rounds to nothing is not a loss.
+    expect(usd("-0.004")).toBe("$0.00");
+    expect(sign("-0.004")).toBe("0.00");
+  });
+
+  it("writes a loss with one minus sign", () => {
+    // The blotter and analytics used to print --39.3.
+    expect(sign("-39.3")).toBe("−39.30");
+    expect(sign(-350_450_000n)).toBe("−350.45");
+    expect(sign("0")).toBe("0.00");
+  });
+
+  it("signs a percent once", () => {
+    expect(bpsToPercent(159)).toBe("+1.59%");
+    expect(bpsToPercent(-920)).toBe("−9.20%");
+    expect(bpsToPercent(0)).toBe("0.00%");
+  });
+});
+
+describe("tradeSideLabel", () => {
+  it("speaks the desk's language", () => {
+    expect(tradeSideLabel("VIRTUAL", "BUY")).toBe("DEC");
+    expect(tradeSideLabel("VIRTUAL", "SELL")).toBe("INC");
+    expect(tradeSideLabel("PTP_OBLIGATION", "BUY")).toBe("BUY PATH");
+    // The close at delivery is not a new INC.
+    expect(tradeSideLabel("VIRTUAL", "SELL", "SETTLED")).toBe("SETTLE");
+    expect(tradeSideLabel("ENERGY_SPOT", "BUY")).toBe("BUY");
   });
 });
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { parseDec } from "@/lib/money";
 import {
   sign,
+  tradeSideLabel,
   usd,
   instrumentInfo,
   legsLabel,
@@ -163,8 +164,8 @@ export function TradesTable() {
               }}
             >
               <option value="">Both</option>
-              <option value="BUY">Buy</option>
-              <option value="SELL">Sell</option>
+              <option value="BUY">Buy (DEC · buy path)</option>
+              <option value="SELL">Sell (INC · sell path)</option>
             </select>
           </div>
           <div>
@@ -276,9 +277,10 @@ export function TradesTable() {
                       </td>
                       <td>
                         <span
-                          className={`badge ${t.side === "BUY" ? "badge-green" : "badge-red"}`}
+                          className={`badge ${t.status === "SETTLED" ? "badge-neutral" : t.side === "BUY" ? "badge-green" : "badge-red"}`}
+                          title={t.side}
                         >
-                          {t.side}
+                          {tradeSideLabel(t.instrument, t.side, t.status)}
                         </span>
                       </td>
                       <td className="mono whitespace-nowrap text-right">

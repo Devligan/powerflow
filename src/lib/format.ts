@@ -1,4 +1,4 @@
-import { parseDec, formatGrouped } from "@/lib/money";
+import { parseDec, formatGrouped, formatMoneyAbs } from "@/lib/money";
 import {
   getInstrument,
   unitForProduct,
@@ -6,19 +6,22 @@ import {
 } from "@/lib/ercot/types";
 import type { VolumeUnit } from "@/lib/trading/accounting";
 
-/** $1,234.56, or −$12.50: the sign goes ahead of the currency symbol, as
- *  negative power prices (routine in ERCOT's west) are quoted. */
+/** $1,234.56, or −$12.50: rounded to the cent and always shown to it, with
+ *  the sign ahead of the currency symbol, as negative power prices (routine
+ *  in ERCOT's west) are quoted. A value that rounds to zero is $0.00. */
 export function usd(v: string | number | bigint, places = 2): string {
   const n = parseDec(v);
-  return n < 0n ? `−$${formatGrouped(-n, places)}` : `$${formatGrouped(n, places)}`;
+  const body = formatMoneyAbs(n, places);
+  return n < 0n && /[1-9]/.test(body) ? `−$${body}` : `$${body}`;
 }
 
 /** +$1,234.56 / −$1,234.56 — the sign ahead of the currency symbol, for
  *  spreads and P&L where direction is the point. Zero is unsigned. */
 export function signedUsd(v: string | number | bigint, places = 2): string {
   const n = parseDec(v);
-  const body = usd(n < 0n ? -n : n, places);
-  return n > 0n ? `+${body}` : n < 0n ? `−${body}` : body;
+  const body = `$${formatMoneyAbs(n, places)}`;
+  if (!/[1-9]/.test(body)) return body;
+  return n > 0n ? `+${body}` : `−${body}`;
 }
 
 /** 1,234.56 (no currency symbol) */
@@ -40,15 +43,29 @@ export function bpsToPercent(bps: number | bigint | string, signed = true): stri
   if (!Number.isFinite(v)) v = 0;
   // raw percent in scaled money units: pct = bps / 100
   const raw = (BigInt(Math.round(v)) * 1000000n) / 100n;
-  let s = money(raw, 2);
-  if (s.startsWith("-")) s = s.slice(1);
-  return `${v < 0 ? "-" : signed ? "+" : ""}${s}%`;
+  const s = formatMoneyAbs(raw, 2);
+  return `${v < 0 ? "−" : signed && v > 0 ? "+" : ""}${s}%`;
 }
 
+/**
+ * A trade's side as an ERCOT desk says it: a virtual bought day-ahead is a
+ * DEC and one sold is an INC; a PTP obligation is bought or sold as a path.
+ * A settlement row is the position closing at delivery, not a new INC or DEC.
+ */
+export function tradeSideLabel(instrument: string, side: "BUY" | "SELL", status?: string): string {
+  if (status === "SETTLED") return "SETTLE";
+  if (instrument === "VIRTUAL") return side === "BUY" ? "DEC" : "INC";
+  if (instrument === "PTP_OBLIGATION") return side === "BUY" ? "BUY PATH" : "SELL PATH";
+  return side;
+}
+
+/** +1,234.56 / −1,234.56 — signed P&L with no currency symbol, rounded to
+ *  the cent and always shown to it. One sign, never two. */
 export function sign(v: string | bigint, places = 2): string {
   const n = typeof v === "bigint" ? v : parseDec(v);
-  const prefix = n > 0n ? "+" : n < 0n ? "-" : "";
-  return `${prefix}${formatGrouped(n, places)}`;
+  const body = formatMoneyAbs(n, places);
+  if (!/[1-9]/.test(body)) return body;
+  return `${n > 0n ? "+" : "−"}${body}`;
 }
 
 export function timeAgo(iso: string | null | undefined): string {

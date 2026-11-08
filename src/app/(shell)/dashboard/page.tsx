@@ -3,6 +3,7 @@ import { requireUser, getUserProfile } from "@/lib/auth";
 import { getPortfolioSnapshot } from "@/lib/queries";
 import { getMarketStatus } from "@/lib/markets";
 import { MarketsStrip } from "@/components/markets-strip";
+import { getSimClock } from "@/lib/sim-clock";
 import { SimClockWidget } from "@/components/sim-clock-widget";
 import { InstrumentBreakdownTable } from "@/components/instrument-breakdown";
 import { MarginSummary } from "@/components/margin-summary";
@@ -27,10 +28,11 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const user = await requireUser();
   const { tz } = await getViewerTimeZone();
-  const [snapshot, status, profile] = await Promise.all([
+  const [snapshot, status, profile, clock] = await Promise.all([
     getPortfolioSnapshot(user.id).catch(() => null),
     getMarketStatus().catch(() => null),
     getUserProfile(user.id).catch(() => null),
+    getSimClock(user.id).catch(() => null),
   ]);
 
   const met = snapshot?.metrics;
@@ -125,7 +127,8 @@ export default async function DashboardPage() {
             All markets →
           </Link>
         </div>
-        <MarketsStrip />
+        {/* On the desk's clock: a replay must not see its own future. */}
+        <MarketsStrip offsetMs={clock?.mode === "REPLAY" ? clock.offsetSeconds * 1000 : 0} />
       </section>
 
       {/* Positions preview */}

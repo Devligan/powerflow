@@ -132,7 +132,10 @@ export async function listMarkets(asOf?: Date | null): Promise<MarketView[]> {
   let priceRows: PriceRow[] = [];
 
   if (asOf) {
-    // Replay: the latest observation published at or before the clock.
+    // Replay: the newest HOUR published at or before the clock, at its latest
+    // publication. Ordering by publication alone picked whatever was posted
+    // last, and a price correction re-posts an old hour (NP4-197 corrected
+    // January in July), which would then pass for the latest price.
     const res = await admin
       .from("market_prices")
       .select(
@@ -140,10 +143,12 @@ export async function listMarkets(asOf?: Date | null): Promise<MarketView[]> {
       )
       .eq("product", DEFAULT_MARKET_PRODUCT)
       .lte("published_at", asOf.toISOString())
+      .gte("delivery_timestamp", new Date(asOf.getTime() - 7 * 24 * HOUR_MS).toISOString())
+      .order("delivery_timestamp", { ascending: false })
       .order("published_at", { ascending: false })
       .limit(5000);
     if (res.error) throw new Error(res.error.message);
-    // First occurrence per market IS the latest publication for it.
+    // First occurrence per market IS its newest hour's latest publication.
     const seen = new Set<string>();
     priceRows = (res.data ?? [] as PriceRow[]).filter((r) => {
       if (seen.has(r.market_id)) return false;

@@ -27,23 +27,28 @@ interface MarketStripItem {
  * price flashes and carries a directional glyph, so the direction of a tick is
  * never signalled by colour alone.
  */
-export function MarketsStrip() {
+export function MarketsStrip({ offsetMs = 0 }: { offsetMs?: number } = {}) {
   const tz = useTimeZone();
   const [items, setItems] = useState<MarketStripItem[]>([]);
   const [ts, setTs] = useState<number | null>(null);
   const [error, setError] = useState<boolean>(false);
   const [prev, setPrev] = useState<Map<string, bigint>>(new Map());
+  const replay = offsetMs !== 0;
 
   useEffect(() => {
     let alive = true;
     async function load() {
       try {
-        const res = await fetch("/api/markets", { cache: "no-store" });
+        // A replay desk reads the market as of its own clock: what ERCOT had
+        // published by then, never the hours after it.
+        const at = Date.now() + offsetMs;
+        const url = offsetMs !== 0 ? `/api/markets?asOf=${new Date(at).toISOString()}` : "/api/markets";
+        const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) throw new Error("failed");
         const data = await res.json();
         if (!alive) return;
         setItems(data.markets);
-        setTs(Date.now());
+        setTs(at);
         setError(false);
         const next = new Map<string, bigint>();
         for (const it of data.markets) {
@@ -60,7 +65,7 @@ export function MarketsStrip() {
       alive = false;
       clearInterval(id);
     };
-  }, []);
+  }, [offsetMs]);
 
   if (items.length === 0) {
     return (
@@ -104,9 +109,10 @@ export function MarketsStrip() {
       {feedAgeLabel && (
         <div className="flex items-center gap-2">
           <span className="caption t-mute">
-            Real-time hour ended {feedAgeLabel} · DA = day-ahead clearing for the same hour
+            Real-time hour ended {feedAgeLabel}
+            {replay ? " on the replay clock" : ""} · DA = day-ahead clearing for the same hour
           </span>
-          {feedStale && <span className="badge badge-amber">feed lagging</span>}
+          {feedStale && !replay && <span className="badge badge-amber">feed lagging</span>}
         </div>
       )}
       <div className="scroll-thin flex gap-3 overflow-x-auto pb-1">
@@ -161,12 +167,13 @@ export function MarketsStrip() {
               </div>
 
               {it.dayAheadPrice != null && price != null && (() => {
-                // DART: real time minus day-ahead for the same hour, the
-                // number a virtual or DART position settles on.
+                // Real time minus day-ahead for the same hour: what a DEC
+                // earns per MWh (an INC earns its negative). Named by its sign
+                // convention, since desks quote "DART" both ways round.
                 const dart = price - parseDec(it.dayAheadPrice);
                 return (
                   <div className="mt-1 mono text-[10.5px] t-mute">
-                    DA {usd(it.dayAheadPrice)} · DART{" "}
+                    DA {usd(it.dayAheadPrice)} · RT−DA{" "}
                     <span
                       className={`whitespace-nowrap ${dart > 0n ? "pos" : dart < 0n ? "neg" : ""}`}
                     >
@@ -198,7 +205,7 @@ export function MarketsStrip() {
         {error
           ? "Market data unavailable right now."
           : ts
-            ? `Updated ${localTime(ts, tz, true)} · actual ERCOT settlement point prices`
+            ? `${replay ? "Replay as of" : "Updated"} ${localTime(ts, tz, true)} · actual ERCOT settlement point prices`
             : ""}
       </p>
     </div>
