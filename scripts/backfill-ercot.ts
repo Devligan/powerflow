@@ -33,7 +33,8 @@ import { NormalizedPriceRecord, requireProduct } from "../src/lib/ercot/types";
  * (market, product, delivery interval) exists, so re-running is a no-op and a
  * live observation is never shadowed by an archive one. Writes go over a
  * direct Postgres connection (SUPABASE_DB_PASSWORD), then the run is recorded
- * in ingestion_runs and promote_rtm_finals settles every elapsed day.
+ * in ingestion_runs and promote_rtm_finals finalizes every day ERCOT has
+ * (16:00 Central, second Business Day after it; 0044).
  *
  * Flags: --from YYYY-MM-DD (Central; default 2026-09-20)  --dry-run
  */
@@ -198,7 +199,7 @@ async function archiveRtm(days: Set<string>): Promise<Row[]> {
       end: new Date(hourMs + HOUR_MS).toISOString(),
       price: mean.toFixed(4),
       publishedAt: new Date(hourMs + HOUR_MS + RT_POSTING_LAG_MS).toISOString(),
-      isFinal: false, // promote_rtm_finals settles it once its day has elapsed
+      isFinal: false, // promote_rtm_finals finalizes it on ERCOT's calendar
       source: SOURCE_ARCHIVE,
     });
   }
@@ -393,7 +394,7 @@ async function main() {
       console.log(`[backfill] wrote ${inserted}/${rows.length}`);
     }
 
-    // Settle every RT hour whose Central day has elapsed, through the engine's
+    // Finalize every RT hour ERCOT has declared final, through the engine's
     // own rule rather than a copy of it.
     await db.query("begin");
     await db.query("set local role service_role");

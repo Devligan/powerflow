@@ -188,6 +188,19 @@ describe("settlementState", () => {
     ).toBe("OPEN");
   });
 
+  it("holds a delivered position until ERCOT's price is final", () => {
+    const delivered = { ...base, deliveryEnd: "2026-09-21T11:00:00.000Z" };
+    // Priced, but ERCOT can still correct it until the finality instant.
+    expect(settlementState({ ...delivered, finalAt: now + 1 })).toBe("FINALIZING");
+    expect(settlementState({ ...delivered, finalAt: now })).toBe("AWAITING");
+    // An unpriced hour is stuck on the feed, whatever the calendar says.
+    expect(settlementState({ ...delivered, markPrice: null, finalAt: now + 1 })).toBe(
+      "AWAITING_PRICE"
+    );
+    // Not delivered is not delivered.
+    expect(settlementState({ ...base, finalAt: now + 1 })).toBe("OPEN");
+  });
+
   it("rejects a delivery timestamp it cannot reason about", () => {
     expect(() => settlementState({ ...base, deliveryEnd: "not-a-date" })).toThrow(
       /delivery_end/

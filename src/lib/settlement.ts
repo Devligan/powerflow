@@ -51,6 +51,10 @@ export interface SettlementSummary {
 export type SettlementState =
   /** Not delivered yet. */
   | "OPEN"
+  /** Delivered and priced, but ERCOT can still correct the price: it is
+   *  final at 16:00 Central on the second Business Day after the Operating
+   *  Day (0044), and the position settles then. */
+  | "FINALIZING"
   /** Delivered and priced; the next sweep will cash it out. */
   | "AWAITING"
   /** Delivered with no price for its settlement interval — left open. */
@@ -74,6 +78,8 @@ export function settlementState(input: {
   deliveryEnd: string;
   /** Instrument price for the position's window, or null when unpriced. */
   markPrice: bigint | null;
+  /** When the position's settlement price is final (`positionFinalAt`). */
+  finalAt?: number;
   now?: number;
 }): SettlementState {
   if (input.settledAt != null) return "SETTLED";
@@ -84,9 +90,11 @@ export function settlementState(input: {
   if (!Number.isFinite(end)) {
     throw new Error(`delivery_end is not a valid timestamp: ${input.deliveryEnd}`);
   }
-  if (end > (input.now ?? Date.now())) return "OPEN";
+  const now = input.now ?? Date.now();
+  if (end > now) return "OPEN";
 
-  return input.markPrice == null ? "AWAITING_PRICE" : "AWAITING";
+  if (input.markPrice == null) return "AWAITING_PRICE";
+  return input.finalAt != null && now < input.finalAt ? "FINALIZING" : "AWAITING";
 }
 
 /** Whether the settlement job runs at all.

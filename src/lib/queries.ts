@@ -3,6 +3,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { format, parseDbDec } from "@/lib/money";
 import { settlementState, type SettlementState } from "@/lib/settlement";
 import { getSimClock } from "@/lib/sim-clock";
+import { getInstrument } from "@/lib/ercot/types";
+import { positionFinalAt } from "@/lib/ercot/settlement-calendar";
 import {
   inExecutionOrder,
   portfolioMetrics,
@@ -84,6 +86,8 @@ export interface PositionView extends PositionState {
   settlementTradeId: string | null;
   /** Where the position stands with respect to delivery and settlement. */
   settlement: SettlementState;
+  /** When ERCOT's price for it is final and it settles (ISO). */
+  finalAt: string;
 }
 
 /** Margin state, computed by `account_margin` in Postgres rather than here:
@@ -204,6 +208,11 @@ function toPositionView(
     markPrice == null
       ? 0n
       : unrealizedPnl({ quantityMwh, averageEntryPrice }, markPrice);
+  const finalAt = positionFinalAt(
+    getInstrument(row.instrument)?.settlementRule,
+    row.product,
+    Date.parse(row.delivery_end)
+  );
 
   return {
     id: row.id,
@@ -233,8 +242,10 @@ function toPositionView(
       // An unpriced window is precisely what the sweep defers on, so the same
       // null that means "cannot be marked" also means "cannot be settled yet".
       markPrice,
+      finalAt,
       now: nowMs,
     }),
+    finalAt: new Date(finalAt).toISOString(),
   };
 }
 

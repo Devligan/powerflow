@@ -30,7 +30,9 @@ describe.skipIf(!dbTestsEnabled())("engine regressions (live database)", () => {
   const BEFORE_GATE = at(GATE, -HOUR);
   const AFTER_GATE = at(GATE, MINUTE);
   const AFTER_CLEARING = at(CLEARING, MINUTE);
-  const he = (n: number) => at("2025-06-10T05:00:00.000Z", (n - 1) * HOUR);
+  /** Its real-time prices are final Thu 2025-06-12, 16:00 Central (0044). */
+  const AFTER_FINAL = "2025-06-12T21:01:00.000Z";
+  const he =(n: number) => at("2025-06-10T05:00:00.000Z", (n - 1) * HOUR);
 
   function at(iso: string, deltaMs: number): string {
     return new Date(Date.parse(iso) + deltaMs).toISOString();
@@ -279,6 +281,7 @@ describe.skipIf(!dbTestsEnabled())("engine regressions (live database)", () => {
       expect(Number(trade!.execution_price)).toBe(40);
       expect(Date.parse(trade!.price_timestamp as string)).toBeLessThan(Date.parse(he(14)));
 
+      await d.clock(AFTER_FINAL);
       const summary = await settle(d);
       expect(summary.settled).toBe(1);
       expect((await account(d)).cash).toBe(100_000 + (55 - 40) * 10);
@@ -359,7 +362,7 @@ describe.skipIf(!dbTestsEnabled())("engine regressions (live database)", () => {
       expect(swept.error_samples).toEqual([]);
       expect((await order(id)).status).toBe("FILLED");
 
-      await d.clock(at(he(20), 10 * MINUTE));
+      await d.clock(AFTER_FINAL);
       const summary = await settle(d);
       expect(summary.failed).toBe(0);
       expect(summary.settled).toBe(1);
@@ -404,7 +407,7 @@ describe.skipIf(!dbTestsEnabled())("engine regressions (live database)", () => {
       expect((await sweep(d)).filled).toBe(2);
 
       // HE20 never gets a real-time price; HE21 does.
-      await d.clock(at(he(22), 10 * MINUTE));
+      await d.clock(AFTER_FINAL);
       const summary = await settle(d, 1);
       expect(summary.deferred).toBe(1);
       expect(summary.settled).toBe(1);

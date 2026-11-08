@@ -10,7 +10,7 @@ import {
   positionUnit,
   volumeUnitLabel,
 } from "@/lib/format";
-import { localDate, shortDate, windowLabel } from "@/lib/time";
+import { dateTime, localDate, shortDate, windowLabel } from "@/lib/time";
 import { getViewerTimeZone } from "@/lib/time-zone-server";
 import { PageHeader } from "@/components/ui/page-header";
 import { RiskLadder } from "@/components/risk-ladder";
@@ -102,6 +102,15 @@ export default async function PositionsPage() {
                           <span className="badge badge-neutral">
                             Settled {p.settledAt ? shortDate(p.settledAt, tz) : ""}
                           </span>
+                        ) : p.settlement === "FINALIZING" ? (
+                          // Delivered and priced, but ERCOT can still correct
+                          // the price until it is final; it settles then.
+                          <span
+                            className="badge badge-blue"
+                            title="ERCOT's prices are final at 16:00 Central on the second business day after the operating day; it settles then, at any corrected price."
+                          >
+                            Final {dateTime(p.finalAt, tz)}
+                          </span>
                         ) : p.settlement === "AWAITING" ? (
                           // Due and priced: the next sweep cashes it out.
                           <span className="badge badge-blue">Settles next run</span>
@@ -160,9 +169,11 @@ export default async function PositionsPage() {
         aside={<span className="badge badge-neutral">{open.length} open</span>}
       >
         A day-ahead and a real-time position on the same hour are different
-        instruments, and a spread is held separately from either leg. Once a
-        position has delivered it is cashed out automatically at its own
-        instrument price, recording realized P&L without you closing it.
+        instruments, and a spread is held separately from either leg. A
+        delivered position is cashed out automatically once ERCOT&apos;s prices
+        for its operating day are final (16:00 Central, two business days
+        later, after any corrections), recording realized P&L without you
+        closing it.
       </PageHeader>
       <RiskLadder
         ladder={buildLadder(

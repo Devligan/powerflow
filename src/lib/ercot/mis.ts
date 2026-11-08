@@ -1,6 +1,8 @@
 import {
+  CorrectedInterval,
   ErcotSource,
   NormalizedMarket,
+  PriceCorrectionDoc,
   NormalizedPriceRecord,
   SettlementPointType,
   requireProduct,
@@ -122,6 +124,7 @@ export const MIS_DOWNLOAD =
 const REPORT_DAM_SPP = 12331; // NP4-190-CD, DAM Settlement Point Prices
 const REPORT_RT_SPP = 12301; // SPPHLZNP6905, rolling RT settlement point prices
 const REPORT_DAM_MCPC = 12329; // NP4-188-CD, DAM Clearing Prices for Capacity (AS)
+const REPORT_RTM_PRICE_CORRECTIONS = 13045; // NP4-197, RTM price corrections
 
 /** The ancillary-service series the MIS adapter publishes (report 12329). */
 const AS_PRODUCTS: readonly string[] = ["REGUP", "REGDN", "RRS", "NSPIN", "ECRS"];
@@ -642,6 +645,80 @@ export function parseRtmSppCsv(csv: string): RtmSppCsvRow[] {
     const prevIsEw = /EW$/.test(prev.settlementPointType);
     const rowIsEw = /EW$/.test(row.settlementPointType);
     if (prevIsEw && !rowIsEw) canonical.set(key, row);
+  }
+  return [...canonical.values()];
+}
+
+/** One corrected 15-minute price from ERCOT's NP4-197 report. */
+export interface RtmPriceCorrectionRow {
+  deliveryDate: string;
+  hourEnding: number;
+  deliveryInterval: number;
+  settlementPoint: string;
+  settlementPointType: string;
+  original: string;
+  corrected: string;
+  dstFlag: boolean;
+}
+
+/**
+ * Parse one NP4-197 real-time SPP correction file (MIS 13045,
+ * `pricecorrection_RTM_SPP_*`). Columns, read by name:
+ *   DeliveryDate, DeliveryHour, DeliveryInterval, SettlementPointName,
+ *   SettlementPointType, SPPOriginal, SPPCorrected, PriceCorrectionTime,
+ *   DSTFlag
+ * Load zones are printed twice here too (LZ and LZEW), but unlike the rolling
+ * report a correction lists only the prints that changed: an interval can
+ * carry its LZEW twin alone, which means the canonical LZ print was NOT
+ * corrected. EW rows are therefore dropped outright, never taken as a stand-in.
+ */
+export function parseRtmPriceCorrectionCsv(csv: string): RtmPriceCorrectionRow[] {
+  const lines = csv.replace(/^﻿/, "").split(/\r?\n/);
+  const headerIdx = lines.findIndex((l) => l.trim().startsWith("DeliveryDate"));
+  if (headerIdx === -1) return [];
+  const header = lines[headerIdx].trim().split(",");
+  const col = (name: string) => header.indexOf(name);
+  const c = {
+    date: col("DeliveryDate"),
+    hour: col("DeliveryHour"),
+    interval: col("DeliveryInterval"),
+    point: col("SettlementPointName"),
+    type: col("SettlementPointType"),
+    original: col("SPPOriginal"),
+    corrected: col("SPPCorrected"),
+    dst: col("DSTFlag"),
+  };
+  if (Object.values(c).some((i) => i < 0)) {
+    throw new Error("NP4-197 correction file has an unexpected header");
+  }
+
+  const canonical = new Map<string, RtmPriceCorrectionRow>();
+  for (const line of lines.slice(headerIdx + 1)) {
+    const parts = line.trim().split(",");
+    if (parts.length < header.length) continue;
+    if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(parts[c.date])) continue;
+    if (/EW$/i.test(parts[c.type])) continue;
+    const hourEnding = Number(parts[c.hour]);
+    const interval = Number(parts[c.interval]);
+    if (!Number.isInteger(hourEnding) || hourEnding < 1 || hourEnding > 24) continue;
+    if (!Number.isInteger(interval) || interval < 1 || interval > 4) continue;
+    const corrected = cleanPrice(parts[c.corrected]);
+    if (!corrected) continue;
+    const row: RtmPriceCorrectionRow = {
+      deliveryDate: parts[c.date],
+      hourEnding,
+      deliveryInterval: interval,
+      settlementPoint: parts[c.point],
+      settlementPointType: parts[c.type],
+      original: cleanPrice(parts[c.original]) ?? "",
+      corrected,
+      dstFlag: parts[c.dst]?.toUpperCase() === "Y",
+    };
+    // One correction per interval and point; a repeated row restates it.
+    canonical.set(
+      `${row.deliveryDate}|${row.hourEnding}|${row.deliveryInterval}|${row.dstFlag}|${row.settlementPoint}`,
+      row
+    );
   }
   return [...canonical.values()];
 }
@@ -1219,6 +1296,45 @@ export class ErcotMISSource implements ErcotSource {
     }, FETCH_CONCURRENCY);
     this.assertPartialSuccess(failures, candidates.length, product);
     return records;
+  }
+
+  /**
+   * ERCOT's real-time SPP correction postings (NP4-197), oldest first. The
+   * report also carries LMP, shadow-price and AS corrections, and each in XML
+   * as well; only the SPP CSVs bear on what the desk settles.
+   */
+  async listRtmPriceCorrections(): Promise<PriceCorrectionDoc[]> {
+    const docs = await listMisDocs(REPORT_RTM_PRICE_CORRECTIONS);
+    const out: PriceCorrectionDoc[] = [];
+    for (const doc of docs) {
+      if (!/\.pricecorrection_RTM_SPP_\d{8}_to_\d{8}_NP4197_csv\.zip$/.test(doc.filename)) {
+        continue;
+      }
+      const posted = this.postedAt(doc);
+      if (!posted) continue;
+      out.push({ docId: doc.doclookupId, postedAt: posted.toISOString() });
+    }
+    return out.sort((a, b) => Date.parse(a.postedAt) - Date.parse(b.postedAt));
+  }
+
+  /** One correction document's corrected 15-minute prices, hubs and zones. */
+  async getRtmPriceCorrection(doc: PriceCorrectionDoc): Promise<CorrectedInterval[]> {
+    const csv = await fetchMisCsv(doc.docId);
+    if (!csv) throw new Error(`NP4-197 document ${doc.docId} holds no CSV`);
+    const out: CorrectedInterval[] = [];
+    for (const row of parseRtmPriceCorrectionCsv(csv)) {
+      if (!isHubOrZone(row.settlementPoint)) continue;
+      const hourStart = deliveryCentralToUtc(row.deliveryDate, row.hourEnding, row.dstFlag);
+      if (!hourStart) continue;
+      out.push({
+        settlementPoint: row.settlementPoint,
+        deliveryTimestamp: new Date(
+          Date.parse(hourStart) + (row.deliveryInterval - 1) * INTERVAL_MS
+        ).toISOString(),
+        price: row.corrected,
+      });
+    }
+    return out;
   }
 
   /**
