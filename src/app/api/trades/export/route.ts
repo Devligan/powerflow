@@ -1,4 +1,5 @@
 import { getSessionUser } from "@/lib/auth";
+import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 import { fail, serverError } from "@/lib/api";
 import { format, parseDbDec } from "@/lib/money";
 import { getTrades, parseTradeFilters } from "@/lib/queries";
@@ -38,6 +39,7 @@ function field(v: string): string {
 export async function GET(req: Request) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
+  if (await overLimit(LIMITS.export, user.id)) return tooManyRequests(LIMITS.export);
 
   const filters = parseTradeFilters(new URL(req.url).searchParams);
   if (!filters) return fail("Invalid filter", 422);

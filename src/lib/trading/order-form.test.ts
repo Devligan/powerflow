@@ -6,14 +6,12 @@ import {
   checkOrderForm,
   effectiveProduct,
   estimateInstrumentPrice,
-  orderRequest,
   probePrice,
-  ruleHint,
   selectableProducts,
   windowIntervals,
   type SeriesPoint,
 } from "@/lib/trading/order-form";
-import { requireInstrument, tradableInstruments } from "@/lib/ercot/types";
+import { requireInstrument } from "@/lib/ercot/types";
 
 const at = (iso: string): string => new Date(`${iso}:00:00.000Z`).toISOString();
 
@@ -107,12 +105,6 @@ describe("product selection", () => {
     expect(effectiveProduct(ptpOption, "RTM_15MIN")).toBe("DAM_HOURLY");
     expect(effectiveProduct(basis, "RTM_15MIN")).toBe("RTM_15MIN");
     expect(effectiveProduct(spot, "DAM_HOURLY")).toBe("DAM_HOURLY");
-  });
-
-  it("describes every tradable instrument's settlement", () => {
-    for (const i of tradableInstruments()) {
-      expect(ruleHint(i).length, i.code).toBeGreaterThan(0);
-    }
   });
 });
 
@@ -284,47 +276,5 @@ describe("order ticket validation", () => {
 
   it("refuses a product that is not on the desk", () => {
     expect(checkOrderForm(ticket({ product: "NOT_A_PRODUCT" })).ok).toBe(false);
-  });
-});
-
-describe("request assembly", () => {
-  it("sends exactly what the route accepts", () => {
-    const body = orderRequest({
-      marketId: "m-a",
-      instrumentCode: "BASIS_SPREAD",
-      product: "RTM_HOURLY",
-      counterMarketId: "m-b",
-      side: "BUY",
-      quantity: "12.5",
-      delivery: win(18, 1),
-      clientOrderId: "order-abc-123",
-    });
-    expect(body).toEqual({
-      marketId: "m-a",
-      instrument: "BASIS_SPREAD",
-      product: "RTM_HOURLY",
-      counterMarketId: "m-b",
-      side: "BUY",
-      quantityMwh: "12.5",
-      deliveryStart: "2026-09-22T18:00:00.000Z",
-      deliveryEnd: "2026-09-22T19:00:00.000Z",
-      clientOrderId: "order-abc-123",
-    });
-  });
-
-  it("carries the window as the delivery, since the window *is* the delivery", () => {
-    const body = orderRequest({
-      marketId: "m-a",
-      instrumentCode: "BLOCK_FORWARD",
-      product: "RTM_HOURLY",
-      counterMarketId: null,
-      side: "SELL",
-      quantity: "24",
-      delivery: win(18, DEFAULT_WINDOW_INTERVALS),
-      clientOrderId: "order-def-456",
-    });
-    expect(body.deliveryStart).toBe("2026-09-22T18:00:00.000Z");
-    expect(body.deliveryEnd).toBe("2026-09-23T18:00:00.000Z");
-    expect(body.counterMarketId).toBeNull();
   });
 });

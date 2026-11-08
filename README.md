@@ -641,16 +641,26 @@ instrument that cannot be marked is reported as **unpriced, never zero**.
 
 - RLS enabled on every user-owned table; policies scoped to `auth.uid()`.
 - No direct client INSERT/UPDATE/DELETE on `trades`, `positions`,
-  `paper_accounts`, or `audit_events`. All state changes go through
-  `execute_trade` (single transaction, row-locked).
-- Function ACLs are revoked from `PUBLIC` **and `anon`**; `execute_trade` is
-  `authenticated`-only, `ensure_user_records` and `get_leaderboard` are
-  service-role-only. Supabase's default privileges grant EXECUTE to `anon` on
-  every function created in `public`, so revoking `PUBLIC` alone is not enough
-  — leaving `anon` in place made the `SECURITY DEFINER` bootstrap callable
-  without a session (migration 0012). `ensure_user_records` additionally
-  refuses a user session acting for another id. SECURITY DEFINER functions pin
-  `search_path`.
+  `paper_accounts`, `paper_orders` or `audit_events`. A session changes state
+  only by placing or cancelling a bid; fills go through `execute_trade`
+  (single transaction, row-locked), called by the service-role sweep.
+- Least privilege (migration 0046). A session's JWT and the browser's anon key
+  both reach PostgREST directly, so the database, not a route, decides what
+  they can do. `anon` can call nothing and read nothing. A session can call
+  eight `SECURITY DEFINER` functions, each checking `auth.uid()`
+  (`account_margin`, `cancel_order`, `clear_sim_clock`, `place_limit_order`,
+  `position_marks`, `set_leaderboard_opt_in`, `set_sim_clock`,
+  `update_profile`), and read its own rows plus the small reference tables.
+  Everything else — `execute_trade`, every price helper, every sweep — is the
+  service role's and the engine's. The price store is read only through the
+  service role, so no visitor can run arbitrary scans over it. Supabase's
+  default privileges used to grant EXECUTE on every new function (0012 and
+  0044 each shipped one exposed by that); they now grant nothing, so a
+  forgotten REVOKE fails closed. SECURITY DEFINER functions pin `search_path`.
+- Rate limits are per subject in Postgres (`rate_limit_hit`): sign-in,
+  password email, orders, the clock, avatars, profile changes, public reads,
+  and each account's history reads and CSV export. The public standings are
+  computed at most every 30 seconds per instance.
 - `trades` / `audit_events` are immutable (triggers raise on UPDATE/DELETE).
 - Money is column-typed `numeric`, never floats; client math is `bigint` with a
   fixed 1e6 scale.

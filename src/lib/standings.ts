@@ -50,10 +50,17 @@ export function standingsSize(raw: string | null | undefined): number {
   return Number.isInteger(n) ? Math.min(Math.max(n, 1), 100) : 100;
 }
 
-export async function getPublicStandings(
-  top: number,
-  viewerId: string | null = null
-): Promise<StandingsRow[]> {
+/**
+ * The standings mark every opted-in book to market, and the Rank page is
+ * public: computed per visitor, anyone could turn page loads into database
+ * load. They are held for STANDINGS_TTL_MS per function instance, and
+ * concurrent requests share one computation; only `isViewer` is per request.
+ */
+const STANDINGS_TTL_MS = 30_000;
+type Ranked = { row: RawRow; avatarUrl: string | null };
+const standingsCache = new Map<number, { at: number; rows: Promise<Ranked[]> }>();
+
+async function rankedStandings(top: number): Promise<Ranked[]> {
   const admin = supabaseAdmin();
   const { data, error } = await admin.rpc("get_leaderboard", { p_top: top });
   if (error) throw new Error(error.message);
@@ -69,10 +76,27 @@ export async function getPublicStandings(
 
   return rows
     .filter((r) => byId.get(r.user_id)?.onboarded_at != null && r.display_name)
-    .map((r, i) => ({
+    .map((row) => ({ row, avatarUrl: (byId.get(row.user_id)?.avatar_url as string | null) ?? null }));
+}
+
+export async function getPublicStandings(
+  top: number,
+  viewerId: string | null = null
+): Promise<StandingsRow[]> {
+  const now = Date.now();
+  let entry = standingsCache.get(top);
+  if (!entry || now - entry.at > STANDINGS_TTL_MS) {
+    entry = { at: now, rows: rankedStandings(top) };
+    standingsCache.set(top, entry);
+    // A failure must not be served from the cache to everyone after it.
+    entry.rows.catch(() => standingsCache.delete(top));
+  }
+  const ranked = await entry.rows;
+
+  return ranked.map(({ row: r, avatarUrl }, i) => ({
       rank: i + 1,
       displayName: r.display_name as string,
-      avatarUrl: (byId.get(r.user_id)?.avatar_url as string | null) ?? null,
+      avatarUrl,
       isViewer: viewerId != null && r.user_id === viewerId,
       startingCash: r.starting_cash,
       cashBalance: r.cash_balance,

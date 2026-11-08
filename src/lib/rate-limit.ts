@@ -34,6 +34,10 @@ export const LIMITS = {
   profile: { name: "profile", max: 20, windowSeconds: 60 },
   usernameCheck: { name: "username-check", max: 60, windowSeconds: 60 },
   publicRead: { name: "public-read", max: 120, windowSeconds: 60 },
+  // An account's own book: each read replays up to its whole history.
+  reads: { name: "reads", max: 60, windowSeconds: 60 },
+  // A CSV of every trade: far heavier than a page of them.
+  export: { name: "export", max: 6, windowSeconds: 60 },
 } as const satisfies Record<string, Limit>;
 
 /** A key that identifies the subject without storing who it is. */

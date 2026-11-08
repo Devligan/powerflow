@@ -1,4 +1,5 @@
 import { getAnalytics } from "@/lib/analytics";
+import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 import { getSessionUser } from "@/lib/auth";
 import { serverError, fail, ok } from "@/lib/api";
 
@@ -7,6 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
+  if (await overLimit(LIMITS.reads, user.id)) return tooManyRequests(LIMITS.reads);
 
   try {
     return ok({ analytics: await getAnalytics(user.id) });

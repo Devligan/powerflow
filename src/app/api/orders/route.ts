@@ -24,6 +24,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
+  if (await overLimit(LIMITS.reads, user.id)) return tooManyRequests(LIMITS.reads);
 
   const url = new URL(req.url);
   const status = url.searchParams.get("status");

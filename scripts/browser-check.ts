@@ -5,11 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OAUTH_PROVIDERS, oauthLabel, type OAuthProviderId } from "../src/lib/oauth";
 import {
+  admin,
   cleanupTestUsers,
   createTestUser,
   loadTestEnv,
   type TestUser,
 } from "../src/lib/testing/db";
+import { damDeadlineUtc, firstOpenOperatingDay, hourEndingStartUtc } from "../src/lib/ercot/hour-ending";
 
 /**
  * A real-browser check of the sign-in screens: `npm run build && npm run test:browser`.
@@ -38,8 +40,9 @@ import {
  *
  * The signed-in pages (`--signed-in`) are checked the same way, which needs an
  * account: the check creates one throwaway user through the admin API, signs in
- * through the *form*, places one real trade through the app's own HTTP API, and
- * deletes the account afterwards — the cascade takes its position and fills.
+ * through the *form*, and trades the way the desk does — a day-ahead bid placed
+ * before the deadline, filled by the order sweep at ERCOT's clearing — through
+ * the app's own HTTP API, then deletes the account; the cascade takes its book.
  * That is a write to whatever project `.env` points at, so like the database
  * suites it is opt-in. It is also the only way to see the desk with data on it:
  * cash that moved, a position row, a margin tier.
@@ -630,8 +633,13 @@ const SHELL_SNAPSHOT = `(() => {
       return section ? [...section.querySelectorAll(".badge")].map((b) => b.textContent.trim()) : [];
     })(),
     sectionCaptions: [...document.querySelectorAll("section span.caption")].map((c) => c.textContent.trim()),
+    // The first row of the book itself (the table with an "Avg entry" column),
+    // not of whatever table renders above it, such as the risk ladder.
     firstRowCells: (() => {
-      const row = document.querySelector("table tbody tr");
+      const book = [...document.querySelectorAll("table")].find((t) =>
+        [...t.querySelectorAll("thead th")].some((th) => th.textContent.trim() === "Avg entry")
+      ) ?? document.querySelector("table");
+      const row = book ? book.querySelector("tbody tr") : null;
       return row ? [...row.querySelectorAll("td")].map((td) => td.textContent.trim()) : [];
     })(),
     bodyText: text,
@@ -760,18 +768,17 @@ async function signInThroughTheForm(page: Page, base: string, user: TestUser): P
 }
 
 /**
- * One market with a future, priced interval — the shape a trade needs.
+ * One market with a day-ahead hour ERCOT has cleared and delivered — the shape
+ * a fill needs.
  *
- * Discovered through the app's own read APIs rather than by querying the
- * database, so the check exercises the same series the trade panel shows.
- * The DAY-AHEAD series is the one that reaches forward: under the actual-ERCOT
- * publication model the real-time series only print after delivery, and 0025
- * made them non-tradable — a check pinned to the API's RTM_HOURLY default
- * would find no future interval ever, and a ticket left on that default is
- * refused as PRODUCT_NOT_TRADABLE. Both tickets below therefore name the
- * instrument and the series the interval was found on. Both timestamps are
- * normalised to `Z`: the price API returns Postgres' `+00:00`, and the trade
- * route validates a strict ISO datetime.
+ * Positions open only as day-ahead bids placed before 10:00 Central the day
+ * before, and the order sweep fills them at the clearing (0038). So the check
+ * finds an hour that cleared and finished delivering at least an hour ago, bids
+ * on it from a replay clock set before its deadline, and moves the clock past
+ * delivery, which sweeps the account. Discovered through the app's own read
+ * APIs, so the check exercises the same series the trade panel shows. Times
+ * are normalised to `Z`: the price API returns Postgres' `+00:00`, and the
+ * order route validates a strict ISO datetime.
  */
 const FIND_INTERVAL = `(async () => {
   const markets = await (await fetch("/api/markets")).json();
@@ -783,9 +790,9 @@ const FIND_INTERVAL = `(async () => {
           "/prices?product=DAM_HOURLY"
       )
     ).json();
-    const interval = (prices.series ?? []).find(
-      (row) => new Date(row.deliveryEnd).getTime() > Date.now()
-    );
+    const interval = (prices.series ?? [])
+      .filter((row) => new Date(row.deliveryEnd).getTime() < Date.now() - 3600000)
+      .pop();
     if (interval) {
       return {
         ok: true,
@@ -798,8 +805,17 @@ const FIND_INTERVAL = `(async () => {
       };
     }
   }
-  return { ok: false, reason: "no market has a future-priced day-ahead interval" };
+  return { ok: false, reason: "no market has a cleared, delivered day-ahead hour" };
 })()`;
+
+/** A JSON request through the signed-in page, so it carries the session. */
+const fetchJson = (path: string, method: string, body?: unknown) => `
+  fetch(${JSON.stringify(path)}, {
+    method: ${JSON.stringify(method)},
+    headers: { "content-type": "application/json" },
+    ${body === undefined ? "" : `body: ${JSON.stringify(JSON.stringify(body))},`}
+  }).then(async (res) => ({ status: res.status, body: await res.json().catch(() => ({})) }))
+`;
 
 interface Interval {
   ok: boolean;
@@ -831,6 +847,14 @@ async function checkSignedIn(page: Page, base: string): Promise<void> {
   }
 
   try {
+    // A new account names itself on /welcome before the desk opens; this one
+    // has nothing to choose, so it starts onboarded.
+    const { error: onboardError } = await admin()
+      .from("profiles")
+      .update({ onboarded_at: new Date().toISOString() })
+      .eq("id", user.id);
+    check(!onboardError, "the throwaway account is onboarded", onboardError?.message ?? "");
+
     // 1. sign in the way a person does
     page.resetErrors();
     const signedIn = await signInThroughTheForm(page, base, user);
@@ -880,35 +904,42 @@ async function checkSignedIn(page: Page, base: string): Promise<void> {
     );
     checkNoRenderingNoise(emptyPositions, page, "positions");
 
-    // 4. one real trade, through the app's own authenticated API
+    // 4. one real fill, the way the desk makes one: a day-ahead bid placed
+    // before the deadline on a replay clock, filled by the sweep when the
+    // clock moves past delivery. A virtual is margined, so cash does not move;
+    // the book does.
+    type Reply = { status: number; body: Record<string, unknown> };
     const interval = await page.evaluate<Interval>(FIND_INTERVAL);
     if (!interval.ok) {
       note(`skipped the trade: ${interval.reason}`);
     } else {
       const quantity = "10";
-      const placed = await page.evaluate<{ status: number; body: Record<string, unknown> }>(`
-        fetch("/api/trades", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            marketId: ${JSON.stringify(interval.marketId)},
-            instrument: "ENERGY_SPOT",
-            product: ${JSON.stringify(interval.product)},
-            side: "BUY",
-            quantityMwh: ${JSON.stringify(quantity)},
-            deliveryStart: ${JSON.stringify(interval.deliveryStart)},
-            deliveryEnd: ${JSON.stringify(interval.deliveryEnd)},
-            clientOrderId: "browser-check-" + Date.now()
-          })
-        }).then(async (res) => ({ status: res.status, body: await res.json() }))
-      `);
-      check(
-        placed.status === 200,
-        `a ${quantity} MWh buy executes against ${interval.settlementPoint}`,
-        JSON.stringify(placed.body).slice(0, 200)
-      );
+      const startMs = Date.parse(interval.deliveryStart!);
+      const before = new Date(damDeadlineUtc(startMs)! - 3_600_000).toISOString();
+      const rewound = await page.evaluate<Reply>(fetchJson("/api/clock", "PUT", { to: before }));
+      check(rewound.status === 200, "the replay clock rewinds before the day's deadline", JSON.stringify(rewound.body));
 
-      if (placed.status === 200) {
+      const bid = await page.evaluate<Reply>(
+        fetchJson("/api/orders", "POST", {
+          marketId: interval.marketId,
+          instrument: "VIRTUAL",
+          product: "DAM_HOURLY",
+          side: "BUY",
+          quantityMwh: quantity,
+          deliveryStart: interval.deliveryStart,
+          deliveryEnd: interval.deliveryEnd,
+        })
+      );
+      check(bid.status === 201, `a ${quantity} MW DEC bids on ${interval.settlementPoint}`, JSON.stringify(bid.body).slice(0, 200));
+
+      const after = new Date(Date.parse(interval.deliveryEnd!) + 600_000).toISOString();
+      const advanced = await page.evaluate<Reply>(fetchJson("/api/clock", "PUT", { to: after }));
+      check(advanced.status === 200, "the clock moves past delivery", JSON.stringify(advanced.body));
+      const orders = await page.evaluate<Reply>(fetchJson("/api/orders", "GET"));
+      const filled = (orders.body.orders as Array<{ status: string }> | undefined)?.[0]?.status === "FILLED";
+      check(filled, "the sweep fills the bid at the clearing", JSON.stringify(orders.body).slice(0, 200));
+
+      if (filled) {
         // 5. the position shows up, with the figures the fill returned
         await page.load(`${base}/positions`, { settleMs: 1200 });
         const withPosition = await page.evaluate<ShellSnapshot>(SHELL_SNAPSHOT);
@@ -926,6 +957,13 @@ async function checkSignedIn(page: Page, base: string): Promise<void> {
           `the row's quantity cell reads ${quantity} MWh`,
           JSON.stringify(withPosition.firstRowCells[4])
         );
+        // Delivered and priced, but not settled until ERCOT's price is final
+        // (0044) — or already settled, for an hour old enough.
+        check(
+          /Final |Settled|Settles next run/.test(withPosition.firstRowCells[3] ?? ""),
+          "the row says where it stands against ERCOT's settlement",
+          JSON.stringify(withPosition.firstRowCells[3])
+        );
         check(
           withPosition.sectionCaptions.includes("1 position"),
           "the open book is counted as one position",
@@ -933,13 +971,14 @@ async function checkSignedIn(page: Page, base: string): Promise<void> {
         );
         checkNoRenderingNoise(withPosition, page, "positions with a book");
 
-        // and the money moved: the desk's cash is no longer the starting figure
+        // and the desk shows the book: a virtual is margined, so cash holds
+        // and equity carries the position's P&L
         await page.load(`${base}/dashboard`, { settleMs: 1500 });
         const afterTrade = await page.evaluate<ShellSnapshot>(SHELL_SNAPSHOT);
         check(isMoney(afterTrade.stats.cash), "cash still reads as money", String(afterTrade.stats.cash));
         check(
-          afterTrade.stats.cash !== startingCash,
-          "the fill moved cash on the desk",
+          afterTrade.stats.cash === startingCash,
+          "a margined fill leaves cash where it was",
           `${startingCash} -> ${afterTrade.stats.cash}`
         );
         check(
@@ -949,27 +988,24 @@ async function checkSignedIn(page: Page, base: string): Promise<void> {
         checkNoRenderingNoise(afterTrade, page, "the desk with a book");
       }
 
-      // 5b. a working limit order: placed, seen on the book, cancelled. This
-      // is the order route end to end through the app's own API — placement
-      // commits to a price, not a fill, so nothing here depends on where the
-      // feed head is; no sweep runs in this check, so the order stays open
-      // until it is cancelled.
-      const placedOrder = await page.evaluate<{ status: number; body: Record<string, unknown> }>(`
-        fetch("/api/orders", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            marketId: ${JSON.stringify(interval.marketId)},
-            instrument: "ENERGY_SPOT",
-            product: ${JSON.stringify(interval.product)},
-            side: "BUY",
-            quantityMwh: "10",
-            limitPrice: "34.56",
-            deliveryStart: ${JSON.stringify(interval.deliveryStart)},
-            deliveryEnd: ${JSON.stringify(interval.deliveryEnd)}
-          })
-        }).then(async (res) => ({ status: res.status, body: await res.json() }))
-      `);
+      // 5b. a working limit bid on the live clock: placed for the first day
+      // still open, seen on the book, withdrawn before its deadline. Nothing
+      // clears before the deadline, so it rests until it is cancelled.
+      const live = await page.evaluate<Reply>(fetchJson("/api/clock", "DELETE"));
+      check(live.status === 200, "the clock returns to live", JSON.stringify(live.body));
+      const he18 = hourEndingStartUtc(firstOpenOperatingDay(Date.now()), 18)!;
+      const placedOrder = await page.evaluate<Reply>(
+        fetchJson("/api/orders", "POST", {
+          marketId: interval.marketId,
+          instrument: "VIRTUAL",
+          product: "DAM_HOURLY",
+          side: "BUY",
+          quantityMwh: "10",
+          limitPrice: "34.56",
+          deliveryStart: new Date(he18).toISOString(),
+          deliveryEnd: new Date(he18 + 3_600_000).toISOString(),
+        })
+      );
       check(
         placedOrder.status === 201,
         "a working limit order places through the order API",
@@ -986,19 +1022,19 @@ async function checkSignedIn(page: Page, base: string): Promise<void> {
         "the order book is titled",
         JSON.stringify(orderBook.h1)
       );
+      // innerText follows CSS text-transform, and card titles are upper-cased.
       check(
-        orderBook.bodyText.includes("Working (1)"),
+        /Working \(1\)/i.test(orderBook.bodyText),
         "the resting order appears on the book as open",
-        JSON.stringify(orderBook.sectionCaptions)
+        (/Working \(\d+\)/i.exec(orderBook.bodyText) ?? ["no working section"])[0]
       );
+      const size = /\b10(\.0+)? MWh/.test(orderBook.bodyText);
       check(
-        orderBook.bodyText.includes("BUY") &&
-          orderBook.bodyText.includes("10.00 MWh") &&
-          orderBook.bodyText.includes("$34.56"),
+        orderBook.bodyText.includes("BUY") && size && orderBook.bodyText.includes("$34.56"),
         "the book's open row carries its side, size and limit",
         JSON.stringify({
           buy: orderBook.bodyText.includes("BUY"),
-          size: orderBook.bodyText.includes("10.00 MWh"),
+          size,
           limit: orderBook.bodyText.includes("$34.56"),
         })
       );
@@ -1018,7 +1054,7 @@ async function checkSignedIn(page: Page, base: string): Promise<void> {
         await page.load(`${base}/orders`, { settleMs: 1200 });
         const afterCancel = await page.evaluate<ShellSnapshot>(SHELL_SNAPSHOT);
         check(
-          !afterCancel.bodyText.includes("Working ("),
+          !/Working \(/i.test(afterCancel.bodyText),
           "the cancelled order leaves the working set"
         );
         check(
