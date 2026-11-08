@@ -264,7 +264,8 @@ export function parseCdrName(
  * Parse the MIS document-listing JSON (misapp IceDocListJsonWS) into the
  * report's downloadable documents. Pure, so the contract is unit-testable
  * offline: DocID is the download key, ConstructedName carries the posting
- * stamp, and PublishDate is ERCOT's own posting instant (ISO with offset).
+ * stamp, and PublishDate the posting's wall time (see `misPostedAt` for its
+ * offset).
  */
 export function parseMisListingJson(payload: unknown): MisDoc[] {
   const root = payload as {
@@ -290,6 +291,30 @@ export function parseMisListingJson(payload: unknown): MisDoc[] {
     });
   }
   return docs;
+}
+
+/**
+ * A document's posting instant. ERCOT's PublishDate holds the posting's
+ * Central wall time (the same as the cdr name stamp) but labels it with the
+ * offset in force when the LISTING is requested, not when the document was
+ * posted: in November every September posting reads -06:00 (a 15:20 CDT
+ * posting as 16:20), and in September the same listing read -05:00. Taken
+ * literally, anything re-read across a DST change is an hour off: late in the
+ * fall, early (look-ahead) in the spring. So the wall time is read and its
+ * offset resolved for its own date, as the cdr stamp is. (The repeated hour
+ * of the fall-back night resolves to its first occurrence.)
+ */
+export function misPostedAt(doc: MisDoc): Date | null {
+  const wall = doc.publishDate
+    ? /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/.exec(doc.publishDate)
+    : null;
+  if (wall) {
+    const d = centralWallToUtc(`${wall[1]}${wall[2]}${wall[3]}`, `${wall[4]}${wall[5]}${wall[6]}`);
+    if (d) return d;
+  }
+  const cdr = parseCdrName(doc.filename);
+  if (!cdr) return null;
+  return centralWallToUtc(cdr.date, cdr.time.slice(0, 6));
 }
 
 /**
@@ -1220,16 +1245,8 @@ export class ErcotMISSource implements ErcotSource {
     return inWindow.map((x) => x.doc);
   }
 
-  /** A document's posting instant: ERCOT's own PublishDate from the listing
-   *  API (ISO with offset) when present, else the cdr name stamp. */
   private postedAt(doc: MisDoc): Date | null {
-    if (doc.publishDate) {
-      const d = new Date(doc.publishDate);
-      if (!Number.isNaN(d.getTime())) return d;
-    }
-    const cdr = parseCdrName(doc.filename);
-    if (!cdr) return null;
-    return centralWallToUtc(cdr.date, cdr.time.slice(0, 6));
+    return misPostedAt(doc);
   }
 
   /**
