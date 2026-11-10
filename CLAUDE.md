@@ -40,7 +40,7 @@ Run DB suites the same way locally rather than against production: `npx supabase
 
 A migration a change depends on is applied to production before its PR merges (`scripts/run-migration.ts`), after `--dry-run` (a rolled-back transaction), so each one must stay compatible with the code already live. The runner records every file it applies in `ops.applied_migrations` (a schema PostgREST does not expose) and refuses a file already recorded or one with an earlier file still pending, so `--status` is the answer to "what does production have?" — not probing for marker objects. Stacked PRs merge bottom-up with merge commits: retarget each to `master` once the one below it lands.
 
-`.github/workflows/production.yml` runs `scripts/smoke-production.mjs` after every production deploy (Vercel's commit status on master) and every three hours; a failed run means the site, auth gating or ingestion is broken.
+`.github/workflows/production.yml` runs `scripts/smoke-production.mjs` after every production deploy (Vercel's commit status on master) and every six hours; a failed run means the site, auth gating, ingestion or the free-tier storage headroom (`housekeeping()` and the 80% check, 0050) needs attention. The repo is private, so Actions minutes are billed against the free 2,000 a month: keep scheduled jobs sparse.
 
 ## Architecture
 
