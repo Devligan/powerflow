@@ -1,6 +1,7 @@
-import { ok, fail, m } from "@/lib/api";
+import { okPublic, fail, m } from "@/lib/api";
+import { LIMITS, clientIp, overLimit, tooManyRequests } from "@/lib/rate-limit";
 import { parseDbDec } from "@/lib/money";
-import { getPublicStandings } from "@/lib/standings";
+import { getPublicStandings, standingsSize } from "@/lib/standings";
 
 export const dynamic = "force-dynamic";
 
@@ -10,12 +11,14 @@ export const dynamic = "force-dynamic";
  * figures — never user ids, usernames or emails (src/lib/standings.ts).
  */
 export async function GET(req: Request) {
+  if (await overLimit(LIMITS.publicRead, clientIp(req))) return tooManyRequests(LIMITS.publicRead);
+
   const url = new URL(req.url);
-  const top = Math.min(Math.max(Number(url.searchParams.get("top") ?? "100"), 1), 100);
+  const top = standingsSize(url.searchParams.get("top"));
 
   try {
     const rows = await getPublicStandings(top);
-    return ok({
+    return okPublic({
       leaderboard: rows.map((r) => ({
         rank: r.rank,
         displayName: r.displayName,

@@ -36,7 +36,16 @@ export async function POST(req: Request) {
 
   const supabase = await createClient();
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
-  if (error) return fail(error.message, 422);
+  if (error) {
+    if (error.code === "same_password") {
+      return fail("Choose a password different from your current one.", 422);
+    }
+    if (error.code === "weak_password") {
+      return fail("That password is too easy to guess. Choose a stronger one.", 422);
+    }
+    console.error(`[account] password change failed for ${user.id}: ${error.message}`);
+    return fail("Your password could not be changed. Please try again.", 422);
+  }
 
   await supabase.auth.signOut({ scope: "others" });
   return ok({ changed: true });

@@ -8,5 +8,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const supabase = await createClient();
   await supabase.auth.signOut();
-  return NextResponse.redirect(new URL("/login", req.url));
+  // 303: the browser follows with a GET. The default 307 would re-POST to the
+  // login page.
+  return NextResponse.redirect(new URL("/login", req.url), 303);
 }

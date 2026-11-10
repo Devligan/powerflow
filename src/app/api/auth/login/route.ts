@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { LIMITS, clientIp, overLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,14 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
+
+  const ip = clientIp(req);
+  const address = email.trim().toLowerCase();
+  if (await overLimit(LIMITS.loginByIp, ip)) return tooManyRequests(LIMITS.loginByIp);
+  if (await overLimit(LIMITS.loginByAttempt, `${ip}|${address}`)) {
+    return tooManyRequests(LIMITS.loginByAttempt);
+  }
+  if (await overLimit(LIMITS.loginByEmail, address)) return tooManyRequests(LIMITS.loginByEmail);
 
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });

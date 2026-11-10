@@ -30,17 +30,17 @@ const SPEC: Array<{ term: string; detail: string }> = [
   {
     term: "Instruments",
     detail:
-      "Point energy, basis spread, convergence, block forward and virtual trade, each with its own settlement rule.",
+      "Virtual bids (INC/DEC) and day-ahead point-to-point obligations, each paid the gap between the day-ahead clearing and real time.",
   },
   {
     term: "Starting capital",
     detail:
-      "$100,000 virtual cash and a $500,000 gross exposure cap, per account.",
+      "$100,000 virtual cash per account. Open bids and positions hold collateral sized on each point's recent day-ahead to real-time gap.",
   },
   {
     term: "Execution",
     detail:
-      "Server-authoritative price for the exact delivery interval an order references. An order with no price for its own interval is refused rather than filled at an older one.",
+      "Bids close at 10:00 Central the day before and fill at ERCOT's actual clearing price. An hour with no published price never fills at an older one.",
   },
   {
     term: "Accounting",
@@ -125,11 +125,10 @@ export default async function Home() {
               Trade the Texas power curve, hour by hour.
             </h1>
             <p className="mt-6 max-w-xl text-[15px] leading-relaxed t-dim">
-              PowerFlow is a paper-trading desk for the ERCOT market. Hourly
-              day-ahead and real-time series, 15-minute intervals, point and
-              basis positions, block forwards and virtual trades. Every fill is
-              priced off the interval it names, and every position is settled by
-              the same engine that opened it.
+              PowerFlow is a paper-trading desk for the ERCOT market. Bid
+              virtuals and point-to-point obligations into the day-ahead market
+              before it closes, and every position settles against the actual
+              ERCOT real-time price.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">

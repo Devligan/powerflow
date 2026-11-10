@@ -108,7 +108,9 @@ export default async function OrdersPage() {
         <h2 className="card-title">History</h2>
         {history.length === 0 ? (
           <p className="caption mt-2 t-mute">
-            No orders yet. Place a day-ahead bid from any market page.
+            {open.length > 0
+              ? "No finished orders yet."
+              : "No orders yet. Place a day-ahead bid from any market page."}
           </p>
         ) : (
           <div className="mt-3 space-y-2">

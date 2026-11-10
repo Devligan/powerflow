@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
-import { ok, fail } from "@/lib/api";
+import { ok, fail, serverError } from "@/lib/api";
+import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,8 @@ export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
 
+  if (await overLimit(LIMITS.profile, user.id)) return tooManyRequests(LIMITS.profile);
+
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail("Expected { optIn: boolean }", 422);
 
@@ -23,6 +26,6 @@ export async function POST(req: Request) {
   const { data, error } = await supabase.rpc("set_leaderboard_opt_in", {
     p_opt_in: parsed.data.optIn,
   });
-  if (error) return fail(error.message, 422);
+  if (error) return serverError("leaderboard opt-in", error.message, "Your standing could not be updated.");
   return ok({ optIn: Boolean(data) });
 }

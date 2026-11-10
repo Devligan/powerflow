@@ -1,6 +1,6 @@
 import { getPositionsView } from "@/lib/queries";
 import { getSessionUser } from "@/lib/auth";
-import { fail, ok, m } from "@/lib/api";
+import { serverError, fail, ok, m } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +30,6 @@ export async function GET() {
       })),
     });
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Failed to load positions", 500);
+    return serverError("positions", e, "Your positions could not be loaded.");
   }
 }

@@ -1,5 +1,6 @@
 import { getSessionUser } from "@/lib/auth";
-import { fail, ok } from "@/lib/api";
+import { fail, ok, serverError } from "@/lib/api";
+import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 import { getSimClock, setSimClock } from "@/lib/sim-clock";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -14,7 +15,7 @@ export async function GET() {
     if (!clock) return fail("Paper account not found.", 404);
     return ok({ clock });
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Failed to read clock", 500);
+    return serverError("clock read", e, "The clock could not be read.");
   }
 }
 
@@ -22,6 +23,7 @@ export async function GET() {
 export async function PUT(req: Request) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
+  if (await overLimit(LIMITS.clock, user.id)) return tooManyRequests(LIMITS.clock);
   const body = (await req.json().catch(() => null)) as { to?: string | null } | null;
   try {
     const result = await setSimClock(user.id, body?.to ?? null);
@@ -31,7 +33,7 @@ export async function PUT(req: Request) {
     await sweepOrders(user.id);
     return ok({ clock: result.clock });
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Failed to set clock", 500);
+    return serverError("clock set", e, "The clock could not be set.");
   }
 }
 
@@ -55,6 +57,7 @@ async function sweepOrders(userId: string) {
 export async function DELETE() {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
+  if (await overLimit(LIMITS.clock, user.id)) return tooManyRequests(LIMITS.clock);
   try {
     const result = await setSimClock(user.id, null);
     if (!result.ok) {
@@ -63,6 +66,6 @@ export async function DELETE() {
     await sweepOrders(user.id);
     return ok({ clock: result.clock });
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Failed to clear clock", 500);
+    return serverError("clock clear", e, "The clock could not be reset.");
   }
 }

@@ -8,6 +8,11 @@ on:
   pull_request:
   push:
     branches: [master]
+  # Nothing has to change here for this to start failing: a new advisory or a
+  # change in ERCOT's reports arrives on its own, so master is re-checked nightly.
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read

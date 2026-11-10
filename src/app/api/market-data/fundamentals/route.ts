@@ -1,4 +1,4 @@
-import { ok, fail } from "@/lib/api";
+import { okPublic, fail } from "@/lib/api";
 import { getFundamentals } from "@/lib/fundamentals";
 
 export const dynamic = "force-dynamic";
@@ -10,5 +10,5 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   const fundamentals = await getFundamentals();
-  return fundamentals ? ok({ fundamentals }) : fail("ERCOT fundamentals are unavailable right now.", 503);
+  return fundamentals ? okPublic({ fundamentals }, 60) : fail("ERCOT fundamentals are unavailable right now.", 503);
 }

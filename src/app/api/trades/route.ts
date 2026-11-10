@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
-import { fail, ok, m } from "@/lib/api";
+import { fail, ok, m, serverError } from "@/lib/api";
+import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 import { parseDbDec, parseDec } from "@/lib/money";
 import {
   DEFAULT_INSTRUMENT,
@@ -10,7 +11,7 @@ import {
   getInstrument,
   getProduct,
 } from "@/lib/ercot/types";
-import { getTrades } from "@/lib/queries";
+import { getTrades, parseTradeFilters } from "@/lib/queries";
 import {
   needsCounterPoint,
   resolveTradedProduct,
@@ -24,22 +25,11 @@ export async function GET(req: Request) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
 
-  const url = new URL(req.url);
-  const side = url.searchParams.get("side") as "BUY" | "SELL" | null;
-  if (side && side !== "BUY" && side !== "SELL") return fail("Invalid side", 422);
-
-  const limit = Number(url.searchParams.get("limit") ?? "50");
-  const offset = Number(url.searchParams.get("offset") ?? "0");
+  const filters = parseTradeFilters(new URL(req.url).searchParams);
+  if (!filters) return fail("Invalid filter", 422);
 
   try {
-    const { rows, total } = await getTrades(user.id, {
-      marketId: url.searchParams.get("marketId") ?? undefined,
-      side: side ?? undefined,
-      dateFrom: url.searchParams.get("dateFrom") ?? undefined,
-      dateTo: url.searchParams.get("dateTo") ?? undefined,
-      limit: Number.isFinite(limit) ? limit : 50,
-      offset: Number.isFinite(offset) ? offset : 0,
-    });
+    const { rows, total } = await getTrades(user.id, filters);
 
     return ok({
       total,
@@ -64,7 +54,7 @@ export async function GET(req: Request) {
       })),
     });
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Failed to load trades", 500);
+    return serverError("trades list", e, "Your trades could not be loaded.");
   }
 }
 
@@ -136,6 +126,8 @@ export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
 
+  if (await overLimit(LIMITS.orders, user.id)) return tooManyRequests(LIMITS.orders);
+
   const body = await req.json().catch(() => null);
   if (body == null) return fail("Invalid JSON body", 400);
 
@@ -186,7 +178,8 @@ export async function POST(req: Request) {
   if (error) {
     const code = String(error.message ?? "").trim();
     const friendly = (FRIENDLY as Record<string, string>)[code];
-    return fail(friendly ?? (error.message ?? "Trade failed"), 422);
+    if (friendly) return fail(friendly, 422);
+    return serverError("trade execution", error.message, "The trade could not be completed. Please try again.");
   }
 
   const d = data as {

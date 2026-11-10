@@ -64,7 +64,7 @@ export default function OpenGraphImage() {
           </div>
           <div style={{ fontSize: 30, color: DIM, lineHeight: 1.35 }}>
             Actual ERCOT day-ahead and real-time prices, refreshed every 15 minutes.
-            Spreads, virtuals and block forwards, settled automatically.
+            Virtual bids and point-to-point obligations, settled automatically.
           </div>
         </div>
 

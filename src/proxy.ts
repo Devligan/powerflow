@@ -6,17 +6,18 @@ import {
   requireSupabaseUrl,
 } from "@/lib/supabase/config";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
+import { isCrossSiteWrite } from "@/lib/same-origin";
 
 /**
  * Route protection + Supabase session refresh (cookie rotation).
- * API routes are excluded — each handler performs its own auth and the
- * cron endpoint is guarded by CRON_SECRET.
+ * API routes only pass the cross-site check here: each handler performs its
+ * own auth, and the cron endpoints are guarded by CRON_SECRET.
  */
 export const config = {
   matcher: [
     // Metadata images (link previews, icons) are fetched by crawlers with no
     // session; they must never be redirected to /login.
-    "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|opengraph-image|twitter-image|icon|apple-icon).*)",
+    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|opengraph-image|twitter-image|icon|apple-icon).*)",
   ],
 };
 
@@ -29,9 +30,18 @@ const PUBLIC_PATHS = [
 // "/auth/" is a prefix, not a path: the OAuth and email-link callback
 // (/auth/callback) is reached by a visitor who is not signed in *yet*, and
 // sending them to /login would drop the code they arrived with.
-const PUBLIC_PREFIXES = ["/leaderboard", "/markets", "/auth/"];
+const PUBLIC_PREFIXES = ["/leaderboard", "/auth/"];
 
 export async function proxy(request: NextRequest) {
+  const isApi = request.nextUrl.pathname.startsWith("/api/");
+  if (
+    (isApi || request.nextUrl.pathname === "/auth/signout") &&
+    isCrossSiteWrite(request.method, request.headers)
+  ) {
+    return NextResponse.json({ error: "Cross-site request refused." }, { status: 403 });
+  }
+  if (isApi) return NextResponse.next();
+
   let supabaseResponse = NextResponse.next({ request });
 
   if (!isSupabaseConfigured()) {

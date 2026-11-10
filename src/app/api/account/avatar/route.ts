@@ -3,6 +3,7 @@ import { getSessionUser, getUserProfile } from "@/lib/auth";
 import { ok, fail } from "@/lib/api";
 import { AVATAR_BUCKET, removeAvatarAt } from "@/lib/account";
 import { AVATAR_MAX_BYTES, avatarExtension, sniffImageType } from "@/lib/profile";
+import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,8 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
+
+  if (await overLimit(LIMITS.avatar, user.id)) return tooManyRequests(LIMITS.avatar);
 
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");
