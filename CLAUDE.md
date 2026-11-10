@@ -20,7 +20,10 @@ npm run test:db                                     # DB-backed suites (opt-in)
 npm run test:db -- src/lib/security.rls.test.ts     # one DB suite
 npm run test:db -- -t "race"
 npm run market:probe   # one live ingestion run against ERCOT MIS + the DB
-npx tsx scripts/run-migration.ts supabase/migrations/00NN_x.sql   # apply one migration without the Supabase CLI
+npx tsx scripts/run-migration.ts --status                          # which migrations production has (ops.applied_migrations)
+npx tsx scripts/run-migration.ts --dry-run supabase/migrations/00NN_x.sql   # apply in a transaction, report, roll back
+npx tsx scripts/run-migration.ts supabase/migrations/00NN_x.sql   # apply (forward only) and record it in the ledger
+node scripts/smoke-production.mjs                                  # check the live site and data freshness
 npx tsx scripts/backfill-ercot.ts --from 2026-09-20 [--dry-run]   # fill price gaps from ERCOT rolling reports + annual archives
 npx tsx scripts/setup-scheduler.ts                                 # apply 0029 + store Vault URL/CRON_SECRET
 ```
@@ -35,7 +38,9 @@ Master deploys to production through Vercel, so changes reach it by pull request
 
 Run DB suites the same way locally rather than against production: `npx supabase start -x studio,imgproxy,mailpit,edge-runtime,logflare,vector,postgres-meta,supavisor`, then set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` from `npx supabase status` (ambient values win over `.env`), plus `ERCOT_SOURCE=ERCOT_MIS`, `INGEST_MAX_RECORDS=40000` and `INGEST_MAX_LOOKBACK_HOURS=96` so the preflight ingests up to ERCOT's present.
 
-A migration a change depends on is applied to production before its PR merges (`scripts/run-migration.ts`), after a dry run inside a rolled-back transaction, so each one must stay compatible with the code already live.
+A migration a change depends on is applied to production before its PR merges (`scripts/run-migration.ts`), after `--dry-run` (a rolled-back transaction), so each one must stay compatible with the code already live. The runner records every file it applies in `ops.applied_migrations` (a schema PostgREST does not expose) and refuses a file already recorded or one with an earlier file still pending, so `--status` is the answer to "what does production have?" — not probing for marker objects. Stacked PRs merge bottom-up with merge commits: retarget each to `master` once the one below it lands.
+
+`.github/workflows/production.yml` runs `scripts/smoke-production.mjs` after every production deploy (Vercel's commit status on master) and every three hours; a failed run means the site, auth gating or ingestion is broken.
 
 ## Architecture
 
