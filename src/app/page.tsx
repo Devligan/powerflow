@@ -146,8 +146,9 @@ export default async function Home() {
                   <Link href="/signup" className="btn btn-primary">
                     Start with $100,000 virtual
                   </Link>
-                  <Link href="/markets" className="btn">
-                    Browse markets
+                  {/* /markets needs an account; this does not. */}
+                  <Link href="/learn" className="btn">
+                    How it works
                   </Link>
                 </>
               )}

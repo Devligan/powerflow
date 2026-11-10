@@ -26,6 +26,8 @@ export const config = {
 const PUBLIC_PATHS = [
   "/", "/login", "/signup", "/auth", "/privacy", "/terms",
   "/forgot-password", "/reset-password",
+  // How the market works, readable before signing up.
+  "/learn",
 ];
 // "/auth/" is a prefix, not a path: the OAuth and email-link callback
 // (/auth/callback) is reached by a visitor who is not signed in *yet*, and
