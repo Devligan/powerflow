@@ -227,7 +227,9 @@ describe.skipIf(!dbTestsEnabled())("engine regressions (live database)", () => {
 
   describe("the life of a bid", () => {
     it("keeps a bid alive until its delivery, however far out it was placed", async () => {
-      const d = await desk("far-out", at(he(17), -20 * 24 * HOUR));
+      // Thirteen days out: inside ERCOT's fourteen-day window, beyond the old
+      // seven-day default.
+      const d = await desk("far-out", at(he(17), -13 * 24 * HOUR));
       const id = await placed(d, he(17));
 
       // The default used to be 7 days, so anything further out expired before
@@ -237,6 +239,24 @@ describe.skipIf(!dbTestsEnabled())("engine regressions (live database)", () => {
       await d.clock(AFTER_CLEARING);
       expect((await sweep(d)).filled).toBe(1);
       expect((await order(id)).status).toBe("FILLED");
+    }, 60_000);
+
+    it("takes a day's bids from fourteen days before it, as ERCOT does", async () => {
+      // Operating Day 2025-06-10 opens at 00:00 CDT on 2025-05-27.
+      const OPENS = "2025-05-27T05:00:00.000Z";
+      const d = await desk("window", at(OPENS, -MINUTE));
+      const early = await bid(d, he(17));
+      expect(early.error?.message).toContain("DAM_NOT_OPEN");
+
+      await d.clock(at(OPENS, MINUTE));
+      expect((await bid(d, he(17))).error).toBeNull();
+    }, 60_000);
+
+    it("takes quantities on ERCOT's 0.1 MW grid", async () => {
+      const d = await desk("increment", BEFORE_GATE);
+      const off = await bid(d, he(17), { p_quantity_mwh: "1.05" });
+      expect(off.error?.message).toContain("QUANTITY_INCREMENT");
+      expect((await bid(d, he(17), { p_quantity_mwh: "1.5" })).error).toBeNull();
     }, 60_000);
 
     it("locks a bid at the deadline: it cannot be withdrawn once bids have closed", async () => {

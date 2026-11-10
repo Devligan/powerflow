@@ -11,6 +11,7 @@ import {
   damDeadlineUtc,
   firstOpenOperatingDay,
   isPeakWeekday,
+  lastOpenOperatingDay,
   operatingDayHours,
   type OperatingHour,
 } from "@/lib/ercot/hour-ending";
@@ -23,6 +24,7 @@ import {
 import { needsCounterPoint } from "@/lib/trading/instruments";
 import {
   MAX_QUANTITY,
+  MIN_BID_MW,
   checkOrderForm,
   type DeliveryWindow,
 } from "@/lib/trading/order-form";
@@ -35,8 +37,10 @@ import {
  * obligations on a source→sink path — and works the way that market does
  * (0038):
  *
- * - bids for an operating day close at 10:00 Central the day before, and
- *   nobody knows the clearing price when they do;
+ * - bids for an operating day open fourteen days before it and close at
+ *   10:00 Central the day before, and nobody knows the clearing price when
+ *   they do (0045);
+ * - quantities are in ERCOT's 0.1 MW steps, at least 1 MW an hour;
  * - a bid is for a quantity of MW in each chosen hour ending, at the clearing
  *   price or with a limit anywhere in ERCOT's -$250 to $5,000/MWh range
  *   (negative prices are ordinary in the west);
@@ -53,6 +57,8 @@ type HourKey = string;
 const keyOf = (h: OperatingHour): HourKey => `${h.he}${h.repeated ? "r" : ""}`;
 
 const LIMIT_RE = /^-?\d+(\.\d{1,6})?$/;
+/** ERCOT takes bid quantities in steps of 0.1 MW (0045). */
+const MW_RE = /^\d+(\.\d)?$/;
 
 function hourWindow(startMs: number): DeliveryWindow {
   const endMs = startMs + 3_600_000;
@@ -112,7 +118,9 @@ export function TradePanel({
   const [counterMarketId, setCounterMarketId] = useState<string | null>(null);
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [quantity, setQuantity] = useState("10");
-  const [opDay, setOpDay] = useState(() => firstOpenOperatingDay(simNowMs ?? Date.now()));
+  const [mountedAt] = useState(() => Date.now());
+  const nowMs = simNowMs ?? mountedAt;
+  const [opDay, setOpDay] = useState(() => firstOpenOperatingDay(nowMs));
   const [hours, setHours] = useState<HourKey[]>(["18"]);
   const [bidType, setBidType] = useState<"MARKET" | "LIMIT">("MARKET");
   // A limit bid is a curve: up to four MW-at-price steps per hour, as ERCOT
@@ -151,10 +159,14 @@ export function TradePanel({
         return `ERCOT accepts bid prices from −$${-BID_PRICE_FLOOR} to $${BID_PRICE_CAP.toLocaleString("en-US")}/MWh.`;
       }
       if (!(Number(s.mw) > 0) || Number(s.mw) > MAX_QUANTITY) return `Each step needs 0–${MAX_QUANTITY} MW.`;
+      if (!MW_RE.test(s.mw.trim())) return "ERCOT takes bid quantities in steps of 0.1 MW.";
     }
     return null;
   })();
   const totalMw = bidType === "LIMIT" ? steps.reduce((a, s) => a + (Number(s.mw) || 0), 0) : Number(quantity);
+  // ERCOT's minimum is per bid, and a curve's steps make one bid per hour.
+  const minimumProblem =
+    totalMw > 0 && totalMw < MIN_BID_MW ? `ERCOT's minimum bid is ${MIN_BID_MW} MW an hour.` : null;
 
   const check = (() => {
     if (legs.length === 0) return { ok: false as const, message: "Choose at least one hour." };
@@ -173,6 +185,7 @@ export function TradePanel({
       if (!c.ok) return c;
     }
     if (limitProblem) return { ok: false as const, message: limitProblem };
+    if (minimumProblem) return { ok: false as const, message: minimumProblem };
     return { ok: true as const };
   })();
 
@@ -370,6 +383,10 @@ export function TradePanel({
                 type="date"
                 required
                 className="input"
+                // ERCOT opens an operating day fourteen days ahead (0045) and
+                // closes it at 10:00 the day before (0038).
+                min={firstOpenOperatingDay(nowMs)}
+                max={lastOpenOperatingDay(nowMs)}
                 value={opDay}
                 onChange={(e) => e.target.value && setOpDay(e.target.value)}
               />

@@ -11,9 +11,11 @@ import {
   windowLabel,
 } from "@/lib/time";
 import {
+  damBidWindowOpensUtc,
   damDeadlineUtc,
   firstOpenOperatingDay,
   isNercHoliday,
+  lastOpenOperatingDay,
   isPeakWeekday,
   operatingDayHours,
 } from "@/lib/ercot/hour-ending";
@@ -101,6 +103,20 @@ describe("day-ahead deadline (mirror of dam_gate, 0038)", () => {
   it("names the first operating day still open for bids", () => {
     expect(firstOpenOperatingDay(Date.parse("2026-11-01T15:59:00Z"))).toBe("2026-11-02"); // 09:59 CST
     expect(firstOpenOperatingDay(Date.parse("2026-11-01T16:00:00Z"))).toBe("2026-11-03"); // 10:00 CST
+  });
+});
+
+describe("day-ahead bid window (mirror of dam_bid_window_opens, 0045)", () => {
+  it("opens at 00:00 Central fourteen days before the operating day, across DST", () => {
+    // Operating day Nov 3 (CST) opens Oct 20 (CDT).
+    expect(damBidWindowOpensUtc(Date.parse("2026-11-03T23:00:00Z"))).toBe(Date.parse("2026-10-20T05:00:00Z"));
+    // HE24 belongs to the day it starts in.
+    expect(damBidWindowOpensUtc(Date.parse("2026-11-04T05:00:00Z"))).toBe(Date.parse("2026-10-20T05:00:00Z"));
+  });
+  it("names the furthest operating day already open", () => {
+    expect(lastOpenOperatingDay(Date.parse("2026-11-08T12:00:00Z"))).toBe("2026-11-22");
+    // 23:30 CST on Nov 7 is still Nov 7 in Texas.
+    expect(lastOpenOperatingDay(Date.parse("2026-11-08T05:30:00Z"))).toBe("2026-11-21");
   });
 });
 

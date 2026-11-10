@@ -52,7 +52,10 @@ with virtual cash, a full risk engine, immutable audit trail, and analytics.
   and nothing trades once its delivery has started. A bid can be withdrawn
   until the deadline and not after, as in ERCOT; one the market clears through
   ends at the clearing, and one that never prices ends when delivery starts.
-  Every fill, cancel and placement is audited.
+  As in ERCOT's submission rules (NP4-450, 0045), an operating day takes bids
+  from 00:00 Central fourteen days before it, in steps of 0.1 MW; the ticket
+  also holds each hour's bid to ERCOT's 1 MW minimum. Every fill, cancel and
+  placement is audited.
 - Day-ahead **ancillary-service clearing prices** (REGUP, REGDN, RRS, NSPIN,
   ECRS) ingested from ERCOT's NP4-188-CD report — system-wide MCPC series,
   final on arrival. AS capacity remains a resource obligation (no assets on
@@ -260,7 +263,8 @@ transaction), called by the sweep:
    service-role sweep acting for the order's owner)
 2. market active, product catalogued + tradable, delivery window valid
    (exactly the product's settlement interval, interval-aligned, future,
-   ≤ 35 days)
+   ≤ 35 days; a day-ahead bid is further held to ERCOT's fourteen-day
+   window when it is placed)
 3. idempotency: if the request carries a `clientOrderId` that has already
    executed, the **stored result of that execution** is returned and nothing is
    filled again

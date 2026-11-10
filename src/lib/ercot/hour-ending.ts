@@ -97,6 +97,28 @@ export function damDeadlineUtc(deliveryStartMs: number): number | null {
   return hourEndingStartUtc(previousDay(day), 11);
 }
 
+/** How many days before its operating day ERCOT starts taking day-ahead bids
+ *  (NP4-450). */
+export const DAM_BID_WINDOW_DAYS = 14;
+
+/**
+ * When ERCOT starts taking day-ahead bids for the operating day a delivery
+ * starts in: 00:00 Central, fourteen days before it. Mirror of
+ * `dam_bid_window_opens` (0045).
+ */
+export function damBidWindowOpensUtc(deliveryStartMs: number): number | null {
+  const { day } = centralHourEnding(deliveryStartMs);
+  const [y, m, d] = day.split("-").map(Number);
+  const opens = new Date(Date.UTC(y, m - 1, d - DAM_BID_WINDOW_DAYS)).toISOString().slice(0, 10);
+  return hourEndingStartUtc(opens, 1);
+}
+
+/** The last operating day already open for day-ahead bids at `nowMs`. */
+export function lastOpenOperatingDay(nowMs: number): string {
+  const [y, m, d] = centralHourEnding(nowMs).day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + DAM_BID_WINDOW_DAYS)).toISOString().slice(0, 10);
+}
+
 /** Products cleared by the day-ahead market (bid before its deadline). */
 export function isDayAheadProduct(code: string): boolean {
   return code.startsWith("DAM");
