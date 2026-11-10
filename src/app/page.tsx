@@ -70,16 +70,16 @@ const SEQUENCE: Array<{ title: string; body: string }> = [
     body: "Sign up with email or Google. The account bootstraps itself with virtual cash and an exposure limit.",
   },
   {
-    title: "Pick a point and an interval",
-    body: "Choose a settlement point, a series and an upcoming delivery window. The ticket states what the priced horizon can actually cover.",
+    title: "Pick a point and an hour",
+    body: "Choose a hub or load zone and an hour of an upcoming operating day — tomorrow, or up to fourteen days out — and whether real time will price above or below day-ahead.",
   },
   {
-    title: "Send the order",
-    body: "The server prices the exact interval, checks cash cover and gross exposure, then fills or refuses. Nothing fills at a stale price.",
+    title: "Bid before the deadline",
+    body: "Bids close at 10:00 Central the day before. ERCOT clears the day-ahead market in the early afternoon, and each bid fills at the actual clearing price — a limit bid only if the price crosses it.",
   },
   {
-    title: "Read the book",
-    body: "Positions, realized and unrealized P&L, margin state and drawdown, recomputed from the executed blotter rather than from a running total.",
+    title: "Settle against real time",
+    body: "Through delivery the position is marked on ERCOT's real-time prices, and it settles when they are final, two business days later. The book shows realized and open P&L, margin and drawdown.",
   },
 ];
 
