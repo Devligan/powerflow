@@ -451,7 +451,7 @@ describe.skipIf(!dbTestsEnabled())("margin and settlement funding (live database
   it("books a deficit when even every long is not enough — and still settles the position", async () => {
     const desk = await freshDesk("deficit");
     // A naked short: no collateral at all, and no cash to speak of.
-    const short = await fill(desk, {
+    await fill(desk, {
       p_side: "SELL",
       p_quantity_mwh: 20,
     });
@@ -545,7 +545,7 @@ describe.skipIf(!dbTestsEnabled())("margin and settlement funding (live database
 
   it("needs no funding when the settlement is a receipt", async () => {
     const desk = await freshDesk("receipt");
-    const long = await fill(desk, {
+    await fill(desk, {
       p_quantity_mwh: 10,
       p_delivery_start: slot(1),
       p_delivery_end: shift(slot(1), 1),

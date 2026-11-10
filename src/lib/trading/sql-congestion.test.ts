@@ -38,8 +38,6 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
   let legB: string;
   let interval: string;
   let intervalEnd: string;
-  let rtA = 0;
-  let rtB = 0;
   let daA = 0;
   let daB = 0;
 
@@ -59,11 +57,8 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
    *  the DAM, and therefore what a PTP position is ENTERED at. The engine's
    *  DIFFERENCE composition is sink minus source — counter leg first. */
   const daSpread = (da_a: number, da_b: number) => da_b - da_a;
-  /** The real-time congestion spread across the path: what a PTP SETTLES at. */
-  const rtSpread = (a: number, b: number) => b - a;
-  /** The DA→RT convergence of congestion: the position's P&L per MWh. */
-  const convergence = (a: number, b: number, da_a: number, da_b: number) =>
-    rtSpread(a, b) - daSpread(da_a, da_b);
+  // What a PTP then settles at (the real-time spread, DA→RT convergence) is
+  // pinned in sql-audit's "path obligations".
 
   const trade = (over: Record<string, unknown> = {}) => ({
     p_user_id: user.id,
@@ -116,9 +111,6 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
     intervalEnd = new Date(new Date(interval).getTime() + HOUR).toISOString();
     daA = Number(a.dam.get(interval)!.price);
     daB = Number(b.dam.get(interval)!.price);
-    rtA = Number(a.rtHour.get(interval)!.price);
-    rtB = Number(b.rtHour.get(interval)!.price);
-    void rtHours;
 
     // The desk sits just before the delivery hour: the day-ahead clearings
     // that price the path are visible (ERCOT posted them the day before),

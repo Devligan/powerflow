@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 
 // The probe reads its secrets from the environment. The RUNME block in
@@ -15,7 +14,6 @@ if (!u || !k) {
     'Run scripts/settlement-probe-runme.ps1 (or source .env into the environment yourself) before calling tsx.'
   );
 }
-const supabase = createClient(u, k, { auth: { persistSession: false, autoRefreshToken: false } });
 
 async function rawRpc<T>(fn: string, body: Record<string, unknown>): Promise<{ status: number; error?: unknown; data?: T }> {
   const resp = await fetch(`${u}/rest/v1/rpc/${encodeURIComponent(fn)}`, {
@@ -123,14 +121,12 @@ async function main(deliveryStart: string, deliveryEnd: string) {
 
   // 5. settle — only if the trade is open and delivered
   let s1 = null;
-  let m1 = null;
   if (t.status === 200 && t.data) {
     s1 = await rawRpc('settle_delivered_positions', { p_user_id: uid, p_as_of: deliveryEnd });
     console.log('settle', s1.status, JSON.stringify(s1.error ?? s1.data).slice(0, 600));
 
     // 6. marks — only if settle ran
     const m1raw = await rawRpc<Array<{ position_id: string; mark_price: number }>>('position_marks', { p_user_id: uid });
-    m1 = m1raw;
     console.log('marks', m1raw.status, JSON.stringify(m1raw.error ?? (m1raw.data ?? [])).slice(0, 600));
   }
 
