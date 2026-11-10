@@ -1,0 +1,38 @@
+name: Production
+
+# CI gates what reaches master; this watches what is live. After every
+# production deploy, and every three hours, it checks the site the way a
+# visitor and the scheduler see it (scripts/smoke-production.mjs): pages
+# answer, protected routes stay protected, and ERCOT prices are still arriving.
+# A failed run is the alert.
+
+on:
+  # Vercel reports deploys as commit statuses, not GitHub deployments.
+  status:
+  schedule:
+    - cron: "41 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Smoke test the live site
+    # Every commit status fires this; only Vercel's success on master is a production deploy.
+    if: >-
+      github.event_name != 'status' ||
+      (github.event.context == 'Vercel' && github.event.state == 'success' &&
+       contains(github.event.branches.*.name, 'master'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: node scripts/smoke-production.mjs https://powerflow-two.vercel.app
