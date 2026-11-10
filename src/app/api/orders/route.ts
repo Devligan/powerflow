@@ -130,6 +130,8 @@ const FRIENDLY: Record<string, string> = {
   DAM_CLOSED: "Day-ahead bids for that operating day closed at 10:00 AM Central the day before.",
   DAM_NOT_OPEN: "ERCOT takes day-ahead bids for an operating day from fourteen days before it.",
   QUANTITY_INCREMENT: "ERCOT takes bid quantities in steps of 0.1 MW.",
+  CHALLENGE_DAY_OUTSIDE: "This challenge desk only bids on the challenge's own operating days.",
+  CHALLENGE_FINISHED: "This challenge entry is finished: its desk takes no more bids.",
 };
 
 export async function POST(req: Request) {

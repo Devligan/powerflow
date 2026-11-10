@@ -37,7 +37,7 @@ export default async function ShellLayout({
         displayName={profile?.display_name ?? profile?.username ?? ""}
         avatarUrl={profile?.avatar_url ?? null}
       />
-      {desk && <DeskBar kind={desk.kind} />}
+      {desk && <DeskBar kind={desk.kind} challenge={desk.challenge} />}
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-7">
         {children}
       </main>

@@ -1,15 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { DeskKind } from "@/lib/desk";
 
 /**
- * Which account the desk is trading: the live one, or the practice desk (its
- * own $100,000 and clock, created on first use). Every desk page reads the
- * choice server-side, so switching is a cookie and a refresh.
+ * Which account the desk is trading: the live one, the practice desk (its
+ * own $100,000 and clock, created on first use), or a challenge's desk.
+ * Every desk page reads the choice server-side, so switching is a cookie and
+ * a refresh.
  */
-export function DeskBar({ kind }: { kind: DeskKind }) {
+export function DeskBar({
+  kind,
+  challenge,
+}: {
+  kind: DeskKind;
+  challenge: { slug: string; title: string } | null;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const [busy, setBusy] = useState(false);
@@ -40,11 +48,9 @@ export function DeskBar({ kind }: { kind: DeskKind }) {
     }
   }
 
-  const practice = kind === "PRACTICE";
+  const away = kind !== "LIVE";
   return (
-    <div
-      className={`border-b ${practice ? "border-amber-400/30 bg-amber-400/[0.06]" : "border-white/5 bg-[var(--ink-panel)]"}`}
-    >
+    <div className={`border-b ${away ? "border-amber-400/30 bg-amber-400/[0.06]" : "border-white/5 bg-[var(--ink-panel)]"}`}>
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-1.5">
         <span className="caption t-mute">Trading</span>
         <div role="group" aria-label="Desk" className="flex overflow-hidden rounded border border-white/10">
@@ -60,12 +66,22 @@ export function DeskBar({ kind }: { kind: DeskKind }) {
               {d === "LIVE" ? "Live" : "Practice"}
             </button>
           ))}
+          {kind === "CHALLENGE" && (
+            <span aria-current="true" className="caption bg-amber-400/20 px-2.5 py-1 t-accent">
+              Challenge
+            </span>
+          )}
         </div>
         <span className="caption t-mute">
-          {practice
+          {kind === "PRACTICE"
             ? "Practice account: its own $100,000 and clock. Nothing here touches your live book or the standings."
-            : "Your live account, on the standings if you opt in."}
+            : kind === "CHALLENGE"
+              ? `${challenge?.title ?? "Challenge"}: a fresh $100,000 desk on the challenge's days.`
+              : "Your live account, on the standings if you opt in."}
         </span>
+        <Link href={challenge ? `/challenges/${challenge.slug}` : "/challenges"} className="caption t-accent ml-auto hover:underline">
+          {challenge ? "Challenge standings →" : "Challenges →"}
+        </Link>
         {error && <span className="caption neg">{error}</span>}
       </div>
     </div>
