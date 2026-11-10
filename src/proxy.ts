@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/config";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import { isCrossSiteWrite } from "@/lib/same-origin";
+import { isPublicPath, sendsSignedInToDesk } from "@/lib/route-access";
 
 /**
  * Route protection + Supabase session refresh (cookie rotation).
@@ -15,28 +16,14 @@ import { isCrossSiteWrite } from "@/lib/same-origin";
  */
 export const config = {
   matcher: [
-    // Metadata images (link previews, icons) are fetched by crawlers with no
-    // session; they must never be redirected to /login.
-    // Metadata files a browser fetches before anyone signs in, the manifest
-    // and the installed app's icons (/icon-app/…) among them.
+    // Metadata files fetched by browsers and crawlers with no session — link
+    // previews, icons (/icon.svg, /icon-app/…), the manifest, robots and the
+    // sitemap — must never be redirected to /login. "icon" skips every path
+    // that starts with it: a page must never be named /icon…
+    // (src/lib/route-access.test.ts pins this list).
     "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|manifest.webmanifest|opengraph-image|twitter-image|icon|apple-icon).*)",
   ],
 };
-
-// The password pages explain an expired or cross-browser link themselves,
-// so they must render for a visitor whose link did not sign them in.
-const PUBLIC_PATHS = [
-  "/", "/login", "/signup", "/auth", "/privacy", "/terms",
-  "/forgot-password", "/reset-password",
-  // How the market works, readable before signing up.
-  "/learn",
-];
-// "/auth/" is a prefix, not a path: the OAuth and email-link callback
-// (/auth/callback) is reached by a visitor who is not signed in *yet*, and
-// sending them to /login would drop the code they arrived with.
-// "/challenges/" with the slash: a challenge's own page is shareable — a
-// friend sees it, then signs up — while the list of all challenges is not.
-const PUBLIC_PREFIXES = ["/leaderboard", "/auth/", "/challenges/"];
 
 export async function proxy(request: NextRequest) {
   const isApi = request.nextUrl.pathname.startsWith("/api/");
@@ -80,18 +67,15 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
-  const isPublic =
-    PUBLIC_PATHS.includes(pathname) ||
-    PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
 
-  if (!user && !isPublic) {
+  if (!user && !isPublicPath(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
 
-  if (user && (pathname === "/" || pathname === "/login" || pathname === "/signup")) {
+  if (user && sendsSignedInToDesk(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     url.search = "";
