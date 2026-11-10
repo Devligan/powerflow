@@ -17,7 +17,9 @@ export const config = {
   matcher: [
     // Metadata images (link previews, icons) are fetched by crawlers with no
     // session; they must never be redirected to /login.
-    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|opengraph-image|twitter-image|icon|apple-icon).*)",
+    // Metadata files a browser fetches before anyone signs in, the manifest
+    // and the installed app's icons (/icon-app/…) among them.
+    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|manifest.webmanifest|opengraph-image|twitter-image|icon|apple-icon).*)",
   ],
 };
 
