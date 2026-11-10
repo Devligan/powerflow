@@ -79,9 +79,14 @@ export function DeskBar({
               ? `${challenge?.title ?? "Challenge"}: a fresh $100,000 desk on the challenge's days.`
               : "Your live account, on the standings if you opt in."}
         </span>
-        <Link href={challenge ? `/challenges/${challenge.slug}` : "/challenges"} className="caption t-accent ml-auto hover:underline">
-          {challenge ? "Challenge standings →" : "Challenges →"}
-        </Link>
+        <span className="ml-auto flex items-center gap-3">
+          <Link href="/learn" className="caption t-mute hover:underline">
+            How it works
+          </Link>
+          <Link href={challenge ? `/challenges/${challenge.slug}` : "/challenges"} className="caption t-accent hover:underline">
+            {challenge ? "Challenge standings →" : "Challenges →"}
+          </Link>
+        </span>
         {error && <span className="caption neg">{error}</span>}
       </div>
     </div>

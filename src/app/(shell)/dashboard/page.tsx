@@ -3,6 +3,18 @@ import { requireUser, getUserProfile } from "@/lib/auth";
 import { getActiveDesk } from "@/lib/desk";
 import { PracticeDay } from "@/components/practice-day";
 import { ChallengeView } from "@/components/challenge-view";
+import { FirstTrade } from "@/components/first-trade";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+
+/** Whether the trader's live account has ever placed a bid. */
+async function hasEverOrdered(userId: string): Promise<boolean> {
+  const { count, error } = await supabaseAdmin()
+    .from("paper_orders")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  return (count ?? 0) > 0;
+}
 import { getPortfolioSnapshot } from "@/lib/queries";
 import { getMarketStatus } from "@/lib/markets";
 import { MarketsStrip } from "@/components/markets-strip";
@@ -32,11 +44,12 @@ export default async function DashboardPage() {
   const user = await requireUser();
   const { tz } = await getViewerTimeZone();
   const desk = await getActiveDesk(user.id);
-  const [snapshot, status, profile, clock] = await Promise.all([
+  const [snapshot, status, profile, clock, everOrdered] = await Promise.all([
     getPortfolioSnapshot(desk.accountUserId).catch(() => null),
     getMarketStatus().catch(() => null),
     getUserProfile(user.id).catch(() => null),
     getSimClock(desk.accountUserId).catch(() => null),
+    hasEverOrdered(user.id).catch(() => true),
   ]);
 
   const met = snapshot?.metrics;
@@ -87,6 +100,9 @@ export default async function DashboardPage() {
         trades. Every price is actual ERCOT MIS data, labelled with its report
         source and publication time.
       </PageHeader>
+
+      {/* A trader who has never bid, on the live desk: the first trade, walked through. */}
+      {desk.kind === "LIVE" && !everOrdered && <FirstTrade />}
 
       {/* The clock: what "now" means for this desk. Every mark, fill and
           settlement resolves through it. The practice desk walks it through a
