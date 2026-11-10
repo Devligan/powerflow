@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { supabaseAdmin } from "../src/lib/supabase/admin";
 import { runMarketDataIngestion } from "../src/lib/ingestion";
 
 // Lightweight .env reader for scripts that run outside Next.

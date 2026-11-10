@@ -40,7 +40,8 @@ jobs:
         env:
           # The comparison point: a PR's base, or the previous head of master.
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-      - run: npm run lint
+      # Zero warnings: an unused value is often a check someone meant to write.
+      - run: npm run lint -- --max-warnings 0
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

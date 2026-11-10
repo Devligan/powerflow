@@ -1,39 +1,11 @@
-// build-history-fixture.ts is a historical-replay builder that references
-// pre-product-model symbols (SOURCE_ERCOT_HISTORY, parseDamSppCsv,
-// parseRtmSppCsv). Those were removed from the app lib during the product /
-// venue rework, and the fixture is kept as a standalone history tool rather
-// than part of the main build / typecheck. Its use-site types are declared
-// here so the file still parses when read by tooling that includes scripts/.
-//
-// The runtime still builds from actual ERCOT MIS zips when invoked directly
-// (npx tsx scripts/build-history-fixture.ts ...), because the zips carry the
-// report metadata the fixture needs. That invocation is outside the normal
-// app typecheck and is intentionally not part of this project's compile.
 import { writeFileSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
+// The same parsers live ingestion uses, so a fixture reads ERCOT's CSVs exactly
+// as production does (canonical LZ prints, DST flags, hour-ending columns).
+import { parseDamSppCsv, parseRtmSppCsv } from "../src/lib/ercot/mis";
 
+// The corpus `meta.source` the replay loader (scripts/ingest-history.ts) expects.
 export const SOURCE_ERCOT_HISTORY = "ERCOT_HISTORY";
-
-// Re-declare the CSV parsers the fixture expects, as the same shape the old
-// mis.ts exported. The fixture parses MIS CSVs directly (its own copy of the
-// report columns), so these are faithful signatures rather than imports.
-interface SppCsvRow {
-  deliveryDate: string;
-  hourEnding: number;
-  repeatedHour: boolean;
-  settlementPointType: string;
-  settlementPoint: string;
-  price: string;
-  dstFlag?: number;
-  deliveryInterval?: number;
-}
-
-export function parseDamSppCsv(csv: string): SppCsvRow[] {
-  throw new Error("parseDamSppCsv is a build-history-fixture-only symbol; not wired into the current app");
-}
-export function parseRtmSppCsv(csv: string): SppCsvRow[] {
-  throw new Error("parseRtmSppCsv is a build-history-fixture-only symbol; not wired into the current app");
-}
 
 /**
  * Build a historical-replay fixture from ACTUAL ERCOT MIS reports.
@@ -281,8 +253,6 @@ async function main() {
   const dayStart = centralWallToUtc(date.replace(/-/g, ""), "0000");
   if (!dayStart) throw new Error(`bad date: ${date}`);
   const dayEnd = new Date(dayStart.getTime() + 24 * HOUR_MS);
-  // The next Central calendar day: when the DAM report for `date` posts.
-  const nextDay = centralCalendarDate(new Date(dayEnd.getTime() + 6 * HOUR_MS));
 
   // The DAM daily report for operating day D is posted on D-1 (~12:45
   // Central): ERCOT clears the day ahead, ahead of the day. The posting day
@@ -363,6 +333,7 @@ async function main() {
       break; // the clearing repost; a correction would be a later file
     }
   }
+  console.log(`[fixture] DAM files parsed: ${damFiles}`);
 
   // ── 2. Rolling RT settlement prices (interim, ~2 min after each interval) ──
   // One HEAD per document to learn its name (the name carries the posting
