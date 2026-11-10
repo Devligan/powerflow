@@ -62,6 +62,10 @@ const FRIENDLY: Record<string, string> = {
   FORBIDDEN: "You can only set your own simulation clock.",
   ACCOUNT_NOT_FOUND: "Paper account not found.",
   SIM_CLOCK_INVALID: "Replay can only go back in time, to a date after 2000.",
+  CHALLENGE_CLOCK_FORWARD_ONLY: "A challenge clock only moves forward.",
+  CHALLENGE_CLOCK_PAST_END: "That is past the end of the challenge.",
+  CHALLENGE_DESK_REPLAY_ONLY: "A challenge desk stays on the challenge's days; switch desks to trade live.",
+  CHALLENGE_FINISHED: "This challenge entry is finished.",
 };
 
 const GENERIC = "The clock could not be changed. Please try again.";

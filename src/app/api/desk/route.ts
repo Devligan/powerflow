@@ -5,6 +5,7 @@ import { fail, ok, serverError } from "@/lib/api";
 import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 import {
   DESK_COOKIE,
+  DESK_COOKIE_OPTIONS,
   deletePracticeDesk,
   ensurePracticeDesk,
   getActiveDesk,
@@ -13,14 +14,6 @@ import {
 } from "@/lib/desk";
 
 export const dynamic = "force-dynamic";
-
-const COOKIE_OPTIONS = {
-  httpOnly: true,
-  sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production",
-  path: "/",
-  maxAge: 60 * 60 * 24 * 365,
-};
 
 /** The desk being traded, and whether a practice desk exists. */
 export async function GET() {
@@ -55,7 +48,7 @@ export async function PUT(req: Request) {
       if (await overLimit(LIMITS.desk, user.id)) return tooManyRequests(LIMITS.desk);
       practice = await ensurePracticeDesk(user.id);
     }
-    store.set(DESK_COOKIE, practice.id as string, COOKIE_OPTIONS);
+    store.set(DESK_COOKIE, practice.id as string, DESK_COOKIE_OPTIONS);
     return ok({ active: practice });
   } catch (e) {
     return serverError("desk switch", e, "The practice desk could not be opened.");

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser, getUserProfile } from "@/lib/auth";
 import { getActiveDesk } from "@/lib/desk";
 import { PracticeDay } from "@/components/practice-day";
+import { ChallengeView } from "@/components/challenge-view";
 import { getPortfolioSnapshot } from "@/lib/queries";
 import { getMarketStatus } from "@/lib/markets";
 import { MarketsStrip } from "@/components/markets-strip";
@@ -67,7 +68,7 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <PageHeader
         kicker={`Account · ${account}`}
-        title={desk.kind === "PRACTICE" ? "Practice desk" : "Desk"}
+        title={desk.kind === "PRACTICE" ? "Practice desk" : desk.kind === "CHALLENGE" ? "Challenge desk" : "Desk"}
         aside={
           <>
             {status && (
@@ -90,7 +91,13 @@ export default async function DashboardPage() {
       {/* The clock: what "now" means for this desk. Every mark, fill and
           settlement resolves through it. The practice desk walks it through a
           past operating day; the live desk keeps the free-form control. */}
-      {desk.kind === "PRACTICE" ? <PracticeDay /> : <SimClockWidget />}
+      {desk.kind === "PRACTICE" ? (
+        <PracticeDay />
+      ) : desk.kind === "CHALLENGE" && desk.challenge ? (
+        <ChallengeView slug={desk.challenge.slug} activeDeskId={desk.id} compact />
+      ) : (
+        <SimClockWidget />
+      )}
 
       {/* Bank of readouts. */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">

@@ -80,6 +80,11 @@ export function practiceDays(nowMs: number, count = 21): string[] {
   return out;
 }
 
+/** practiceDays as of the wall clock now, for server rendering. */
+export function practiceDaysNow(count = 21): string[] {
+  return practiceDays(Date.now(), count);
+}
+
 /**
  * The step the desk's clock has reached for this day: null before the bid
  * window opens (or on a clock nowhere near it), else the last step whose

@@ -106,6 +106,15 @@ with virtual cash, a full risk engine, immutable audit trail, and analytics.
   it off the standings (0042); the practice desk never touches it. A desk is
   an engine account its owner's session may act for (`acts_for`), checked in
   the database.
+- **Challenges** (migration 0049, `/challenges`): a run of one to five past
+  operating days that friends trade on identical terms. Each entrant gets a
+  fresh $100,000 challenge desk whose clock starts at 08:00 Central the day
+  before the first day; they open each day's bidding, bid, run its clearing,
+  then finish — which moves the desk to the instant the last day's real-time
+  prices were final, settles it and records its P&L on the challenge's
+  standings. The engine keeps it a contest: a challenge desk's clock only
+  moves forward and never past the finish or back to live, it bids only on
+  the challenge's days, and a finished entry takes no more bids or moves.
 
 ## Stack
 
