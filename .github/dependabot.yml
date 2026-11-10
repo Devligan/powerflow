@@ -5,6 +5,19 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Majors the toolchain cannot take yet. Each reopened as a PR that cannot
+    # merge; lift the rule when its blocker moves.
+    ignore:
+      # typescript-eslint supports TypeScript < 6.1 (7.0 failed CI, PR #5).
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # eslint-config-next's import, jsx-a11y and react plugins declare
+      # ESLint <= 9; on 10 the peer tree is invalid (PR #6).
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
+      # Types follow the Node runtime (24 on Vercel), not ahead of it (PR #8).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       minor-and-patch:
         update-types: [minor, patch]
