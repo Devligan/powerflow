@@ -306,3 +306,13 @@ describe("marginRatio", () => {
     expect(marginRatio(d("100"), 0n)).toBeNull();
   });
 });
+
+describe("marginRequirements on a negative mark", () => {
+  it("requires margin on a path marked below zero, never a negative amount", () => {
+    const negative = marginRequirements([pos("PTP_OBLIGATION", "10", "-5", "DAM_HOURLY")]);
+    const positive = marginRequirements([pos("PTP_OBLIGATION", "10", "5", "DAM_HOURLY")]);
+    expect(negative.usedMargin).toBeGreaterThan(0n);
+    expect(negative.usedMargin).toBe(positive.usedMargin);
+    expect(negative.maintenanceMargin).toBe(positive.maintenanceMargin);
+  });
+});

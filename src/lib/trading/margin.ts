@@ -139,7 +139,8 @@ export function marginRequirements(
       )
     );
 
-    const notional = mul(pos.markPrice, abs(pos.quantityMwh));
+    // A path's mark can be negative; a requirement cannot.
+    const notional = mul(abs(pos.markPrice), abs(pos.quantityMwh));
     usedMargin = add(usedMargin, rateOf(notional, rates.initial));
     maintenanceMargin = add(
       maintenanceMargin,

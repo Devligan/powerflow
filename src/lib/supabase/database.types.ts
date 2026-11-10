@@ -115,6 +115,8 @@ export type Database = {
         option_type: OptionType;
         product_from_trade: boolean;
         tradable: boolean;
+        /** Offered by the desk: place_limit_order accepts it (0042). */
+        orderable: boolean;
         created_at: string;
       };
       Insert: {
@@ -178,6 +180,9 @@ export type Database = {
          *  simulation time. 0 = live mode; negative = replaying the past
          *  (migration 0020). Never written directly — use set_sim_clock. */
         sim_clock_offset: number;
+        /** Set once a result depended on a displaced clock; such an account
+         *  does not rank on the public standings (0042). */
+        replay_tainted_at: string | null;
         created_at: string;
         updated_at: string;
       };
@@ -456,6 +461,10 @@ export type Database = {
       Returns: boolean;
     };
     /** Move the account's simulation clock (0020). Own account only. */
+    rate_limit_hit: {
+      Args: { p_key: string; p_max: number; p_window_seconds: number };
+      Returns: boolean;
+    };
     set_sim_clock: {
       Args: { p_user_id: string; p_iso: string };
       Returns: string;

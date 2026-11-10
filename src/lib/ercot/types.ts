@@ -436,7 +436,7 @@ export function tradableInstruments(): InstrumentDef[] {
  * A real term desk prices forwards off a forward curve (ICE/OTC) and CRRs
  * in ERCOT's auctions — data PowerFlow does not have.
  */
-export const DESK_INSTRUMENT_CODES: readonly string[] = ["VIRTUAL", "PTP_OBLIGATION"];
+export const DESK_INSTRUMENT_CODES: readonly string[] = ["VIRTUAL", "PTP_OBLIGATION"]; // instruments.orderable (0042)
 
 export function deskInstruments(): InstrumentDef[] {
   return DESK_INSTRUMENT_CODES.map((c) => requireInstrument(c));
