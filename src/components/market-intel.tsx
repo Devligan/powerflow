@@ -51,8 +51,8 @@ export async function MarketIntel({
           <span className="caption">real time − day-ahead</span>
         </div>
         <p className="caption mb-3">
-          What a 1 MWh virtual earned on average in each hour. An INC (buy DA, sell RT) is paid the
-          bar; a DEC is paid its negative.
+          What a 1 MWh virtual earned on average in each hour. A DEC (buy DA, sell RT) is paid the
+          bar; an INC (sell DA, buy RT) is paid its negative.
         </p>
         <DartChart stats={dart} days={Math.min(DART_DAYS, settledDays)} />
       </section>

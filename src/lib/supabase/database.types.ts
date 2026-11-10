@@ -506,6 +506,11 @@ export type Database = {
          * of the original execution instead of filling a second time.
          */
         p_client_order_id?: string | null;
+        /**
+         * The instant the fill is priced at, when it is not the account's
+         * clock. Service role only: the sweep names when the market cleared.
+         */
+        p_as_of?: string | null;
       };
       Returns: Json;
     };

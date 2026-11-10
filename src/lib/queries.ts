@@ -2,12 +2,15 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { format, parseDbDec } from "@/lib/money";
 import { settlementState, type SettlementState } from "@/lib/settlement";
+import { getSimClock } from "@/lib/sim-clock";
 import {
+  inExecutionOrder,
   portfolioMetrics,
   positionKey,
   replayTrades,
   unrealizedPnl,
   type PositionState,
+  type ReplayTradeInput,
 } from "@/lib/trading/accounting";
 import type { MarginTier } from "@/lib/trading/margin";
 
@@ -16,6 +19,30 @@ import type { MarginTier } from "@/lib/trading/margin";
  * Financial values are recomputed from the database — never accepted from
  * the client.
  */
+
+/** PostgREST caps a response at this many rows, whatever `.limit()` says, and
+ *  says nothing when it does. Anything that has to see all of an account's rows
+ *  pages through them. */
+const PAGE = 1000;
+/** Bounds one read of an account's history to protect shared limits. */
+const MAX_HISTORY_ROWS = 100_000;
+
+async function allRows<T>(
+  page: (from: number, to: number) => PromiseLike<{
+    data: unknown;
+    error: { message: string } | null;
+  }>
+): Promise<T[]> {
+  const rows: T[] = [];
+  while (rows.length < MAX_HISTORY_ROWS) {
+    const { data, error } = await page(rows.length, rows.length + PAGE - 1);
+    if (error) throw new Error(error.message);
+    const batch = (data ?? []) as T[];
+    rows.push(...batch);
+    if (batch.length < PAGE) break;
+  }
+  return rows;
+}
 
 interface DbBookkeeping {
   id: string;
@@ -112,16 +139,27 @@ interface PositionMarkRow {
   mark_timestamp: string | null;
 }
 
-async function loadContexts(userId: string) {
-  const admin = supabaseAdmin();
-  const [positionsRes, marketsRes] = await Promise.all([
-    admin
+/** Every position the account has held: realized P&L sums over all of them,
+ *  and settled ones outnumber open ones within weeks of hourly bids. */
+export function allPositions(userId: string): Promise<DbBookkeeping[]> {
+  return allRows<DbBookkeeping>((from, to) =>
+    supabaseAdmin()
       .from("positions")
       .select(
         "id, instrument, market_id, counter_market_id, product, delivery_start, delivery_end, quantity_mwh, average_entry_price, realized_pnl, settled_at, settlement_trade_id"
       )
-      .eq("user_id", userId),
+      .eq("user_id", userId)
+      .order("id")
+      .range(from, to)
+  );
+}
+
+async function loadContexts(userId: string) {
+  const admin = supabaseAdmin();
+  const [rows, marketsRes, clock] = await Promise.all([
+    allPositions(userId),
     admin.from("markets").select("id, settlement_point"),
+    getSimClock(userId),
   ]);
 
   // Marks are resolved by the engine itself (`position_marks`, migration 0008)
@@ -146,14 +184,16 @@ async function loadContexts(userId: string) {
       m.settlement_point,
     ])
   );
-  const rows = (positionsRes.data ?? []) as unknown as DbBookkeeping[];
-  return { rows, markById, settlementByMarket };
+  // "Delivered" is on the account's clock, as it is for the sweep.
+  const nowMs = clock ? Date.parse(clock.now) : Date.now();
+  return { rows, markById, settlementByMarket, nowMs };
 }
 
 function toPositionView(
   row: DbBookkeeping,
   markById: Map<string, MarkEntry>,
-  settlementByMarket: Map<string, string>
+  settlementByMarket: Map<string, string>,
+  nowMs: number
 ): PositionView {
   const quantityMwh = parseDbDec(row.quantity_mwh);
   const averageEntryPrice = parseDbDec(row.average_entry_price);
@@ -193,6 +233,7 @@ function toPositionView(
       // An unpriced window is precisely what the sweep defers on, so the same
       // null that means "cannot be marked" also means "cannot be settled yet".
       markPrice,
+      now: nowMs,
     }),
   };
 }
@@ -201,7 +242,7 @@ export async function getPortfolioSnapshot(
   userId: string
 ): Promise<PortfolioSnapshot> {
   const admin = supabaseAdmin();
-  const { rows, markById, settlementByMarket } = await loadContexts(userId);
+  const { rows, markById, settlementByMarket, nowMs } = await loadContexts(userId);
 
   const [accountRes, marginRes] = await Promise.all([
     admin.from("paper_accounts").select("*").eq("user_id", userId).maybeSingle(),
@@ -209,7 +250,7 @@ export async function getPortfolioSnapshot(
   ]);
 
   const positions = rows.map((row) =>
-    toPositionView(row, markById, settlementByMarket)
+    toPositionView(row, markById, settlementByMarket, nowMs)
   );
 
   // Metrics are marked per instrument, so the mark map is keyed by the same
@@ -272,10 +313,70 @@ function toMarginView(row: AccountMarginRow): MarginView {
 }
 
 export async function getPositionsView(userId: string): Promise<PositionView[]> {
-  const { rows, markById, settlementByMarket } = await loadContexts(userId);
+  const { rows, markById, settlementByMarket, nowMs } = await loadContexts(userId);
   return rows.map((row) =>
-    toPositionView(row, markById, settlementByMarket)
+    toPositionView(row, markById, settlementByMarket, nowMs)
   );
+}
+
+/** A `trades` row, as the read side uses it. */
+export interface HistoryTrade {
+  id: string;
+  instrument: string;
+  market_id: string;
+  counter_market_id: string | null;
+  product: string;
+  venue: string;
+  side: "BUY" | "SELL";
+  quantity_mwh: string;
+  execution_price: string;
+  delivery_start: string;
+  delivery_end: string;
+  price_timestamp: string;
+  status: string;
+  created_at: string;
+  executed_at: string;
+}
+
+export function replayInput(t: HistoryTrade): ReplayTradeInput {
+  return {
+    id: t.id,
+    instrument: t.instrument,
+    marketId: t.market_id,
+    counterMarketId: t.counter_market_id,
+    product: t.product,
+    side: t.side,
+    quantityMwh: parseDbDec(t.quantity_mwh),
+    executionPrice: parseDbDec(t.execution_price),
+    deliveryStart: t.delivery_start,
+    deliveryEnd: t.delivery_end,
+  };
+}
+
+/**
+ * An account's whole trade history, in the order the engine applied it.
+ *
+ * Replaying part of a history is worse than not replaying it: a close whose
+ * open was cut off reads as a new position, and every P&L figure after it is
+ * wrong. So this reads every row rather than the newest page.
+ */
+export async function tradeHistory(userId: string): Promise<HistoryTrade[]> {
+  const rows = await allRows<HistoryTrade>((from, to) =>
+    supabaseAdmin()
+      .from("trades")
+      .select(
+        "id, instrument, market_id, counter_market_id, product, venue, side, quantity_mwh, execution_price, delivery_start, delivery_end, price_timestamp, status, created_at, executed_at"
+      )
+      .eq("user_id", userId)
+      .order("created_at")
+      .order("id")
+      .range(from, to)
+  );
+  return inExecutionOrder(rows, (t) => ({
+    key: positionKey(replayInput(t)),
+    status: t.status,
+    at: t.created_at,
+  }));
 }
 
 export interface TradeRow {
@@ -339,50 +440,25 @@ export async function getTrades(
   // position: replaying only the filtered subset would re-open positions that
   // were already closed and report wrong P&L. So the full history is fetched
   // and replayed first; filters then select which trades are listed, never
-  // how their P&L was computed. Bounded to protect shared limits.
-  const { data, error } = await admin
-    .from("trades")
-    .select("id, instrument, market_id, counter_market_id, product, venue, side, quantity_mwh, execution_price, delivery_start, delivery_end, price_timestamp, status, created_at, executed_at")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(2000);
-  if (error) throw new Error(error.message);
-
-  const all = (data ?? []) as Array<Record<string, unknown>>;
+  // how their P&L was computed.
+  const history = await tradeHistory(userId);
   const realizedById = new Map<string, string>();
-  if (all.length > 0) {
-    // Replay in chronological order (newest-first fetch must be reversed).
-    const replay = replayTrades(
-      [...all]
-        .reverse()
-        .map((t) => ({
-          id: String(t.id),
-          instrument: String(t.instrument),
-          marketId: String(t.market_id),
-          counterMarketId: t.counter_market_id ? String(t.counter_market_id) : null,
-          product: String(t.product),
-          side: t.side as "BUY" | "SELL",
-          quantityMwh: parseDbDec(String(t.quantity_mwh)),
-          executionPrice: parseDbDec(String(t.execution_price)),
-          deliveryStart: String(t.delivery_start),
-          deliveryEnd: String(t.delivery_end),
-        }))
-    );
-    for (const t of replay.trades) {
-      // A decimal string, like every other DB-shaped field here: the bigint is
-      // already at the 1e6 scale, so String() would read back a million times too large.
-      realizedById.set(t.id, format(t.realizedPnL, 6));
-    }
+  for (const t of replayTrades(history.map(replayInput)).trades) {
+    // A decimal string, like every other DB-shaped field here: the bigint is
+    // already at the 1e6 scale, so String() would read back a million times too large.
+    realizedById.set(t.id, format(t.realizedPnL, 6));
   }
+  // The blotter reads newest first.
+  const all = [...history].reverse();
 
   // Local-time-safe: compare instants rather than PostgREST timestamp strings.
   const dateFromMs = filters.dateFrom ? new Date(filters.dateFrom).getTime() : null;
   const dateToMs = filters.dateTo ? new Date(filters.dateTo).getTime() : null;
   const filtered = all.filter((t) => {
-    if (filters.marketId && String(t.market_id) !== filters.marketId) return false;
-    if (filters.side && String(t.side) !== filters.side) return false;
+    if (filters.marketId && t.market_id !== filters.marketId) return false;
+    if (filters.side && t.side !== filters.side) return false;
     if (dateFromMs != null || dateToMs != null) {
-      const created = new Date(String(t.created_at)).getTime();
+      const created = new Date(t.created_at).getTime();
       if (dateFromMs != null && created < dateFromMs) return false;
       if (dateToMs != null && created > dateToMs) return false;
     }
@@ -399,26 +475,14 @@ export async function getTrades(
 
   const page = filtered.slice(offset, offset + limit);
   const rows = page.map((r) => ({
-    id: String(r.id),
-    market_id: String(r.market_id),
-    settlement_point: pointById.get(String(r.market_id)) ?? String(r.market_id),
-    instrument: String(r.instrument),
-    counter_market_id: r.counter_market_id ? String(r.counter_market_id) : null,
+    ...r,
+    settlement_point: pointById.get(r.market_id) ?? r.market_id,
     counter_settlement_point: r.counter_market_id
-      ? pointById.get(String(r.counter_market_id)) ?? String(r.counter_market_id)
+      ? pointById.get(r.counter_market_id) ?? r.counter_market_id
       : null,
-    product: String(r.product),
-    venue: String(r.venue),
-    side: r.side as "BUY" | "SELL",
     quantity_mwh: String(r.quantity_mwh),
     execution_price: String(r.execution_price),
-    delivery_start: String(r.delivery_start),
-    delivery_end: String(r.delivery_end),
-    price_timestamp: String(r.price_timestamp),
-    status: String(r.status),
-    created_at: String(r.created_at),
-    executed_at: String(r.executed_at),
-    realized_pnl: realizedById.get(String(r.id)) ?? "0",
+    realized_pnl: realizedById.get(r.id) ?? "0",
   }));
 
   return { rows, total: filtered.length };

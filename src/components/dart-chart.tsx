@@ -24,7 +24,7 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 /**
  * DART by hour ending: the mean of real time minus day-ahead, as a bar from
  * zero, with the middle half of outcomes (p25–p75) as a whisker. Above zero real time cleared over
- * day-ahead (an INC earned); below, a DEC did. On-peak hours (HE7–HE22) sit on
+ * day-ahead (a DEC earned); below, an INC did. On-peak hours (HE7–HE22) sit on
  * a faint wash, since that is how blocks and most virtual strategies split the
  * day. Hover or focus names the hour; the table view carries every value.
  */
@@ -182,10 +182,10 @@ export function DartChart({ stats, days }: { stats: DartHour[]; days: number }) 
 
       <div className="mt-2 flex flex-wrap items-center gap-4 caption">
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-3" style={{ background: LONG, opacity: 0.8 }} /> RT above DA · INC earned
+          <span className="inline-block h-2 w-3" style={{ background: LONG, opacity: 0.8 }} /> RT above DA · DEC earned
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-3" style={{ background: SHORT, opacity: 0.8 }} /> RT below DA · DEC earned
+          <span className="inline-block h-2 w-3" style={{ background: SHORT, opacity: 0.8 }} /> RT below DA · INC earned
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-3 w-px" style={{ background: "var(--line-bright)" }} /> p25–p75 (middle half)

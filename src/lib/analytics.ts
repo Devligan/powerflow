@@ -2,7 +2,9 @@ import { centralHourEnding } from "@/lib/ercot/hour-ending";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { m } from "@/lib/api";
 import { parseDbDec } from "@/lib/money";
+import { allPositions as loadPositions, replayInput, tradeHistory } from "@/lib/queries";
 import {
+  cumulativeDailyPnl,
   portfolioMetrics,
   positionKey,
   replayTrades,
@@ -53,27 +55,15 @@ export interface AnalyticsResult {
 export async function getAnalytics(userId: string): Promise<AnalyticsResult> {
   const admin = supabaseAdmin();
 
-  const [tradesRes, accountRes, marketsRes, positionsRes, marksRes] = await Promise.all([
-    admin
-      .from("trades")
-      .select(
-        "id, instrument, market_id, counter_market_id, product, side, quantity_mwh, execution_price, delivery_start, delivery_end, created_at"
-      )
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true })
-      .limit(2000),
+  const [trades, accountRes, marketsRes, positions, marksRes] = await Promise.all([
+    tradeHistory(userId),
     admin
       .from("paper_accounts")
       .select("starting_cash, cash_balance, deficit")
       .eq("user_id", userId)
       .maybeSingle(),
     admin.from("markets").select("id, settlement_point"),
-    admin
-      .from("positions")
-      .select(
-        "id, instrument, market_id, counter_market_id, product, delivery_start, delivery_end, quantity_mwh, average_entry_price, realized_pnl"
-      )
-      .eq("user_id", userId),
+    loadPositions(userId),
     // Instrument marks come from the engine (a spread has no single series to
     // look up, and a window instrument has no single interval), so they cannot
     // be recomputed from the current-price view.
@@ -84,22 +74,9 @@ export async function getAnalytics(userId: string): Promise<AnalyticsResult> {
   const startingCashRaw = accountRes.data?.starting_cash ?? "0";
   const startingCash = parseDbDec(startingCashRaw);
 
-  const replay = replayTrades(
-    (tradesRes.data ?? []).map((t) => ({
-      id: t.id,
-      instrument: t.instrument,
-      marketId: t.market_id,
-      counterMarketId: t.counter_market_id,
-      product: t.product,
-      side: t.side as "BUY" | "SELL",
-      quantityMwh: parseDbDec(t.quantity_mwh),
-      executionPrice: parseDbDec(t.execution_price),
-      deliveryStart: t.delivery_start,
-      deliveryEnd: t.delivery_end,
-    }))
-  );
+  const replay = replayTrades(trades.map(replayInput));
 
-  const allPositions = (positionsRes.data ?? []).map((p) => ({
+  const allPositions = positions.map((p) => ({
     id: p.id,
     instrument: p.instrument,
     marketId: p.market_id,
@@ -157,13 +134,7 @@ export async function getAnalytics(userId: string): Promise<AnalyticsResult> {
       : replay.cumulativeRealized / BigInt(decided.length);
 
   // P&L over time (daily) = end-of-day cumulated realized P&L.
-  const byDay = new Map<string, bigint>();
-  let running = 0n;
-  for (const t of replay.trades) {
-    const day = t.deliveryStart.slice(0, 10);
-    running += t.realizedPnL;
-    byDay.set(day, running);
-  }
+  const byDay = cumulativeDailyPnl(replay.trades);
 
   const pnlByMarketMap = new Map<string, bigint>();
   for (const t of replay.trades) {
@@ -191,8 +162,7 @@ export async function getAnalytics(userId: string): Promise<AnalyticsResult> {
   // Max drawdown on the cumulative realized series (recursively reconstructable).
   let peak = 0n;
   let maxDD = 0n;
-  for (const [day, value] of byDay.entries()) {
-    void day;
+  for (const { pnl: value } of byDay) {
     if (value > peak) peak = value;
     const dd = peak - value;
     if (dd > maxDD) maxDD = dd;
@@ -213,7 +183,7 @@ export async function getAnalytics(userId: string): Promise<AnalyticsResult> {
     const he = centralHourEnding(Date.parse(t.deliveryStart)).he;
     byHour.set(he, (byHour.get(he) ?? 0n) + t.realizedPnL);
   }
-  const cumulative = [...byDay.values()].map((v) => Number(v) / 1e6);
+  const cumulative = byDay.map(({ pnl }) => Number(pnl) / 1e6);
   const daily = cumulative.map((v, i) => v - (i ? cumulative[i - 1] : 0));
   let sharpe: number | null = null;
   if (daily.length >= 2) {
@@ -247,7 +217,7 @@ export async function getAnalytics(userId: string): Promise<AnalyticsResult> {
       net: m(v.net),
     })),
     maxDrawdown: m(maxDD),
-    pnlByDay: [...byDay.entries()].map(([day, pnl]) => ({ day, pnl: m(pnl) })),
+    pnlByDay: byDay.map(({ day, pnl }) => ({ day, pnl: m(pnl) })),
     pnlByMarket: [...pnlByMarketMap.entries()].map(([id, pnl]) => ({
       market: pointByMarket.get(id) ?? id,
       pnl: m(pnl),

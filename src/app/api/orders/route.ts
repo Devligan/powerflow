@@ -121,7 +121,7 @@ const FRIENDLY: Record<string, string> = {
   EXPIRY_INVALID: "Expiry must be in the future.",
   OPEN_ORDER_LIMIT: "You have 500 open orders, the most an account can hold. Cancel some to place more.",
   CREDIT_LIMIT_EXCEEDED:
-    "Not enough credit: your open bids' collateral plus this one would exceed your cash. Each bid holds MW x the 95th-percentile day-ahead/real-time gap at its point (at least $10/MW).",
+    "Not enough credit: the collateral on your open bids and positions plus this one would exceed your available funds (cash, less any open loss or deficit). Each MW holds the 95th-percentile day-ahead/real-time gap at its point (at least $10/MW).",
   DAM_CLOSED: "Day-ahead bids for that operating day closed at 10:00 AM Central the day before.",
 };
 

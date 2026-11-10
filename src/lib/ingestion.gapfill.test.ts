@@ -96,7 +96,24 @@ describe.skipIf(!dbTestsEnabled())("market-data gap fill (live database)", () =>
     // hold two vintages of one interval (an ERCOT correction), which deletes
     // N rows but needs only N−1 observations back — the store keeps the
     // latest publication per interval, by design.
-    const rollBackTo = new Date(new Date(behindBefore!).getTime() - 24 * 3600_000).toISOString();
+    //
+    // A fresh database holds under a day of this series, so the series' oldest
+    // row always survives. Lagging means the series has a cursor to resume from;
+    // with none at all, ingestion reaches back only a fixed overlap from now, and
+    // an hour at its edge drops out if the clock crosses the hour mid-suite.
+    const { data: oldest } = await db
+      .from("market_prices")
+      .select("delivery_timestamp")
+      .eq("market_id", behindId)
+      .eq("product", PRODUCT)
+      .order("delivery_timestamp", { ascending: true })
+      .limit(1);
+    const rollBackTo = new Date(
+      Math.max(
+        new Date(behindBefore!).getTime() - 24 * 3600_000,
+        new Date(oldest![0].delivery_timestamp as string).getTime()
+      )
+    ).toISOString();
     const { data: doomed, error: selErr } = await db
       .from("market_prices")
       .select("delivery_timestamp")

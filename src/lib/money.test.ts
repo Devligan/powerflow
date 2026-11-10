@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { format, parseDbDec, parseDec } from "@/lib/money";
+import { div, format, parseDbDec, parseDec } from "@/lib/money";
+
+describe("div", () => {
+  it("rounds to nearest whichever way the quotient points", () => {
+    expect(format(div("2", "3"), 6)).toBe("0.666667");
+    // A negative average entry price: truncating toward zero read -0.666666.
+    expect(format(div("-2", "3"), 6)).toBe("-0.666667");
+    expect(format(div("2", "-3"), 6)).toBe("-0.666667");
+    expect(format(div("-2", "-3"), 6)).toBe("0.666667");
+  });
+
+  it("is symmetric about zero on an exact half", () => {
+    expect(div("0.000001", "2")).toBe(1n);
+    expect(div("-0.000001", "2")).toBe(-1n);
+  });
+
+  it("refuses to divide by zero", () => {
+    expect(() => div("1", "0")).toThrow(/division by zero/);
+  });
+});
 
 describe("parseDec (user input floor)", () => {
   it("accepts up to the fixed-point scale", () => {

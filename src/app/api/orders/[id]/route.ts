@@ -29,6 +29,8 @@ export async function DELETE(
     if (raw.includes("ORDER_NOT_FOUND")) return fail("Order not found.", 404);
     if (raw.includes("ORDER_NOT_OPEN"))
       return fail("Only an open order can be cancelled.", 409);
+    if (raw.includes("DAM_CLOSED"))
+      return fail("Bids for that operating day closed at 10:00 AM Central the day before, so it can no longer be withdrawn.", 409);
     if (raw.includes("FORBIDDEN"))
       return fail("You are not allowed to cancel this order.", 403);
     return serverError("order cancel", raw, "The order could not be cancelled. Please try again.");
