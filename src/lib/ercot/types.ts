@@ -570,6 +570,28 @@ export interface ErcotSource {
     to: Date,
     products?: readonly string[]
   ): Promise<NormalizedPriceRecord[]>;
+  /** ERCOT's real-time price-correction documents (NP4-197), oldest first.
+   *  Optional: only a source that reads MIS publishes corrections. */
+  listRtmPriceCorrections?(): Promise<PriceCorrectionDoc[]>;
+  /** One correction document's corrected 15-minute prices, hubs and load
+   *  zones only. */
+  getRtmPriceCorrection?(doc: PriceCorrectionDoc): Promise<CorrectedInterval[]>;
+}
+
+/** One posting of ERCOT's real-time price-correction report. */
+export interface PriceCorrectionDoc {
+  /** MIS doclookupId: a document never changes once posted. */
+  docId: string;
+  /** When ERCOT posted it (ISO): the corrected prices' publication instant. */
+  postedAt: string;
+}
+
+/** A corrected 15-minute real-time Settlement Point Price. */
+export interface CorrectedInterval {
+  settlementPoint: string;
+  /** UTC start of the 15-minute settlement interval (ISO). */
+  deliveryTimestamp: string;
+  price: string;
 }
 
 /** Product used to mark positions and to show a market's headline price.

@@ -29,6 +29,7 @@ import {
   ErcotMISSource,
   deliveryCentralToUtc,
   listMisDocs,
+  misPostedAt,
   parseDamSppCsv,
   parseErcotSppCsv,
   parseMisListingJson,
@@ -530,6 +531,32 @@ describe("ERCOT delivery conversion across DST", () => {
     expect(docs).toHaveLength(2);
     expect(docs[0]).toMatchObject({ doclookupId: "1277731220" });
     expect(docs[0].publishDate).toBe("2026-09-22T16:02:01-05:00");
+  });
+
+  it("reads a posting's PublishDate on its own date's offset, not the listing's", () => {
+    // NP4-197, posted 15:20:40 CDT on 2026-09-01 (its cdr stamp), ahead of the
+    // 16:00 deadline it corrected for. Listed in November it reads -06:00;
+    // listed in September the same document read -05:00.
+    const filename =
+      "cdr.00013045.0000000000000000.20260901.152040763.pricecorrection_RTM_SPP_20260901_to_20260901_NP4197_csv.zip";
+    const doc = { doclookupId: "1269374426", filename, publishDate: "2026-09-01T15:20:40-06:00" };
+    expect(misPostedAt(doc)?.toISOString()).toBe("2026-09-01T20:20:40.000Z");
+    expect(misPostedAt({ ...doc, publishDate: "2026-09-01T15:20:40-05:00" })?.toISOString()).toBe(
+      "2026-09-01T20:20:40.000Z"
+    );
+    // ERCOT posts the DAM at 12:32 wall time either side of the DST change, so
+    // a January posting listed in summer must not move an hour earlier.
+    expect(
+      misPostedAt({
+        doclookupId: "1",
+        filename: "cdr.00012331.0000000000000000.20260115.123246075.DAMSPNP4190_csv.zip",
+        publishDate: "2026-01-15T12:32:45-05:00",
+      })?.toISOString()
+    ).toBe("2026-01-15T18:32:45.000Z");
+    // Without a PublishDate, the cdr stamp.
+    expect(misPostedAt({ doclookupId: "1", filename })?.toISOString()).toBe(
+      "2026-09-01T20:20:40.000Z"
+    );
   });
 
   it("parses the MIS listing PAGE (scrape), pairing filenames with download links", () => {

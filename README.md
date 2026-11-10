@@ -57,10 +57,15 @@ with virtual cash, a full risk engine, immutable audit trail, and analytics.
   ECRS) ingested from ERCOT's NP4-188-CD report — system-wide MCPC series,
   final on arrival. AS capacity remains a resource obligation (no assets on
   a paper desk), so the series are reference data, not orderable.
-- Live settlement: the hourly RT series for a delivery day whose last hour
-  has fully elapsed is promoted to its final settlement value — live
-  positions settle, margin releases, and later ERCOT corrections still take
-  over as new observations.
+- Settlement on ERCOT's calendar (0044): real-time prices are final at 16:00
+  Central on the second Business Day after the Operating Day (day-ahead at
+  10:00), and ERCOT corrects them until then. A delivered position is marked
+  meanwhile and settles at that instant — on a replay account's own clock too —
+  at the corrected price where ERCOT corrected it. The Business Day calendar
+  (weekends and ERCOT's observed holidays) is `ercot_is_holiday`, mirrored in
+  `src/lib/ercot/settlement-calendar.ts`. A correction ERCOT posts after a
+  position settled (a Board-directed one, months later) updates prices and
+  marks but does not resettle it.
 - Weighted-average, signed-quantity position accounting with realized P&L on
   closes; exact `bigint` money math on the client matching the database engine.
 - Immutable `trades` and `audit_events` (trigger-enforced, no UPDATE/DELETE),
@@ -386,9 +391,18 @@ reduces what a new bid can post, and an open gain does not add to it.
     aggregated per ERCOT's equal-time rule (the mean of the four 15-minute
     settlement intervals in the hour), emitted only when all four intervals
     exist. One report serves both: MIS publishes no separate hourly report.
-  - Every record's `published_at` comes from ERCOT's own posting stamp
-    (the listing API's `PublishDate`), so look-ahead protection filters on
-    real publication time, not delivery time.
+  - MIS 13045 (`NP4-197`, RTM price corrections) — the corrected 15-minute
+    prices ERCOT posts before (and, Board-directed, after) the finality
+    deadline. Ingestion applies each SPP document once
+    (`apply_rtm_price_corrections`): corrected intervals the store holds are
+    published as new observations and each affected hour is re-averaged.
+    Corrections list only the prints that changed, so an `LZEW` row alone means
+    the canonical `LZ` print stood; it is never taken in its place.
+  - Every record's `published_at` comes from ERCOT's own posting stamp, so
+    look-ahead protection filters on real publication time, not delivery time.
+    The listing API's `PublishDate` carries the posting's Central wall time but
+    the offset in force when the listing is *read*, so the wall time is
+    resolved on its own date (`misPostedAt`).
   - ERCOT prints every load zone and DC tie **twice** per interval — once
     under its own type code (`LZ`/`DC`) and once under an EHV variant
     (`LZEW`/`DCEW`), prices within a rounding hair. The parser dedupes to

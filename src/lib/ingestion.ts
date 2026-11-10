@@ -19,9 +19,13 @@ export interface IngestionResult {
   recordsDeferred: number;
   /** Whether this run stopped early with work remaining. */
   truncated: boolean;
-  /** RTM_HOURLY observations whose Central delivery day has fully elapsed
-   *  and were promoted to final settlement values this run (0024). */
+  /** RTM_HOURLY observations ERCOT has declared final (16:00 Central, second
+   *  Business Day after the Operating Day) promoted this run (0024, 0044). */
   finalsPromoted: number;
+  /** ERCOT price-correction documents (NP4-197) applied this run. */
+  correctionDocuments: number;
+  /** 15-minute prices those documents corrected in the store. */
+  pricesCorrected: number;
   /** Age of the newest real-time interval in the store (seconds since its
    *  delivery start). A healthy 5-minute cadence keeps this under ~20 min;
    *  anything beyond means postings stopped landing. */
@@ -141,6 +145,8 @@ export async function runMarketDataIngestion(
       recordsDeferred: 0,
       truncated: false,
       finalsPromoted: 0,
+      correctionDocuments: 0,
+      pricesCorrected: 0,
       newestIntervalAgeSeconds: null,
       feedStale: false,
       ordersFilled: 0,
@@ -175,6 +181,8 @@ export async function runMarketDataIngestion(
   let recordsDeferred = 0;
   // RTM_HOURLY observations promoted to final by this run (0024).
   let finalsPromoted = 0;
+  let correctionDocuments = 0;
+  let pricesCorrected = 0;
   // Age of the newest RTM_15MIN interval (seconds) and whether it exceeds
   // the staleness threshold — the cron's own health signal.
   let newestIntervalAgeSeconds: number | null = null;
@@ -286,7 +294,16 @@ export async function runMarketDataIngestion(
       let earliest = Number.POSITIVE_INFINITY;
       for (const row of marketById.values()) {
         const known = latestByKey.get(`${row.id}::${product}`);
-        const knownFinal = latestFinalByKey.get(`${row.id}::${product}`);
+        // The hourly real-time series is made final in the database
+        // (promote_rtm_finals), never by the source, so its final cursor
+        // says nothing about what to fetch. Since 0044 it trails by two
+        // Business Days, which would re-download every 15-minute file of
+        // that span on every run only for the rows to be dropped below
+        // the cursor. ERCOT's corrections arrive through NP4-197 instead.
+        const knownFinal =
+          product === "RTM_HOURLY"
+            ? undefined
+            : latestFinalByKey.get(`${row.id}::${product}`);
         const candidate = [known, knownFinal]
           .filter((v): v is string => Boolean(v))
           .map((v) => new Date(v).getTime());
@@ -398,12 +415,29 @@ export async function runMarketDataIngestion(
     // Anything the unique key rejected was already stored: a true skip.
     recordsSkipped += rowsToInsertCapped.length - recordsInserted;
 
-    // 5b. Finality promotion (0024): hourly SPP observations whose Central
-    // delivery day has fully elapsed become the settlement values. Every
-    // run promotes — including no-op runs — so a live position settles at
-    // most one cron tick + one settle sweep after its day ends. Later ERCOT
-    // corrections arrive as new interim observations and are promoted on a
-    // later run the same way (price_final prefers the latest final row).
+    // 5a. ERCOT's price corrections (NP4-197, 0044). Applied before
+    // promotion, so a correction ERCOT posts ahead of the finality deadline
+    // is the price promoted at it. A failure here must not fail the run: the
+    // document stays unapplied and the next run retries it.
+    if (!opts.dryRun) {
+      try {
+        const applied = await applyPriceCorrections(source, marketById);
+        correctionDocuments = applied.documents;
+        pricesCorrected = applied.intervals;
+      } catch (e) {
+        console.warn(
+          "[ingestion] price corrections failed:",
+          e instanceof Error ? e.message : e
+        );
+      }
+    }
+
+    // 5b. Finality promotion (0024, 0044): hourly SPP observations become
+    // the settlement values when ERCOT declares them final, 16:00 Central on
+    // the second Business Day after their Operating Day. Every run promotes —
+    // including no-op runs — so a live position settles within one cron tick
+    // and one settle sweep of that instant. price_final prefers the latest
+    // final row, so the corrected print is the one settled on.
     try {
       const { data: promoted, error: promoteErr } = await admin.rpc(
         "promote_rtm_finals"
@@ -509,6 +543,8 @@ export async function runMarketDataIngestion(
       records_deferred: recordsDeferred,
       truncated: recordsDeferred > 0,
       finals_promoted: finalsPromoted,
+      correction_documents: correctionDocuments,
+      prices_corrected: pricesCorrected,
       newest_interval_age_seconds: newestIntervalAgeSeconds,
       feed_stale: feedStale,
       orders_filled: ordersFilled,
@@ -526,6 +562,8 @@ export async function runMarketDataIngestion(
     recordsDeferred,
     truncated: recordsDeferred > 0,
     finalsPromoted,
+    correctionDocuments,
+    pricesCorrected,
     newestIntervalAgeSeconds,
     feedStale,
     ordersFilled,
@@ -533,6 +571,60 @@ export async function runMarketDataIngestion(
     failed,
     error,
   };
+}
+
+/** Documents applied per run: a Board-directed correction can span whole
+ *  days (90,000 rows a file), and the run has a time budget. */
+const MAX_CORRECTION_DOCUMENTS_PER_RUN = 3;
+
+/**
+ * Apply ERCOT's real-time price corrections the store has not yet seen, oldest
+ * posting first. Each document is applied once (`ercot_price_correction_docs`),
+ * and only to intervals the store already holds.
+ */
+export async function applyPriceCorrections(
+  source: ErcotSource,
+  marketById: Map<string, { id: string }>
+): Promise<{ documents: number; intervals: number; hours: number }> {
+  const out = { documents: 0, intervals: 0, hours: 0 };
+  if (!source.listRtmPriceCorrections || !source.getRtmPriceCorrection) return out;
+  const docs = await source.listRtmPriceCorrections();
+  if (docs.length === 0) return out;
+
+  const admin = supabaseAdmin();
+  const { data: seen, error } = await admin
+    .from("ercot_price_correction_docs")
+    .select("doc_id")
+    .in(
+      "doc_id",
+      docs.map((d) => d.docId)
+    );
+  if (error) throw new Error(`could not read applied corrections: ${error.message}`);
+  const applied = new Set((seen ?? []).map((r: { doc_id: string }) => r.doc_id));
+
+  for (const doc of docs
+    .filter((d) => !applied.has(d.docId))
+    .slice(0, MAX_CORRECTION_DOCUMENTS_PER_RUN)) {
+    const rows = await source.getRtmPriceCorrection(doc);
+    const payload = rows.flatMap((r) => {
+      const market = marketById.get(r.settlementPoint);
+      return market
+        ? [{ market_id: market.id, delivery_timestamp: r.deliveryTimestamp, price: r.price }]
+        : [];
+    });
+    const { data, error: applyErr } = await admin.rpc("apply_rtm_price_corrections", {
+      p_doc_id: doc.docId,
+      p_posted_at: doc.postedAt,
+      p_source: source.sourceName,
+      p_rows: payload,
+    });
+    if (applyErr) throw new Error(`correction ${doc.docId}: ${applyErr.message}`);
+    const result = (data ?? {}) as { applied?: boolean; intervals?: number; hours?: number };
+    if (result.applied) out.documents++;
+    out.intervals += Number(result.intervals ?? 0);
+    out.hours += Number(result.hours ?? 0);
+  }
+  return out;
 }
 
 async function finalize(

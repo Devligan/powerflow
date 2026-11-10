@@ -420,6 +420,20 @@ export type Database = {
       };
       Relationships: [];
     };
+    /** ERCOT price-correction documents already applied (0044). Service role. */
+    ercot_price_correction_docs: {
+      Row: {
+        doc_id: string;
+        report: string;
+        posted_at: string;
+        applied_at: string;
+        intervals_corrected: number;
+        hours_republished: number;
+      };
+      Insert: never;
+      Update: never;
+      Relationships: [];
+    };
   };
   Views: {
     current_prices: {
@@ -441,6 +455,35 @@ export type Database = {
     };
   };
   Functions: {
+    /** When ERCOT's price for an interval is final (0044): 16:00 Central
+     *  (real time) or 10:00 (day ahead), second Business Day after. */
+    ercot_price_final_at: {
+      Args: { p_product: string; p_ts: string };
+      Returns: string;
+    };
+    /** When a position's settlement price is final (0044). */
+    position_final_at: {
+      Args: { p_instrument: string; p_product: string; p_delivery_end: string };
+      Returns: string;
+    };
+    ercot_is_holiday: {
+      Args: { p_day: string };
+      Returns: boolean;
+    };
+    ercot_business_day_after: {
+      Args: { p_day: string; p_n: number };
+      Returns: string;
+    };
+    /** Service role only: apply one NP4-197 correction document (0044). */
+    apply_rtm_price_corrections: {
+      Args: {
+        p_doc_id: string;
+        p_posted_at: string;
+        p_source: string;
+        p_rows: Json;
+      };
+      Returns: Json;
+    };
     ensure_user_records: {
       Args: { p_user_id: string; p_email: string };
       Returns: undefined;

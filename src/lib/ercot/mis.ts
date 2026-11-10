@@ -1,6 +1,8 @@
 import {
+  CorrectedInterval,
   ErcotSource,
   NormalizedMarket,
+  PriceCorrectionDoc,
   NormalizedPriceRecord,
   SettlementPointType,
   requireProduct,
@@ -122,6 +124,7 @@ export const MIS_DOWNLOAD =
 const REPORT_DAM_SPP = 12331; // NP4-190-CD, DAM Settlement Point Prices
 const REPORT_RT_SPP = 12301; // SPPHLZNP6905, rolling RT settlement point prices
 const REPORT_DAM_MCPC = 12329; // NP4-188-CD, DAM Clearing Prices for Capacity (AS)
+const REPORT_RTM_PRICE_CORRECTIONS = 13045; // NP4-197, RTM price corrections
 
 /** The ancillary-service series the MIS adapter publishes (report 12329). */
 const AS_PRODUCTS: readonly string[] = ["REGUP", "REGDN", "RRS", "NSPIN", "ECRS"];
@@ -264,7 +267,8 @@ export function parseCdrName(
  * Parse the MIS document-listing JSON (misapp IceDocListJsonWS) into the
  * report's downloadable documents. Pure, so the contract is unit-testable
  * offline: DocID is the download key, ConstructedName carries the posting
- * stamp, and PublishDate is ERCOT's own posting instant (ISO with offset).
+ * stamp, and PublishDate the posting's wall time (see `misPostedAt` for its
+ * offset).
  */
 export function parseMisListingJson(payload: unknown): MisDoc[] {
   const root = payload as {
@@ -290,6 +294,30 @@ export function parseMisListingJson(payload: unknown): MisDoc[] {
     });
   }
   return docs;
+}
+
+/**
+ * A document's posting instant. ERCOT's PublishDate holds the posting's
+ * Central wall time (the same as the cdr name stamp) but labels it with the
+ * offset in force when the LISTING is requested, not when the document was
+ * posted: in November every September posting reads -06:00 (a 15:20 CDT
+ * posting as 16:20), and in September the same listing read -05:00. Taken
+ * literally, anything re-read across a DST change is an hour off: late in the
+ * fall, early (look-ahead) in the spring. So the wall time is read and its
+ * offset resolved for its own date, as the cdr stamp is. (The repeated hour
+ * of the fall-back night resolves to its first occurrence.)
+ */
+export function misPostedAt(doc: MisDoc): Date | null {
+  const wall = doc.publishDate
+    ? /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/.exec(doc.publishDate)
+    : null;
+  if (wall) {
+    const d = centralWallToUtc(`${wall[1]}${wall[2]}${wall[3]}`, `${wall[4]}${wall[5]}${wall[6]}`);
+    if (d) return d;
+  }
+  const cdr = parseCdrName(doc.filename);
+  if (!cdr) return null;
+  return centralWallToUtc(cdr.date, cdr.time.slice(0, 6));
 }
 
 /**
@@ -617,6 +645,80 @@ export function parseRtmSppCsv(csv: string): RtmSppCsvRow[] {
     const prevIsEw = /EW$/.test(prev.settlementPointType);
     const rowIsEw = /EW$/.test(row.settlementPointType);
     if (prevIsEw && !rowIsEw) canonical.set(key, row);
+  }
+  return [...canonical.values()];
+}
+
+/** One corrected 15-minute price from ERCOT's NP4-197 report. */
+export interface RtmPriceCorrectionRow {
+  deliveryDate: string;
+  hourEnding: number;
+  deliveryInterval: number;
+  settlementPoint: string;
+  settlementPointType: string;
+  original: string;
+  corrected: string;
+  dstFlag: boolean;
+}
+
+/**
+ * Parse one NP4-197 real-time SPP correction file (MIS 13045,
+ * `pricecorrection_RTM_SPP_*`). Columns, read by name:
+ *   DeliveryDate, DeliveryHour, DeliveryInterval, SettlementPointName,
+ *   SettlementPointType, SPPOriginal, SPPCorrected, PriceCorrectionTime,
+ *   DSTFlag
+ * Load zones are printed twice here too (LZ and LZEW), but unlike the rolling
+ * report a correction lists only the prints that changed: an interval can
+ * carry its LZEW twin alone, which means the canonical LZ print was NOT
+ * corrected. EW rows are therefore dropped outright, never taken as a stand-in.
+ */
+export function parseRtmPriceCorrectionCsv(csv: string): RtmPriceCorrectionRow[] {
+  const lines = csv.replace(/^﻿/, "").split(/\r?\n/);
+  const headerIdx = lines.findIndex((l) => l.trim().startsWith("DeliveryDate"));
+  if (headerIdx === -1) return [];
+  const header = lines[headerIdx].trim().split(",");
+  const col = (name: string) => header.indexOf(name);
+  const c = {
+    date: col("DeliveryDate"),
+    hour: col("DeliveryHour"),
+    interval: col("DeliveryInterval"),
+    point: col("SettlementPointName"),
+    type: col("SettlementPointType"),
+    original: col("SPPOriginal"),
+    corrected: col("SPPCorrected"),
+    dst: col("DSTFlag"),
+  };
+  if (Object.values(c).some((i) => i < 0)) {
+    throw new Error("NP4-197 correction file has an unexpected header");
+  }
+
+  const canonical = new Map<string, RtmPriceCorrectionRow>();
+  for (const line of lines.slice(headerIdx + 1)) {
+    const parts = line.trim().split(",");
+    if (parts.length < header.length) continue;
+    if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(parts[c.date])) continue;
+    if (/EW$/i.test(parts[c.type])) continue;
+    const hourEnding = Number(parts[c.hour]);
+    const interval = Number(parts[c.interval]);
+    if (!Number.isInteger(hourEnding) || hourEnding < 1 || hourEnding > 24) continue;
+    if (!Number.isInteger(interval) || interval < 1 || interval > 4) continue;
+    const corrected = cleanPrice(parts[c.corrected]);
+    if (!corrected) continue;
+    const row: RtmPriceCorrectionRow = {
+      deliveryDate: parts[c.date],
+      hourEnding,
+      deliveryInterval: interval,
+      settlementPoint: parts[c.point],
+      settlementPointType: parts[c.type],
+      original: cleanPrice(parts[c.original]) ?? "",
+      corrected,
+      dstFlag: parts[c.dst]?.toUpperCase() === "Y",
+    };
+    // One correction per interval and point; a repeated row restates it.
+    canonical.set(
+      `${row.deliveryDate}|${row.hourEnding}|${row.deliveryInterval}|${row.dstFlag}|${row.settlementPoint}`,
+      row
+    );
   }
   return [...canonical.values()];
 }
@@ -1197,6 +1299,45 @@ export class ErcotMISSource implements ErcotSource {
   }
 
   /**
+   * ERCOT's real-time SPP correction postings (NP4-197), oldest first. The
+   * report also carries LMP, shadow-price and AS corrections, and each in XML
+   * as well; only the SPP CSVs bear on what the desk settles.
+   */
+  async listRtmPriceCorrections(): Promise<PriceCorrectionDoc[]> {
+    const docs = await listMisDocs(REPORT_RTM_PRICE_CORRECTIONS);
+    const out: PriceCorrectionDoc[] = [];
+    for (const doc of docs) {
+      if (!/\.pricecorrection_RTM_SPP_\d{8}_to_\d{8}_NP4197_csv\.zip$/.test(doc.filename)) {
+        continue;
+      }
+      const posted = this.postedAt(doc);
+      if (!posted) continue;
+      out.push({ docId: doc.doclookupId, postedAt: posted.toISOString() });
+    }
+    return out.sort((a, b) => Date.parse(a.postedAt) - Date.parse(b.postedAt));
+  }
+
+  /** One correction document's corrected 15-minute prices, hubs and zones. */
+  async getRtmPriceCorrection(doc: PriceCorrectionDoc): Promise<CorrectedInterval[]> {
+    const csv = await fetchMisCsv(doc.docId);
+    if (!csv) throw new Error(`NP4-197 document ${doc.docId} holds no CSV`);
+    const out: CorrectedInterval[] = [];
+    for (const row of parseRtmPriceCorrectionCsv(csv)) {
+      if (!isHubOrZone(row.settlementPoint)) continue;
+      const hourStart = deliveryCentralToUtc(row.deliveryDate, row.hourEnding, row.dstFlag);
+      if (!hourStart) continue;
+      out.push({
+        settlementPoint: row.settlementPoint,
+        deliveryTimestamp: new Date(
+          Date.parse(hourStart) + (row.deliveryInterval - 1) * INTERVAL_MS
+        ).toISOString(),
+        price: row.corrected,
+      });
+    }
+    return out;
+  }
+
+  /**
    * The rolling RT documents whose INTERVAL END (the filename stamp) falls
    * in (from, to], enumerated from the listing page. Listing retention is
    * ~4.6 days, so windows older than that return an empty archive — which
@@ -1220,16 +1361,8 @@ export class ErcotMISSource implements ErcotSource {
     return inWindow.map((x) => x.doc);
   }
 
-  /** A document's posting instant: ERCOT's own PublishDate from the listing
-   *  API (ISO with offset) when present, else the cdr name stamp. */
   private postedAt(doc: MisDoc): Date | null {
-    if (doc.publishDate) {
-      const d = new Date(doc.publishDate);
-      if (!Number.isNaN(d.getTime())) return d;
-    }
-    const cdr = parseCdrName(doc.filename);
-    if (!cdr) return null;
-    return centralWallToUtc(cdr.date, cdr.time.slice(0, 6));
+    return misPostedAt(doc);
   }
 
   /**
