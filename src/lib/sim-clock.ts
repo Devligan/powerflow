@@ -66,6 +66,30 @@ const FRIENDLY: Record<string, string> = {
 
 const GENERIC = "The clock could not be changed. Please try again.";
 
+/**
+ * After the clock moves: moving it can carry it past a day-ahead clearing, or
+ * past the instant a delivered position's prices became final. Bids placed
+ * before the deadline should then fill now, and positions settle now, not at
+ * the next scheduled run. Only this account's book moved, so only it is swept
+ * and settled (0042): one user's clock must not run a sweep over everyone's.
+ * Both judge the account on its own clock (0038, 0044), so running them early
+ * can never fill a bid before its clearing or settle a position before its
+ * prices are final. Best effort: the scheduled runs catch anything missed.
+ */
+export async function catchUpAccount(userId: string): Promise<void> {
+  const admin = supabaseAdmin();
+  try {
+    await admin.rpc("fill_crossing_limit_orders", { p_limit: 500, p_user_id: userId });
+  } catch {
+    // ignored: the scheduled sweep runs every 15 minutes
+  }
+  try {
+    await admin.rpc("settle_delivered_positions", { p_user_id: userId });
+  } catch {
+    // ignored: the scheduled settlement runs every hour
+  }
+}
+
 /** Set the account's simulation time (null = back to live mode). */
 export async function setSimClock(
   userId: string,

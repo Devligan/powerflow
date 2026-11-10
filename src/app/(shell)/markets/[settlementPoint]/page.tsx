@@ -10,7 +10,7 @@ import { sourceInfo } from "@/lib/format";
 import { dateTime, shortDate } from "@/lib/time";
 import { getViewerTimeZone } from "@/lib/time-zone-server";
 import { Lamp } from "@/components/ui/lamp";
-import { requireUser } from "@/lib/auth";
+import { requireDesk } from "@/lib/desk";
 import { getSimClock } from "@/lib/sim-clock";
 import { DEFAULT_MARKET_PRODUCT, FORWARD_MARKET_PRODUCT } from "@/lib/ercot/types";
 
@@ -21,10 +21,10 @@ export default async function MarketDetailPage({
 }: {
   params: Promise<{ settlementPoint: string }>;
 }) {
-  const user = await requireUser();
+  const { desk } = await requireDesk();
   const { tz } = await getViewerTimeZone();
   const { settlementPoint } = await params;
-  const clock = await getSimClock(user.id).catch(() => null);
+  const clock = await getSimClock(desk.accountUserId).catch(() => null);
   const asOf = clock && clock.mode === "REPLAY" ? new Date(clock.now) : null;
 
   let data: Awaited<ReturnType<typeof getMarketPrices>>;

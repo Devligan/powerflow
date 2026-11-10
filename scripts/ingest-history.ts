@@ -202,7 +202,9 @@ async function ingestObservations(
     const { data, error } = await admin
       .from("market_prices")
       .upsert(chunk, {
-        onConflict: "market_id,delivery_timestamp,product",
+        // A price is an observation (0020): one row per publication, so a
+        // revision is a new row and a repeat load of the same file is a no-op.
+        onConflict: "market_id,product,delivery_timestamp,published_at",
         ignoreDuplicates: true,
       })
       .select("id");

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
+import { getActiveDesk } from "@/lib/desk";
 import { fail, ok, serverError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -18,9 +19,10 @@ export async function DELETE(
   const parsed = CancelRequest.safeParse({ orderId: id });
   if (!parsed.success) return fail("Invalid order id", 422);
 
+  const desk = await getActiveDesk(user.id);
   const db = await createClient();
   const { data, error } = await db.rpc("cancel_order", {
-    p_user_id: user.id,
+    p_user_id: desk.accountUserId,
     p_order_id: parsed.data.orderId,
   });
 

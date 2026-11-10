@@ -94,8 +94,9 @@ export function SimClockWidget() {
               : "Following the wall clock"}
           </div>
           <div className="caption t-mute">
-            Practice freely: bids placed in replay, or a book carried into it,
-            take the account off the public standings.
+            To practise, switch to the Practice desk above: it has its own
+            account and clock. Bids placed in replay here, or a book carried
+            into it, take this live account off the public standings.
           </div>
         </div>
         <div className="flex items-center gap-2">

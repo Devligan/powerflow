@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
+import { getActiveDesk } from "@/lib/desk";
 import { fail, ok, m, serverError } from "@/lib/api";
 import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 import { parseDbDec, parseDec } from "@/lib/money";
@@ -32,13 +34,15 @@ export async function GET(req: Request) {
     return fail("Invalid status", 422);
   }
 
-  const db = await createClient();
-  let query = db
+  // The service role, scoped to the desk the caller was just verified to own:
+  // row-level security would show a session only its own live account.
+  const desk = await getActiveDesk(user.id);
+  let query = supabaseAdmin()
     .from("paper_orders")
     .select(
       "id, market_id, product, instrument, counter_market_id, side, quantity_mwh, limit_price, order_type, status, delivery_start, delivery_end, filled_trade_id, expires_at, created_at, updated_at"
     )
-    .eq("user_id", user.id)
+    .eq("user_id", desk.accountUserId)
     .order("created_at", { ascending: false })
     .limit(100);
   if (status) query = query.eq("status", status);
@@ -161,9 +165,12 @@ export async function POST(req: Request) {
   // the day-ahead market regardless of the page they were placed from.
   const product = resolveTradedProduct(instrument, o.product);
 
+  // Through the caller's own session: the engine checks that it may act for
+  // this account (its own, or a desk it owns — acts_for, 0048).
+  const desk = await getActiveDesk(user.id);
   const db = await createClient();
   const { data, error } = await db.rpc("place_limit_order", {
-    p_user_id: user.id,
+    p_user_id: desk.accountUserId,
     p_market_id: o.marketId,
     p_instrument: instrument.code,
     p_product: product,

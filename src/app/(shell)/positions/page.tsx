@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/auth";
+import { requireDesk } from "@/lib/desk";
 import { getPositionsView } from "@/lib/queries";
 import {
   usd,
@@ -19,9 +19,9 @@ import { buildLadder } from "@/lib/risk-ladder";
 export const dynamic = "force-dynamic";
 
 export default async function PositionsPage() {
-  const user = await requireUser();
+  const { desk } = await requireDesk();
   const { tz } = await getViewerTimeZone();
-  const positions = await getPositionsView(user.id);
+  const positions = await getPositionsView(desk.accountUserId);
   const open = positions.filter((p) => p.isOpen);
   const flat = positions.filter((p) => !p.isOpen);
 

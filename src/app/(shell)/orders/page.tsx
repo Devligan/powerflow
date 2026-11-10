@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
+import { getActiveDesk } from "@/lib/desk";
 import { damDeadlineUtc } from "@/lib/ercot/hour-ending";
 import { format, parseDbDec } from "@/lib/money";
 import { legsLabel, usd } from "@/lib/format";
@@ -30,19 +32,23 @@ export default async function OrdersPage() {
   const user = await getSessionUser();
   const { tz } = await getViewerTimeZone();
   const db = await createClient();
+  // A desk's orders are read with the service role, scoped to the desk the
+  // caller was just verified to own; row-level security shows a session only
+  // its own live account.
+  const desk = user ? await getActiveDesk(user.id) : null;
   const [{ data }, { data: markets }, clock] = await Promise.all([
-    user
-      ? db
+    desk
+      ? supabaseAdmin()
           .from("paper_orders")
           .select(
             "id, market_id, counter_market_id, product, instrument, side, quantity_mwh, limit_price, order_type, status, delivery_start, delivery_end, filled_trade_id, created_at"
           )
-          .eq("user_id", user.id)
+          .eq("user_id", desk.accountUserId)
           .order("created_at", { ascending: false })
           .limit(100)
       : Promise.resolve({ data: [] }),
     db.from("markets").select("id, settlement_point"),
-    user ? getSimClock(user.id) : null,
+    desk ? getSimClock(desk.accountUserId) : null,
   ]);
 
   // The deadline is on the account's clock, as the engine reads it.

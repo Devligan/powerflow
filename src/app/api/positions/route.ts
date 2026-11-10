@@ -1,6 +1,7 @@
 import { getPositionsView } from "@/lib/queries";
 import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 import { getSessionUser } from "@/lib/auth";
+import { getActiveDesk } from "@/lib/desk";
 import { serverError, fail, ok, m } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,8 @@ export async function GET() {
   if (await overLimit(LIMITS.reads, user.id)) return tooManyRequests(LIMITS.reads);
 
   try {
-    const positions = await getPositionsView(user.id);
+    const desk = await getActiveDesk(user.id);
+    const positions = await getPositionsView(desk.accountUserId);
     return ok({
       positions: positions.map((p) => ({
         id: p.id,
