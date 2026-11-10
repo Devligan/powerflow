@@ -18,12 +18,18 @@ export const maxDuration = 10;
  *  market: tomorrow's day-ahead clearing and the real-time prints. */
 const FRESHNESS_PRODUCTS = ["DAM_HOURLY", "RTM_15MIN", "RTM_HOURLY"] as const;
 
+/** The free plan's database size (Supabase: 500 MB), read conservatively. */
+const FREE_TIER_DB_BYTES = 500_000_000;
+
 export async function GET(req: Request) {
   if (await overLimit(LIMITS.publicRead, clientIp(req))) return tooManyRequests(LIMITS.publicRead);
 
   const admin = supabaseAdmin();
 
-  const [runsRes, pricesRes, ...newestRes] = await Promise.all([
+  const [usageRes, runsRes, pricesRes, ...newestRes] = await Promise.all([
+    // 0050: how full the database is, so the Production workflow warns long
+    // before the free plan's limit. A percentage, never a table or a count.
+    admin.rpc("database_usage"),
     admin
       .from("ingestion_runs")
       .select("id, source, status, records_received, records_inserted, records_skipped, started_at, finished_at")
@@ -70,6 +76,8 @@ export async function GET(req: Request) {
 
   const mode = resolveMarketDataMode();
 
+  const usedBytes = usageRes.error ? null : Number(usageRes.data);
+
   return okPublic({
     latestRuns: runs,
     latestPriceAt,
@@ -77,5 +85,9 @@ export async function GET(req: Request) {
     newestByProduct,
     mode,
     generated: mode === "GENERATED",
+    storage:
+      usedBytes == null || !Number.isFinite(usedBytes)
+        ? null
+        : { percentOfFreeTier: Math.round((usedBytes / FREE_TIER_DB_BYTES) * 1000) / 10 },
   });
 }

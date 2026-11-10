@@ -13,6 +13,7 @@ const BASE = (process.argv[2] ?? process.env.SMOKE_URL ?? "https://powerflow-two
 const MAX_RUN_AGE_MIN = 45;
 // ERCOT posts a 15-minute RT interval roughly 15-20 minutes after it ends.
 const MAX_RT_PUBLISH_AGE_MIN = 90;
+const MAX_STORAGE_PERCENT = 80;
 
 const results = [];
 const check = (name, ok, detail = "") => results.push({ name, ok: Boolean(ok), detail });
@@ -62,6 +63,15 @@ async function main() {
       "real-time prices are fresh",
       rt && minutesSince(rt.publishedAt) <= MAX_RT_PUBLISH_AGE_MIN,
       rt ? `interval ${rt.deliveryTimestamp}, posted ${Math.round(minutesSince(rt.publishedAt))} min ago` : "none",
+    );
+
+    // The free plan's database stops taking writes when full: warn at 80%,
+    // months ahead at the current ~1 MB a day (0050).
+    const pct = status.storage?.percentOfFreeTier;
+    check(
+      "database below 80% of the free tier",
+      typeof pct === "number" && pct < MAX_STORAGE_PERCENT,
+      typeof pct === "number" ? `${pct}% used` : "not reported",
     );
   }
 
