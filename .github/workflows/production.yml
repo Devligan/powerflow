@@ -1,7 +1,7 @@
 name: Production
 
 # CI gates what reaches master; this watches what is live. After every
-# production deploy, and every three hours, it checks the site the way a
+# production deploy, and every six hours, it checks the site the way a
 # visitor and the scheduler see it (scripts/smoke-production.mjs): pages
 # answer, protected routes stay protected, and ERCOT prices are still arriving.
 # A failed run is the alert.
@@ -9,8 +9,10 @@ name: Production
 on:
   # Vercel reports deploys as commit statuses, not GitHub deployments.
   status:
+  # Every six hours: the repository is private, so each 15-second run bills a
+  # whole Actions minute against the free 2,000 a month. Deploys still check at once.
   schedule:
-    - cron: "41 */3 * * *"
+    - cron: "41 */6 * * *"
   workflow_dispatch:
 
 permissions:
