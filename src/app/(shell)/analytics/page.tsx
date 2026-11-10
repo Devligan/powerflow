@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/auth";
+import { requireDesk } from "@/lib/desk";
 import { getAnalytics } from "@/lib/analytics";
 import { AnalyticsCharts } from "./analytics-charts";
 import { usd, sign, bpsToPercent, num, volumeUnitLabel } from "@/lib/format";
@@ -19,8 +19,8 @@ const toneOf = (v: string): "pos" | "neg" | undefined => {
 };
 
 export default async function AnalyticsPage() {
-  const user = await requireUser();
-  const a = await getAnalytics(user.id);
+  const { desk } = await requireDesk();
+  const a = await getAnalytics(desk.accountUserId);
 
   const kpis: Array<{
     label: string;

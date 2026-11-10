@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { requireUser, getUserProfile } from "@/lib/auth";
+import { getActiveDesk } from "@/lib/desk";
+import { PracticeDay } from "@/components/practice-day";
 import { getPortfolioSnapshot } from "@/lib/queries";
 import { getMarketStatus } from "@/lib/markets";
 import { MarketsStrip } from "@/components/markets-strip";
@@ -28,11 +30,12 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const user = await requireUser();
   const { tz } = await getViewerTimeZone();
+  const desk = await getActiveDesk(user.id);
   const [snapshot, status, profile, clock] = await Promise.all([
-    getPortfolioSnapshot(user.id).catch(() => null),
+    getPortfolioSnapshot(desk.accountUserId).catch(() => null),
     getMarketStatus().catch(() => null),
     getUserProfile(user.id).catch(() => null),
-    getSimClock(user.id).catch(() => null),
+    getSimClock(desk.accountUserId).catch(() => null),
   ]);
 
   const met = snapshot?.metrics;
@@ -64,7 +67,7 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <PageHeader
         kicker={`Account · ${account}`}
-        title="Desk"
+        title={desk.kind === "PRACTICE" ? "Practice desk" : "Desk"}
         aside={
           <>
             {status && (
@@ -85,8 +88,9 @@ export default async function DashboardPage() {
       </PageHeader>
 
       {/* The clock: what "now" means for this desk. Every mark, fill and
-          settlement resolves through it. */}
-      <SimClockWidget />
+          settlement resolves through it. The practice desk walks it through a
+          past operating day; the live desk keeps the free-form control. */}
+      {desk.kind === "PRACTICE" ? <PracticeDay /> : <SimClockWidget />}
 
       {/* Bank of readouts. */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">

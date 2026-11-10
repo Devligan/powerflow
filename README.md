@@ -97,6 +97,15 @@ with virtual cash, a full risk engine, immutable audit trail, and analytics.
   ERCOT's 15-minute posting rhythm and `GET /api/cron/settle` hourly, guarded
   by a secret; `vercel.json` keeps a once-a-day fallback, which is all the
   Hobby plan allows. ERCOT MIS adapter via `ERCOT_SOURCE=ERCOT_MIS`.
+- **Practice desk** (migration 0048): a second account with its own $100,000
+  and clock, switched to from the bar under the navigation. Its *practice day*
+  replays one recent operating day in four steps — open bidding (08:00
+  Central the day before), run the day-ahead clearing (14:00), deliver the
+  day, settle when its real-time prices are final — so a new trader sees a bid
+  clear, deliver and settle in minutes. Replay on the live account still takes
+  it off the standings (0042); the practice desk never touches it. A desk is
+  an engine account its owner's session may act for (`acts_for`), checked in
+  the database.
 
 ## Stack
 

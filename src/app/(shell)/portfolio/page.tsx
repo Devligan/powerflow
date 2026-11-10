@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/auth";
+import { requireDesk } from "@/lib/desk";
 import { getPortfolioSnapshot } from "@/lib/queries";
 import { usd, sign, bpsToPercent, num, volumeUnitLabel } from "@/lib/format";
 import { parseDec } from "@/lib/money";
@@ -14,8 +14,8 @@ import { Stat } from "@/components/ui/stat";
 export const dynamic = "force-dynamic";
 
 export default async function PortfolioPage() {
-  const user = await requireUser();
-  const snapshot = await getPortfolioSnapshot(user.id);
+  const { desk } = await requireDesk();
+  const snapshot = await getPortfolioSnapshot(desk.accountUserId);
 
   const met = snapshot.metrics;
   const openPositions = snapshot.positions.filter((p) => p.isOpen);

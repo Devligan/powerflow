@@ -4,6 +4,8 @@ import { getSessionUser, ensureUserRecords, getUserProfile } from "@/lib/auth";
 import { Nav } from "@/components/nav";
 import { ZoneCaption } from "@/components/ui/clock";
 import { SetupBanner } from "@/components/setup-banner";
+import { DeskBar } from "@/components/desk-bar";
+import { getActiveDesk } from "@/lib/desk";
 
 export default async function ShellLayout({
   children,
@@ -25,6 +27,7 @@ export default async function ShellLayout({
     // must be trapped on /welcome by a deploy that ran ahead of a migration.
     if (profile && profile.onboarded_at === null) redirect("/welcome");
   }
+  const desk = user ? await getActiveDesk(user.id).catch(() => null) : null;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -34,6 +37,7 @@ export default async function ShellLayout({
         displayName={profile?.display_name ?? profile?.username ?? ""}
         avatarUrl={profile?.avatar_url ?? null}
       />
+      {desk && <DeskBar kind={desk.kind} />}
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-7">
         {children}
       </main>

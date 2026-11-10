@@ -3,14 +3,14 @@ import { listMarkets } from "@/lib/markets";
 import { usd, signedUsd, timeAgo, sourceInfo } from "@/lib/format";
 import { parseDec } from "@/lib/money";
 import { PageHeader } from "@/components/ui/page-header";
-import { requireUser } from "@/lib/auth";
+import { requireDesk } from "@/lib/desk";
 import { getSimClock } from "@/lib/sim-clock";
 
 export const dynamic = "force-dynamic";
 
 export default async function MarketsPage() {
-  const user = await requireUser();
-  const clock = await getSimClock(user.id).catch(() => null);
+  const { desk } = await requireDesk();
+  const clock = await getSimClock(desk.accountUserId).catch(() => null);
   const asOf = clock && clock.mode === "REPLAY" ? new Date(clock.now) : null;
   const markets = await listMarkets(asOf).catch(() => []);
   type Market = (typeof markets)[number];

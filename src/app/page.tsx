@@ -38,6 +38,11 @@ const SPEC: Array<{ term: string; detail: string }> = [
       "$100,000 virtual cash per account. Open bids and positions hold collateral sized on each point's recent day-ahead to real-time gap.",
   },
   {
+    term: "Practice",
+    detail:
+      "A practice desk with its own $100,000 replays any recent operating day — bid, clear, deliver and settle in a few minutes — without touching your live account or its place on the standings.",
+  },
+  {
     term: "Execution",
     detail:
       "Bids close at 10:00 Central the day before and fill at ERCOT's actual clearing price. An hour with no published price never fills at an older one.",
