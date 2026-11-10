@@ -139,7 +139,8 @@ export function ChallengeView({ slug, activeDeskId, compact = false }: { slug: s
                 Enter this challenge
               </button>
               <span className="caption t-mute">
-                Your display name appears on its standings. Your live account is not touched.
+                Your display name appears on its standings, which anyone with this link can see. Your live account is
+                not touched.
               </span>
             </div>
           )}
