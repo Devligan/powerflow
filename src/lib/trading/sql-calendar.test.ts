@@ -337,5 +337,31 @@ describe.skipIf(!dbTestsEnabled())("settlement calendar (live database)", () => 
       expect((await settle(d)).settled).toBe(1);
       expect(await cash(d)).toBe(100_000 + (30 - 20) * 10);
     }, 60_000);
+
+    it("never lets a re-posted old hour pass for the current price (0047)", async () => {
+      // A correction to an hour long past, posted a moment ago: the newest
+      // publication there is, and the oldest hour.
+      await publish(south, "RTM_HOURLY", he(16), 77, new Date(Date.now() - MINUTE).toISOString(), true);
+
+      const { data: current } = await db
+        .from("current_prices")
+        .select("delivery_timestamp")
+        .eq("market_id", south)
+        .eq("product", "RTM_HOURLY")
+        .single();
+      const { data: newest } = await db
+        .from("market_prices")
+        .select("delivery_timestamp")
+        .eq("market_id", south)
+        .eq("product", "RTM_HOURLY")
+        .lte("published_at", new Date().toISOString())
+        .order("delivery_timestamp", { ascending: false })
+        .limit(1)
+        .single();
+      expect(Date.parse(current!.delivery_timestamp as string)).toBe(
+        Date.parse(newest!.delivery_timestamp as string)
+      );
+      expect(Date.parse(current!.delivery_timestamp as string)).toBeGreaterThan(Date.parse(he(16)));
+    }, 60_000);
   });
 });

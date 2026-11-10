@@ -8,6 +8,7 @@ import {
   volumeUnitLabel,
 } from "@/lib/format";
 import type { InstrumentBreakdown } from "@/lib/trading/accounting";
+import { DESK_INSTRUMENT_CODES } from "@/lib/ercot/types";
 import type { PositionView } from "@/lib/queries";
 
 /**
@@ -23,10 +24,22 @@ import type { PositionView } from "@/lib/queries";
  * both render it without duplicating the table.
  */
 export function InstrumentBreakdownTable({
-  rows,
+  rows: allRows,
 }: {
   rows: InstrumentBreakdown[];
 }) {
+  // An instrument the desk no longer offers, holding nothing and having made
+  // or lost nothing, is noise on a risk view: CRR options and index swaps next
+  // to a virtuals book. Anything with a position or P&L stays, so the rows
+  // still sum to the totals.
+  const rows = allRows.filter(
+    (r) =>
+      DESK_INSTRUMENT_CODES.includes(r.instrument) ||
+      r.positions > 0 ||
+      r.grossNotional !== 0n ||
+      r.realizedPnl !== 0n ||
+      r.unrealizedPnl !== 0n
+  );
   const totalGross = rows.reduce((acc, r) => acc + r.grossNotional, 0n);
   const unpriced = rows.reduce((acc, r) => acc + r.unmarkedPositions, 0);
 

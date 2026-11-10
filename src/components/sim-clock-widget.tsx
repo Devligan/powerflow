@@ -14,6 +14,16 @@ import { useTimeZone } from "@/components/time-zone";
  * sees — bounded by what ERCOT had actually published by then.
  */
 
+/** "14 d 4 h behind live" — how far back the replay desk stands. */
+function behindLive(offsetSeconds: number): string {
+  const s = Math.abs(offsetSeconds);
+  const d = Math.floor(s / 86_400);
+  const h = Math.floor((s % 86_400) / 3_600);
+  const m = Math.floor((s % 3_600) / 60);
+  const parts = d > 0 ? [`${d} d`, `${h} h`] : h > 0 ? [`${h} h`, `${m} min`] : [`${m} min`];
+  return `${parts.join(" ")} ${offsetSeconds < 0 ? "behind" : "ahead of"} live`;
+}
+
 interface ClockState {
   offsetSeconds: number;
   mode: "REPLAY" | "LIVE";
@@ -80,9 +90,7 @@ export function SimClockWidget() {
           </div>
           <div className="caption t-mute">
             {clock && replay
-              ? `Trading a historical market · offset ${
-                  clock.offsetSeconds >= 0 ? "+" : ""
-                }${clock.offsetSeconds}s`
+              ? `Trading a historical market · ${behindLive(clock.offsetSeconds)}`
               : "Following the wall clock"}
           </div>
           <div className="caption t-mute">

@@ -175,4 +175,21 @@ export function formatGrouped(n: bigint, places = 2): string {
   return `${neg ? "-" : ""}${int}${frac.length > 0 ? `.${frac}` : ""}`;
 }
 
+/**
+ * Money for display: rounded half away from zero to `places`, always shown to
+ * that many decimals and grouped — $9.20, not $9.2; +134.93, not +134.92 —
+ * the way a desk quotes $/MWh and P&L. Unsigned: callers put the sign where
+ * it belongs (ahead of a currency symbol).
+ */
+export function formatMoneyAbs(n: bigint, places = 2): string {
+  const p = Math.max(0, Math.min(places, DECIMAL_PLACES));
+  const absN = n < 0n ? -n : n;
+  const unit = 10n ** BigInt(DECIMAL_PLACES - p);
+  const rounded = (absN + unit / 2n) / unit; // in units of 10^-p
+  const scale = 10n ** BigInt(p);
+  const int = (rounded / scale).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const frac = p > 0 ? `.${(rounded % scale).toString().padStart(p, "0")}` : "";
+  return `${int}${frac}`;
+}
+
 export { SCALE };

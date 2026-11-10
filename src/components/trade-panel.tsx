@@ -145,7 +145,9 @@ export function TradePanel({
   const peakDay = isPeakWeekday(opDay);
 
   const deadlineMs = dayHours[0] ? damDeadlineUtc(dayHours[0].startMs) : null;
-  const clearingMs = deadlineMs != null ? deadlineMs + 3.5 * 3_600_000 : null;
+  // ERCOT's DAM postings (NP4-190) land at about 12:32 Central on a normal
+  // day, later when the run is delayed: 2.5 hours after the 10:00 deadline.
+  const clearingMs = deadlineMs != null ? deadlineMs + 2.5 * 3_600_000 : null;
   const minutesLeft =
     deadlineMs != null && simNowMs != null ? Math.floor((deadlineMs - simNowMs) / 60_000) : null;
 
@@ -276,8 +278,11 @@ export function TradePanel({
           <p className="mono mt-1 truncate text-[11px] t-mute">{settlementPoint}</p>
         </div>
         {latestPrice != null && (
-          <span className="badge badge-amber" title="Latest published day-ahead price at this point">
-            {usd(latestPrice)}
+          <span
+            className="badge badge-amber"
+            title="Day-ahead clearing price for the next hour ERCOT has already cleared at this point — a reference, not the price this bid will get"
+          >
+            Next cleared DA {usd(latestPrice)}
           </span>
         )}
       </div>
@@ -519,8 +524,9 @@ export function TradePanel({
                   {minutesLeft % 60}m)
                 </span>
               )}
-              . ERCOT publishes the clearing prices around{" "}
-              <span className="t-dim">{clearingMs != null ? localTime(clearingMs, tz) : "—"}</span> that day; each hour
+              . ERCOT usually publishes the clearing prices around{" "}
+              <span className="t-dim">{clearingMs != null ? localTime(clearingMs, tz) : "—"}</span> that day (later
+              when the market run is delayed); each hour
               then fills at its own clearing price and settles against that hour&apos;s real-time price.
             </p>
           ) : (

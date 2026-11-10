@@ -3,6 +3,12 @@ import { getAnalytics } from "@/lib/analytics";
 import { AnalyticsCharts } from "./analytics-charts";
 import { usd, sign, bpsToPercent, num, volumeUnitLabel } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
+import { parseDec } from "@/lib/money";
+
+const absDec = (v: string): bigint => {
+  const n = parseDec(v);
+  return n < 0n ? -n : n;
+};
 import { Stat } from "@/components/ui/stat";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +57,8 @@ export default async function AnalyticsPage() {
     { label: "Worst trade", value: sign(a.worstTradePnl), tone: toneOf(a.worstTradePnl) },
     {
       label: "Max drawdown",
-      value: sign(a.maxDrawdown),
+      // Stored as a magnitude; shown as the loss it is from the peak.
+      value: sign(-absDec(a.maxDrawdown)),
       tone: parseFloat(a.maxDrawdown) !== 0 ? "neg" : undefined,
     },
   ];
