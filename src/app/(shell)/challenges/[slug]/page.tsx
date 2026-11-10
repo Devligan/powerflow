@@ -8,6 +8,7 @@ import { dayLabel } from "@/lib/challenge-schedule";
 import { PageHeader } from "@/components/ui/page-header";
 import { ChallengeView } from "@/components/challenge-view";
 import { Avatar } from "@/components/ui/avatar";
+import { ShareInvite } from "@/components/share-invite";
 
 export const dynamic = "force-dynamic";
 
@@ -49,11 +50,14 @@ export default async function ChallengePage({ params }: Props) {
       kicker="Challenge"
       title={challenge.title}
       aside={
-        user ? (
-          <Link href="/challenges" className="btn btn-sm">
-            All challenges
-          </Link>
-        ) : undefined
+        <>
+          <ShareInvite title={challenge.title} path={`/challenges/${challenge.slug}`} />
+          {user && (
+            <Link href="/challenges" className="btn btn-sm">
+              All challenges
+            </Link>
+          )}
+        </>
       }
     >
       {daysOf(challenge)} as ERCOT actually ran them. Everyone who enters trades those days on a fresh $100,000
