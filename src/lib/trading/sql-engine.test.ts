@@ -203,11 +203,11 @@ describe.skipIf(!dbTestsEnabled())("trading engine (live database)", () => {
     expect(pos.realized).toBe(0);
   }, 60_000);
 
-  it("refuses a user's direct day-ahead fill: day-ahead positions are bids (0038)", async () => {
+  it("refuses a user's direct fill: positions are bids the sweep fills (0038, 0046)", async () => {
     // Fills come from the service-role order sweep (as above, via `db`); a
-    // user session may only place an order before the 10:00 deadline.
+    // user session may only place an order, and cannot call the fill at all.
     const { error } = await client.rpc("execute_trade", trade());
-    expect(String(error?.message)).toMatch(/DAM_CLOSED|DAM_ORDER_REQUIRED/);
+    expect(error?.code).toBe("42501");
   });
 
   it("weights the average entry price when adding to a position", async () => {

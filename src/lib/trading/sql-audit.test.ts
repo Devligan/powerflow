@@ -341,7 +341,8 @@ describe.skipIf(!dbTestsEnabled())("engine regressions (live database)", () => {
         p_client_order_id: crypto.randomUUID(),
         p_as_of: AFTER_CLEARING,
       });
-      expect(error?.message).toContain("FORBIDDEN");
+      // Since 0046 a session cannot call the fill at all.
+      expect(error?.code).toBe("42501");
     }, 60_000);
   });
 

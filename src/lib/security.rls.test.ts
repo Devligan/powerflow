@@ -288,6 +288,42 @@ describe.skipIf(!dbTestsEnabled())("authorization boundary (live database)", () 
     });
   });
 
+  describe("least privilege (0046)", () => {
+    it("gives neither a visitor nor a session the price store", async () => {
+      for (const c of [anonClient, attackerClient]) {
+        for (const table of ["market_prices", "current_prices"]) {
+          const { error } = await c.from(table).select("*").limit(1);
+          expect(error?.code, table).toBe("42501");
+        }
+      }
+      // Reference tables are a signed-in read, not an anonymous one.
+      expect((await anonClient.from("markets").select("id").limit(1)).error?.code).toBe("42501");
+      expect((await attackerClient.from("markets").select("id").limit(1)).error).toBeNull();
+    });
+
+    it("leaves a session only the engine's checked entry points", async () => {
+      const calls: Array<[string, Record<string, unknown>]> = [
+        // An unbounded loop before 0046: one call per CPU-second.
+        ["ercot_business_day_after", { p_day: "2026-01-01", p_n: 2_000_000_000 }],
+        ["latest_price_timestamps", { p_market_ids: [marketId] }],
+        ["price_at", { p_market_id: marketId, p_product: PRODUCT, p_ts: interval, p_as_of: interval }],
+        ["sim_now", { p_user_id: victim.id }],
+        ["promote_rtm_finals", {}],
+      ];
+      for (const [fn, args] of calls) {
+        for (const c of [anonClient, attackerClient]) {
+          const { error } = await c.rpc(fn, args);
+          expect(error?.code, fn).toBe("42501");
+        }
+      }
+    });
+
+    it("bounds the business-day count for every caller", async () => {
+      const { error } = await db.rpc("ercot_business_day_after", { p_day: "2026-01-01", p_n: 100_000 });
+      expect(error?.message).toContain("BUSINESS_DAYS_INVALID");
+    });
+  });
+
   describe("functions", () => {
     it("cannot trade, or read marks, on someone else's account", async () => {
       const cashBefore = await db
@@ -308,8 +344,9 @@ describe.skipIf(!dbTestsEnabled())("authorization boundary (live database)", () 
         p_delivery_end: intervalEnd,
         p_client_order_id: `attack-${Date.now()}`,
       });
-      expect(traded.error).toBeTruthy();
-      expect(String(traded.error?.message)).toContain("FORBIDDEN");
+      // A session cannot call the fill at all (0046); its own owner check
+      // stands behind that for the engine's callers.
+      expect(traded.error?.code).toBe("42501");
 
       const marks = await attackerClient.rpc("position_marks", { p_user_id: victim.id });
       expect(marks.error).toBeTruthy();

@@ -463,23 +463,25 @@ describe.skipIf(!dbTestsEnabled())("historical replay on actual ERCOT data (live
     const other = await createTestUser("sql-replay-live");
     const otherClient = await userClient(other);
 
-    const { error } = await otherClient.rpc("execute_trade", {
+    // A bid is the only way in, and that hour is long past for this desk.
+    const { error } = await otherClient.rpc("place_limit_order", {
       p_user_id: other.id,
       p_market_id: marketId,
-      p_counter_market_id: null,
       p_instrument: "VIRTUAL",
       p_product: "DAM_HOURLY",
+      p_counter_market_id: null,
       p_side: "BUY",
       p_quantity_mwh: 1,
+      p_limit_price: null,
       p_delivery_start: hour,
       p_delivery_end: hourEnd,
-      p_client_order_id: crypto.randomUUID(),
     });
-    expect(error).toBeTruthy();
+    expect(String(error?.message)).toMatch(/DELIVERY_IN_PAST|DAM_CLOSED/);
 
     // And its clock is the wall clock, not the replay desk's.
-    const { data: now2 } = await otherClient.rpc("sim_now", { p_user_id: other.id });
-    const { data: now1 } = await client.rpc("sim_now", { p_user_id: user.id });
+    // Read through the service role: sim_now is the engine's, not a session's (0046).
+    const { data: now2 } = await db.rpc("sim_now", { p_user_id: other.id });
+    const { data: now1 } = await db.rpc("sim_now", { p_user_id: user.id });
     expect(Math.abs(new Date(now2 as string).getTime() - Date.now())).toBeLessThan(30_000);
     expect(new Date(now1 as string).getTime()).toBeLessThan(
       new Date(now2 as string).getTime() - 20 * 3_600_000
