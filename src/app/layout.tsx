@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Archivo, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { getViewerTimeZone } from "@/lib/time-zone-server";
@@ -50,6 +50,12 @@ export const metadata: Metadata = {
     title: "PowerFlow — paper-trade the Texas power market",
     description: DESCRIPTION,
   },
+};
+
+/** The phone's status bar and the installed app's frame take the desk's ink. */
+export const viewport: Viewport = {
+  themeColor: "#0b0c0e",
+  colorScheme: "dark",
 };
 
 export default async function RootLayout({
