@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useTimeZone } from "@/components/time-zone";
 import { dateTime } from "@/lib/time";
 import type { PracticeStep } from "@/lib/practice";
+import { PracticeRecap } from "@/components/practice-recap";
 
 interface PracticeState {
   days: string[];
@@ -242,6 +243,10 @@ export function PracticeDay() {
           )}
         </div>
       )}
+
+      {/* The lesson: which side of which hour paid. Day-ahead appears once the
+          clearing is past on the practice clock, real time once delivered. */}
+      {onThisDay && state?.clock && <PracticeRecap refreshKey={state.clock.now} />}
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         <span className="caption t-mute mono">
