@@ -1,4 +1,8 @@
+import { format, parseDbDec } from "@/lib/money";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+
+/** Money as the API gives it: an exact decimal string. */
+const m = (v: string) => format(parseDbDec(v), 6);
 
 /**
  * The public standings, as anyone may see them.
@@ -77,6 +81,29 @@ async function rankedStandings(top: number): Promise<Ranked[]> {
   return rows
     .filter((r) => byId.get(r.user_id)?.onboarded_at != null && r.display_name)
     .map((row) => ({ row, avatarUrl: (byId.get(row.user_id)?.avatar_url as string | null) ?? null }));
+}
+
+/**
+ * A row as the public JSON carries it. Money is exact decimal strings;
+ * returnBps is a plain number of basis points, as /api/portfolio gives it —
+ * not a fixed-point value (parseDbDec's 1e6 scale would multiply it).
+ */
+export function publicStandingsJson(r: StandingsRow) {
+  return {
+    rank: r.rank,
+    displayName: r.displayName,
+    avatarUrl: r.avatarUrl,
+    equity: m(r.equity),
+    returnBps: Number(r.returnBps),
+    realizedPnl: m(r.realizedPnl),
+    markedValue: m(r.markedValue),
+    // Notional per unit — never a single mixed total.
+    openNotionalMwh: m(r.openNotionalMwh),
+    openNotionalMw: m(r.openNotionalMw),
+    positionsCount: r.positionsCount,
+    tradesCount: r.tradesCount,
+    joinedAt: r.joinedAt,
+  };
 }
 
 export async function getPublicStandings(
