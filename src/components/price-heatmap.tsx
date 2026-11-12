@@ -109,7 +109,7 @@ export function PriceHeatmap({ rows, todayDay }: { rows: HeatRow[]; todayDay: st
           </tbody>
         </table>
       </div>
-      <p className="caption mt-2">
+      <p className="hint mt-2">
         Hour ending, Central. Peak = HE7–HE22 average; ATC = around the clock. A › marks a day that has
         not started yet. The fall-back day&apos;s repeated HE2 is averaged into one cell.
       </p>

@@ -94,6 +94,32 @@ export function zonedParts(ms: number, tz: string): ZonedParts {
   };
 }
 
+/**
+ * "Wed, Nov 11, 4:00 PM": a near date in a badge or a dense table, where the
+ * year and zone are already plain from the page around it.
+ */
+export function briefDateTime(v: TimeInput, tz: string): string {
+  const ms = toMs(v);
+  if (ms == null) return "—";
+  return fmt(tz, "brief", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(ms);
+}
+
+/**
+ * "Thu, Nov 12": the ERCOT operating day an instant falls in. Operating days
+ * are Central whatever the viewer's zone, so this ignores it.
+ */
+export function operatingDayLabel(v: TimeInput): string {
+  const ms = toMs(v);
+  if (ms == null) return "—";
+  return fmt(MARKET_TIME_ZONE, "opday", { weekday: "short", month: "short", day: "numeric" }).format(ms);
+}
+
 /** "2026-11-01" */
 export function localDate(v: TimeInput, tz: string): string {
   const ms = toMs(v);

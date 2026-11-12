@@ -7,7 +7,7 @@ import { TradePanel } from "@/components/trade-panel";
 import { PriceChart } from "@/components/price-chart";
 import { FundamentalsPanel } from "@/components/fundamentals-panel";
 import { sourceInfo } from "@/lib/format";
-import { dateTime, shortDate } from "@/lib/time";
+import { dateTime, operatingDayLabel, shortDate } from "@/lib/time";
 import { getViewerTimeZone } from "@/lib/time-zone-server";
 import { Lamp } from "@/components/ui/lamp";
 import { requireDesk } from "@/lib/desk";
@@ -117,7 +117,7 @@ export default async function MarketDetailPage({
             <h2 className="card-title mb-0">Day-ahead curve vs real time</h2>
             {forwardLast && (
               <span className="caption">
-                day-ahead through {dateTime(forwardPricedThrough!, tz)}
+                day-ahead published for {operatingDayLabel(forwardLast.deliveryTimestamp)}
               </span>
             )}
           </div>
@@ -128,7 +128,7 @@ export default async function MarketDetailPage({
             referenceLabel="Real time"
             nowMs={nowMs}
           />
-          <p className="caption mt-3">
+          <p className="hint mt-3">
             Day-ahead clears the afternoon before delivery; real time settles
             each hour after it ends. Their gap is DART — what a virtual or DART
             spread on this point is paid.
@@ -141,7 +141,10 @@ export default async function MarketDetailPage({
           </p>
         </section>
 
-        <div className="lg:col-start-2 lg:row-span-2 lg:row-start-1">
+        {/* The ticket stays in view while the history below it is studied;
+            taller than a laptop screen, so it scrolls on its own. */}
+        <div className="lg:sticky lg:top-16 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto">
+
           <TradePanel
             marketId={market.id}
             settlementPoint={market.settlementPoint}

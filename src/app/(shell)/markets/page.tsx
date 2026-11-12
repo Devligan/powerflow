@@ -91,7 +91,7 @@ export default async function MarketsPage() {
             </tbody>
           </table>
         </div>
-        <p className="caption border-t border-white/10 px-4 py-2.5">{note}</p>
+        <p className="hint border-t border-white/10 px-4 py-2.5">{note}</p>
       </section>
     );
   }

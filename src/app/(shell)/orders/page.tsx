@@ -72,7 +72,7 @@ export default async function OrdersPage() {
     <div className="space-y-6">
       <header>
         <h1 className="font-display text-2xl font-bold">Orders</h1>
-        <p className="caption mt-1 t-mute">
+        <p className="hint mt-1 t-mute">
           Day-ahead bids close at 10:00 AM Central the day before each
           operating day. When ERCOT publishes the clearing prices, each order
           fills at the actual clearing price: always for an order at the
@@ -127,7 +127,7 @@ export default async function OrdersPage() {
       <section className="card">
         <h2 className="card-title">History</h2>
         {history.length === 0 ? (
-          <p className="caption mt-2 t-mute">
+          <p className="hint mt-2 t-mute">
             {open.length > 0
               ? "No finished orders yet."
               : "No orders yet. Place a day-ahead bid from any market page."}

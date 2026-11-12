@@ -148,6 +148,16 @@
     color: var(--text-mute);
   }
 
+  /* A sentence of explanation. The caption face (10px mono, spaced capitals)
+     is for labels; a whole sentence set that way reads like a shout and is
+     hard to take in, so prose beside a panel uses this instead. (.note is
+     the boxed callout.) */
+  .hint {
+    font-size: 0.75rem;
+    line-height: 1.55;
+    color: var(--text-mute);
+  }
+
   .pos {
     color: var(--long);
   }

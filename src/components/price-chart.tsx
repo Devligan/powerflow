@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { parseDec, format } from "@/lib/money";
+import { parseDec } from "@/lib/money";
+import { usd } from "@/lib/format";
 import { shortDate } from "@/lib/time";
 import { useTimeZone } from "@/components/time-zone";
 
@@ -30,7 +31,8 @@ function stamp(iso: string, tz: string): string {
   return shortDate(iso, tz);
 }
 
-const money = (v: bigint) => (v < 0n ? `−$${format(-v, 2)}` : `$${format(v, 2)}`);
+// Always to the cent: format() trims zeros, which printed a $19.80 spread as $19.8.
+const money = (v: bigint) => usd(v);
 
 /**
  * The forward curve, with what actually happened drawn against it.
@@ -101,8 +103,27 @@ export function PriceChart({
 
     const refAt = new Map(alt.map((p) => [p.t, p.v]));
     const nowX = nowMs != null && nowMs >= tLo && nowMs <= tHi ? x(nowMs) : null;
-    return { main, coords, line, area, refLine: path(alt), refAt, ticks, nowX, tLo, span };
-  }, [points, reference, nowMs]);
+
+    // At rest the readout shows the newest interval with both prices, so
+    // the spread is filled in; failing that, the one under "now"; failing
+    // that, the last. The curve runs into tomorrow, and tonight's last hour
+    // with nothing to compare it to told a trader little.
+    let restIdx = main.length - 1;
+    let withRef = -1;
+    for (let i = main.length - 1; i >= 0; i--) {
+      if (refAt.has(main[i].t)) {
+        withRef = i;
+        break;
+      }
+    }
+    if (withRef >= 0) restIdx = withRef;
+    else if (nowMs != null) {
+      const at = main.findIndex((p, i) => p.t <= nowMs && (i === main.length - 1 || main[i + 1].t > nowMs));
+      if (at >= 0) restIdx = at;
+    }
+    const restLabel = withRef >= 0 && reference ? `Latest ${referenceLabel.toLowerCase()}` : "Latest interval";
+    return { main, coords, line, area, refLine: path(alt), refAt, ticks, nowX, tLo, span, restIdx, restLabel };
+  }, [points, reference, referenceLabel, nowMs]);
 
   if (points.length === 0 || !geo) {
     return (
@@ -112,7 +133,7 @@ export function PriceChart({
     );
   }
 
-  const idx = hover ?? geo.main.length - 1;
+  const idx = hover ?? geo.restIdx;
   const shown = geo.main[idx];
   const shownRef = geo.refAt.get(shown.t);
   const marker = geo.coords[idx];
@@ -133,7 +154,7 @@ export function PriceChart({
 
   return (
     <div>
-      {/* Readout: the hovered interval, or the latest one at rest. */}
+      {/* Readout: the hovered interval, or at rest the newest one with both prices. */}
       <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="caption t-accent">{label}</span>
         <span className="mono text-xl font-semibold">{money(shown.v)}</span>
@@ -149,7 +170,7 @@ export function PriceChart({
           </span>
         )}
         <span className="caption">{stamp(new Date(shown.t).toISOString(), tz)}</span>
-        <span className="caption ml-auto">{hover != null ? "Hovering interval" : "Latest interval"}</span>
+        <span className="caption ml-auto">{hover != null ? "Hovering interval" : geo.restLabel}</span>
       </div>
 
       <svg

@@ -72,7 +72,7 @@ export function DeskBar({
             </span>
           )}
         </div>
-        <span className="caption t-mute">
+        <span className="hint t-mute">
           {kind === "PRACTICE"
             ? "Practice account: its own $100,000 and clock. Nothing here touches your live book or the standings."
             : kind === "CHALLENGE"

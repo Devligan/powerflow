@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
+  briefDateTime,
   dayStartUtc,
   isValidTimeZone,
   localDate,
   localTime,
   localToUtc,
   normalizeTimeZone,
+  operatingDayLabel,
   shortDate,
   utcToLocal,
   windowLabel,
@@ -81,6 +83,25 @@ describe("windowLabel", () => {
     const e = s + 3_600_000;
     expect(windowLabel(s, e, CT)).toBe("Sat, Oct 31 · 5:00 PM – 6:00 PM CDT · HE18");
     expect(windowLabel(s, e, PT)).toBe("Sat, Oct 31 · 3:00 PM – 4:00 PM PDT · HE18");
+  });
+});
+
+describe("briefDateTime", () => {
+  it("drops the year and zone, in the viewer's zone", () => {
+    // ERCOT's final-price instant: 16:00 Central on a Wednesday.
+    const t = "2026-11-11T22:00:00Z";
+    expect(briefDateTime(t, CT)).toBe("Wed, Nov 11, 4:00 PM");
+    expect(briefDateTime(t, PT)).toBe("Wed, Nov 11, 2:00 PM");
+    expect(briefDateTime(null, CT)).toBe("—");
+  });
+});
+
+describe("operatingDayLabel", () => {
+  it("names the Central operating day, whatever the viewer's zone", () => {
+    // HE24 of Thu Nov 12 starts 23:00 Central; its end is Fri 00:00.
+    expect(operatingDayLabel("2026-11-13T05:00:00Z")).toBe("Thu, Nov 12");
+    expect(operatingDayLabel(Date.parse("2026-11-13T06:00:00Z") - 1)).toBe("Thu, Nov 12");
+    expect(operatingDayLabel("2026-11-13T06:00:00Z")).toBe("Fri, Nov 13");
   });
 });
 

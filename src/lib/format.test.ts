@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bpsToPercent,
+  signTone,
   instrumentInfo,
   legsLabel,
   positionUnit,
@@ -103,6 +104,19 @@ describe("money as a desk quotes it", () => {
     expect(bpsToPercent(159)).toBe("+1.59%");
     expect(bpsToPercent(-920)).toBe("−9.20%");
     expect(bpsToPercent(0)).toBe("0.00%");
+  });
+
+  it("leaves zero uncoloured: a flat book is not a win", () => {
+    expect(signTone("12.5")).toBe("pos");
+    expect(signTone("-0.01")).toBe("neg");
+    expect(signTone("0")).toBeUndefined();
+    // Shown as $0.00, so not coloured either way.
+    expect(signTone("0.004")).toBeUndefined();
+    expect(signTone("-0.004")).toBeUndefined();
+    expect(signTone(0n)).toBeUndefined();
+    expect(signTone(-3n)).toBe("neg");
+    expect(signTone(0)).toBeUndefined();
+    expect(signTone("nonsense")).toBeUndefined();
   });
 
   it("takes the sign from the rounded figure", () => {
