@@ -23,6 +23,14 @@ function day(iso: string): string {
 }
 
 /**
+ * A fixed-point value (1e6 per dollar) as whole dollars, rounded. `format`
+ * truncates toward zero, which printed a 40-cent loss as "-0".
+ */
+function dollars(v: number): string {
+  return format(BigInt(Math.round(v / 1e6)) * 1_000_000n, 0);
+}
+
+/**
  * The two performance views.
  *
  * Both carry a labelled zero line, because on a P&L chart the question is
@@ -112,7 +120,7 @@ export function AnalyticsCharts({
               className={`mono text-[12px] ${curve.last > 0 ? "pos" : curve.last < 0 ? "neg" : "t-mute"}`}
             >
               {curve.last > 0 ? "+" : ""}
-              {format(BigInt(Math.round(curve.last)), 0)}
+              {dollars(curve.last)}
             </span>
           )}
         </div>
@@ -126,7 +134,7 @@ export function AnalyticsCharts({
             viewBox={`0 0 ${curve.W} ${curve.H}`}
             className="w-full"
             role="img"
-            aria-label={`Cumulative realized P&L across ${pnlByDay.length} days, ending at ${format(BigInt(Math.round(curve.last)), 0)}.`}
+            aria-label={`Cumulative realized P&L across ${pnlByDay.length} days, ending at ${dollars(curve.last)}.`}
           >
             {/* Band gridlines with money labels */}
             {[0, 0.5, 1].map((t) => {
@@ -149,8 +157,7 @@ export function AnalyticsCharts({
                     fill="var(--text-mute)"
                     className="mono"
                   >
-                    {/* Whole dollars: rounding first keeps a small negative from printing "-0". */}
-                    {format(BigInt(Math.round(v / 1e6)) * 1_000_000n, 0)}
+                    {dollars(v)}
                   </text>
                 </g>
               );
@@ -223,7 +230,7 @@ export function AnalyticsCharts({
 
         {!markets ? (
           <p className="py-10 text-center text-[13px] t-mute">
-            No realized P&amp;L yet.
+            No P&amp;L yet.
           </p>
         ) : (
           <div className="space-y-2.5">
@@ -255,13 +262,14 @@ export function AnalyticsCharts({
                     className={`mono text-right text-[11px] ${m.value > 0 ? "pos" : m.value < 0 ? "neg" : "t-mute"}`}
                   >
                     {m.value > 0 ? "+" : ""}
-                    {format(BigInt(Math.round(m.value)), 0)}
+                    {dollars(m.value)}
                   </span>
                 </div>
               );
             })}
             <div className="flex items-baseline justify-between border-t border-white/10 pt-3">
-              <span className="caption">Total realized</span>
+              {/* Each point's settled P&L plus its open positions at their marks. */}
+              <span className="caption">Total, realized and open</span>
               <span
                 className={`mono text-[13px] ${markets.total > 0 ? "pos" : markets.total < 0 ? "neg" : "t-mute"}`}
               >

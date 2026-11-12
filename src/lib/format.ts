@@ -40,11 +40,13 @@ export function bpsToPercent(bps: number | bigint | string, signed = true): stri
   if (typeof bps === "bigint") v = Number(bps);
   else if (typeof bps === "number") v = bps;
   else v = parseFloat(bps);
-  if (!Number.isFinite(v)) v = 0;
+  // Whole basis points; the sign follows the rounded value, so a return of
+  // a fraction of a basis point reads 0.00%, never −0.00%.
+  const r = Number.isFinite(v) ? Math.round(v) : 0;
   // raw percent in scaled money units: pct = bps / 100
-  const raw = (BigInt(Math.round(v)) * 1000000n) / 100n;
+  const raw = (BigInt(r) * 1000000n) / 100n;
   const s = formatMoneyAbs(raw, 2);
-  return `${v < 0 ? "−" : signed && v > 0 ? "+" : ""}${s}%`;
+  return `${r < 0 ? "−" : signed && r > 0 ? "+" : ""}${s}%`;
 }
 
 /**
