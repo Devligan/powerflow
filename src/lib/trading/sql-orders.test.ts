@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   admin,
-  createTestUser,
+  createReplayTestUser,
   dbTestsEnabled,
   userClient,
   type TestUser,
@@ -44,8 +44,8 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
 
   beforeAll(async () => {
     db = admin();
-    userA = await createTestUser("orders-a");
-    userB = await createTestUser("orders-b");
+    userA = await createReplayTestUser("orders-a");
+    userB = await createReplayTestUser("orders-b");
     clientA = await userClient(userA);
     clientB = await userClient(userB);
     createdUserIds = [userA.id, userB.id];

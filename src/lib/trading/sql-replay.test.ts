@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { admin, createTestUser, dbTestsEnabled, userClient } from "@/lib/testing/db";
+import { admin, createReplayTestUser, createTestUser, dbTestsEnabled, userClient } from "@/lib/testing/db";
 
 /**
  * Historical replay, against the real database, on ACTUAL ERCOT data.
@@ -122,7 +122,7 @@ describe.skipIf(!dbTestsEnabled())("historical replay on actual ERCOT data (live
   beforeAll(async () => {
     suiteStartedAt = new Date().toISOString();
     db = admin();
-    user = await createTestUser("sql-replay");
+    user = await createReplayTestUser("sql-replay");
     client = await userClient(user);
 
     const corpus = JSON.parse(readFileSync(FIXTURE, "utf8")) as {

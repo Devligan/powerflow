@@ -68,7 +68,7 @@ export const GLOSSARY = {
   },
   replay: {
     term: "Simulation clock and replay",
-    short: "Each desk has its own clock. Set it in the past and the desk sees only the prices published by then, so you can trade history without knowing how it ends.",
+    short: "Practice and challenge desks each have their own clock, set in the past: the desk sees only the prices published by then, so you trade history without knowing how it ends. Your live account always runs on the live clock, so replay never moves its balance.",
   },
 } as const satisfies Record<string, GlossaryEntry>;
 
