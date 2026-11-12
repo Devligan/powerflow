@@ -28,7 +28,7 @@ const MIGRATIONS = "supabase/migrations";
 
 (function loadEnv() {
   try {
-    for (const line of readFileSync(".env", "utf8").replace(/^﻿/, "").split(/\r?\n/)) {
+    for (const line of readFileSync(".env", "utf8").replace(/^\uFEFF/, "").split(/\r?\n/)) {
       const match = line.match(/^([A-Za-z0-9_]+)=(.*)$/);
       if (match && !(match[1] in process.env)) {
         process.env[match[1]] = match[2];
@@ -58,7 +58,7 @@ function readMigration(path: string): Migration {
     throw new Error(`${path} is empty`);
   }
   // A Windows checkout has CRLF and maybe a BOM; the ledger must agree with CI's.
-  const normalized = sql.replace(/^﻿/, "").replace(/\r\n/g, "\n");
+  const normalized = sql.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
   return { version, name, path, sql, checksum: createHash("sha256").update(normalized).digest("hex") };
 }
 

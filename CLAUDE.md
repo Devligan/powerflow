@@ -24,6 +24,8 @@ npx tsx scripts/run-migration.ts --status                          # which migra
 npx tsx scripts/run-migration.ts --dry-run supabase/migrations/00NN_x.sql   # apply in a transaction, report, roll back
 npx tsx scripts/run-migration.ts supabase/migrations/00NN_x.sql   # apply (forward only) and record it in the ledger
 node scripts/smoke-production.mjs                                  # check the live site and data freshness
+npx tsx scripts/e2e/practice.ts                                    # practice desk end to end on the live site (throwaway user)
+npx tsx scripts/e2e/challenge.ts                                   # a challenge end to end on the live site (throwaway user)
 npx tsx scripts/backfill-ercot.ts --from 2026-09-20 [--dry-run]   # fill price gaps from ERCOT rolling reports + annual archives
 npx tsx scripts/setup-scheduler.ts                                 # apply 0029 + store Vault URL/CRON_SECRET
 ```
