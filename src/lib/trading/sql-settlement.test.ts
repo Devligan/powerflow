@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { admin, createTestUser, dbTestsEnabled, userClient } from "@/lib/testing/db";
+import { admin, createReplayTestUser, dbTestsEnabled, userClient } from "@/lib/testing/db";
 import { loadFixturePoint } from "@/lib/testing/ercot-fixture";
 
 /**
@@ -59,7 +59,7 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
   const FIRST = 2;
 
   let db: SupabaseClient;
-  let user: Awaited<ReturnType<typeof createTestUser>>;
+  let user: Awaited<ReturnType<typeof createReplayTestUser>>;
   let client: SupabaseClient;
   let marketId: string;
   let counterId: string;
@@ -246,7 +246,7 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
 
   beforeAll(async () => {
     db = admin();
-    user = await createTestUser("sql-settlement");
+    user = await createReplayTestUser("sql-settlement");
     client = await userClient(user);
 
     const point = await loadFixturePoint(db, POINT);

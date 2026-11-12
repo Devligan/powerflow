@@ -906,13 +906,20 @@ async function checkSignedIn(page: Page, base: string): Promise<void> {
 
     // 4. one real fill, the way the desk makes one: a day-ahead bid placed
     // before the deadline on a replay clock, filled by the sweep when the
-    // clock moves past delivery. A virtual is margined, so cash does not move;
-    // the book does.
+    // clock moves past delivery. Replay runs on the practice desk — the live
+    // account's clock is always live (0053) — so the live clock refuses first.
+    // A virtual is margined, so cash does not move; the book does.
     type Reply = { status: number; body: Record<string, unknown> };
     const interval = await page.evaluate<Interval>(FIND_INTERVAL);
     if (!interval.ok) {
       note(`skipped the trade: ${interval.reason}`);
     } else {
+      const refused = await page.evaluate<Reply>(
+        fetchJson("/api/clock", "PUT", { to: new Date(Date.now() - 86_400_000).toISOString() })
+      );
+      check(refused.status === 422, "the live account's clock will not leave live", JSON.stringify(refused.body));
+      const practice = await page.evaluate<Reply>(fetchJson("/api/desk", "PUT", { desk: "PRACTICE" }));
+      check(practice.status === 200, "the practice desk opens", JSON.stringify(practice.body).slice(0, 200));
       const quantity = "10";
       const startMs = Date.parse(interval.deliveryStart!);
       const before = new Date(damDeadlineUtc(startMs)! - 3_600_000).toISOString();
@@ -988,11 +995,11 @@ async function checkSignedIn(page: Page, base: string): Promise<void> {
         checkNoRenderingNoise(afterTrade, page, "the desk with a book");
       }
 
-      // 5b. a working limit bid on the live clock: placed for the first day
+      // 5b. a working limit bid on the live desk: placed for the first day
       // still open, seen on the book, withdrawn before its deadline. Nothing
       // clears before the deadline, so it rests until it is cancelled.
-      const live = await page.evaluate<Reply>(fetchJson("/api/clock", "DELETE"));
-      check(live.status === 200, "the clock returns to live", JSON.stringify(live.body));
+      const live = await page.evaluate<Reply>(fetchJson("/api/desk", "PUT", { desk: "LIVE" }));
+      check(live.status === 200, "back on the live desk", JSON.stringify(live.body));
       const he18 = hourEndingStartUtc(firstOpenOperatingDay(Date.now()), 18)!;
       const placedOrder = await page.evaluate<Reply>(
         fetchJson("/api/orders", "POST", {

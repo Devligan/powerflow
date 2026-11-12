@@ -19,7 +19,7 @@ import { getPortfolioSnapshot } from "@/lib/queries";
 import { getMarketStatus } from "@/lib/markets";
 import { MarketsStrip } from "@/components/markets-strip";
 import { getSimClock } from "@/lib/sim-clock";
-import { SimClockWidget } from "@/components/sim-clock-widget";
+import { LiveDeskCard } from "@/components/live-desk-card";
 import { InstrumentBreakdownTable } from "@/components/instrument-breakdown";
 import { MarginSummary } from "@/components/margin-summary";
 import { PageHeader } from "@/components/ui/page-header";
@@ -106,13 +106,13 @@ export default async function DashboardPage() {
 
       {/* The clock: what "now" means for this desk. Every mark, fill and
           settlement resolves through it. The practice desk walks it through a
-          past operating day; the live desk keeps the free-form control. */}
+          past operating day; the live desk is always live (0053). */}
       {desk.kind === "PRACTICE" ? (
         <PracticeDay />
       ) : desk.kind === "CHALLENGE" && desk.challenge ? (
         <ChallengeView slug={desk.challenge.slug} activeDeskId={desk.id} compact />
       ) : (
-        <SimClockWidget />
+        <LiveDeskCard />
       )}
 
       {/* Bank of readouts. */}

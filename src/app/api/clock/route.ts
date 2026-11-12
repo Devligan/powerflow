@@ -2,7 +2,7 @@ import { getSessionUser } from "@/lib/auth";
 import { fail, ok, serverError } from "@/lib/api";
 import { getActiveDesk } from "@/lib/desk";
 import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
-import { catchUpAccount, getSimClock, setSimClock } from "@/lib/sim-clock";
+import { CLOCK_MESSAGES, catchUpAccount, getSimClock, setSimClock } from "@/lib/sim-clock";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +39,10 @@ async function move(req: Request, readTarget: boolean) {
     : null;
   try {
     const desk = await getActiveDesk(user.id);
+    // The engine refuses it too (0053); this only spares the round trip.
+    if (desk.kind === "LIVE" && body?.to != null) {
+      return fail(CLOCK_MESSAGES.LIVE_ACCOUNT_IS_LIVE, 422);
+    }
     const result = await setSimClock(desk.accountUserId, body?.to ?? null);
     if (!result.ok) {
       return fail(result.message, result.code === "ACCOUNT_NOT_FOUND" ? 404 : 422);

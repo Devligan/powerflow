@@ -13,6 +13,9 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
  *
  * offset 0           → live mode: simulation time IS wall time.
  * offset < 0 (past)  → replay: the desk is trading a historical market.
+ *
+ * Only a desk (practice, challenge) may stand in the past: a trader's live
+ * account is always live, so replay never moves its balance (0053).
  */
 
 export interface SimClock {
@@ -58,10 +61,12 @@ export type SetClockResult =
   | { ok: true; clock: SimClock }
   | { ok: false; code: string; message: string };
 
-const FRIENDLY: Record<string, string> = {
+export const CLOCK_MESSAGES: Record<string, string> = {
   FORBIDDEN: "You can only set your own simulation clock.",
   ACCOUNT_NOT_FOUND: "Paper account not found.",
   SIM_CLOCK_INVALID: "Replay can only go back in time, to a date after 2000.",
+  LIVE_ACCOUNT_IS_LIVE:
+    "Your live account always trades the live market. Switch to the practice desk to replay a past day: it has its own $100,000 and clock.",
   CHALLENGE_CLOCK_FORWARD_ONLY: "A challenge clock only moves forward.",
   CHALLENGE_CLOCK_PAST_END: "That is past the end of the challenge.",
   CHALLENGE_DESK_REPLAY_ONLY: "A challenge desk stays on the challenge's days; switch desks to trade live.",
@@ -101,7 +106,7 @@ export async function setSimClock(
 ): Promise<SetClockResult> {
   const parsed = ClockTarget.safeParse({ to });
   if (!parsed.success) {
-    return { ok: false, code: "SIM_CLOCK_INVALID", message: FRIENDLY.SIM_CLOCK_INVALID };
+    return { ok: false, code: "SIM_CLOCK_INVALID", message: CLOCK_MESSAGES.SIM_CLOCK_INVALID };
   }
 
   // Through the USER's session: the RPC re-checks auth.uid() = p_user_id, so
@@ -113,7 +118,7 @@ export async function setSimClock(
     });
     if (error) {
       const code = String(error.message ?? "").trim();
-      return { ok: false, code, message: FRIENDLY[code] ?? GENERIC };
+      return { ok: false, code, message: CLOCK_MESSAGES[code] ?? GENERIC };
     }
   } else {
     const { error } = await supabase.rpc("set_sim_clock", {
@@ -122,13 +127,13 @@ export async function setSimClock(
     });
     if (error) {
       const code = String(error.message ?? "").trim();
-      return { ok: false, code, message: FRIENDLY[code] ?? GENERIC };
+      return { ok: false, code, message: CLOCK_MESSAGES[code] ?? GENERIC };
     }
   }
 
   const clock = await getSimClock(userId);
   if (!clock) {
-    return { ok: false, code: "ACCOUNT_NOT_FOUND", message: FRIENDLY.ACCOUNT_NOT_FOUND };
+    return { ok: false, code: "ACCOUNT_NOT_FOUND", message: CLOCK_MESSAGES.ACCOUNT_NOT_FOUND };
   }
   return { ok: true, clock };
 }

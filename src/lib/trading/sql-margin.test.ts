@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { admin, createTestUser, dbTestsEnabled, userClient } from "@/lib/testing/db";
+import { admin, createReplayTestUser, dbTestsEnabled, userClient } from "@/lib/testing/db";
 import { loadFixturePoint } from "@/lib/testing/ercot-fixture";
 
 /**
@@ -89,7 +89,7 @@ describe.skipIf(!dbTestsEnabled())("margin and settlement funding (live database
   /** A user with an empty book, parked just before the trading day. Its own
    *  account bootstrap fills in the 0014 default margin rates (12% / 10%). */
   const freshDesk = async (label: string): Promise<Desk> => {
-    const user = await createTestUser(`sql-margin-${label}`);
+    const user = await createReplayTestUser(`sql-margin-${label}`);
     const client = await userClient(user);
     const { error } = await client.rpc("set_sim_clock", {
       p_user_id: user.id,

@@ -106,6 +106,23 @@ export async function createTestUser(prefix: string): Promise<TestUser> {
   return user;
 }
 
+/**
+ * A test account that may replay: registered as the practice desk (0048) of
+ * a throwaway owner. Since 0053 only a desk's clock may leave live, and the
+ * engine suites replay history on purpose. The account's own session still
+ * acts for it, so nothing else about the suite changes; deleting either user
+ * removes both (the desk row cascades to its user).
+ */
+export async function createReplayTestUser(prefix: string): Promise<TestUser> {
+  const user = await createTestUser(prefix);
+  const owner = await createTestUser(`${prefix}-owner`);
+  const { error } = await admin()
+    .from("desks")
+    .insert({ owner_id: owner.id, desk_user_id: user.id, kind: "PRACTICE" });
+  if (error) throw new Error(`could not make ${prefix} a practice desk: ${error.message}`);
+  return user;
+}
+
 export function admin() {
   loadTestEnv();
   return supabaseAdmin();

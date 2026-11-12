@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { admin, createTestUser, dbTestsEnabled, userClient } from "@/lib/testing/db";
+import { admin, createReplayTestUser, dbTestsEnabled, userClient } from "@/lib/testing/db";
 import { loadFixturePoint } from "@/lib/testing/ercot-fixture";
 import { PRODUCTS, INSTRUMENTS } from "@/lib/ercot/types";
 
@@ -32,7 +32,7 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
     new Date(new Date(ts).getTime() + hours * HOUR).toISOString();
 
   let db: SupabaseClient;
-  let user: Awaited<ReturnType<typeof createTestUser>>;
+  let user: Awaited<ReturnType<typeof createReplayTestUser>>;
   let client: SupabaseClient;
   let legA: string;
   let legB: string;
@@ -89,7 +89,7 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
 
   beforeAll(async () => {
     db = admin();
-    user = await createTestUser("sql-congestion");
+    user = await createReplayTestUser("sql-congestion");
     client = await userClient(user);
 
     // The path and its prices come from the corpus, not from a discovery

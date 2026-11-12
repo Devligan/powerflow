@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   admin,
   cleanupTestUsers,
-  createTestUser,
+  createReplayTestUser,
   dbTestsEnabled,
   userClient,
 } from "@/lib/testing/db";
@@ -103,7 +103,7 @@ describe.skipIf(!dbTestsEnabled())("engine regressions (live database)", () => {
   }
 
   const desk = async (label: string, iso: string): Promise<Desk> => {
-    const user = await createTestUser(`sql-audit-${label}`);
+    const user = await createReplayTestUser(`sql-audit-${label}`);
     const client = await userClient(user);
     const clock = async (to: string) => {
       const { error } = await client.rpc("set_sim_clock", { p_user_id: user.id, p_iso: to });

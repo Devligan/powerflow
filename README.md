@@ -102,10 +102,14 @@ with virtual cash, a full risk engine, immutable audit trail, and analytics.
   replays one recent operating day in four steps — open bidding (08:00
   Central the day before), run the day-ahead clearing (14:00), deliver the
   day, settle when its real-time prices are final — so a new trader sees a bid
-  clear, deliver and settle in minutes. Replay on the live account still takes
-  it off the standings (0042); the practice desk never touches it. A desk is
-  an engine account its owner's session may act for (`acts_for`), checked in
-  the database.
+  clear, deliver and settle in minutes. A desk is an engine account its
+  owner's session may act for (`acts_for`), checked in the database.
+- **The live account is always live** (migration 0053): only a desk's clock
+  may stand in the past — a trigger on `paper_accounts` refuses a nonzero
+  `sim_clock_offset` for any other account, from any caller — so replay never
+  moves a trader's real balance or their place on the standings. Live
+  accounts the migration found in replay were returned to live, and their
+  open bids for days already past the gate were cancelled.
 - **Challenges** (migration 0049, `/challenges`): a run of one to five past
   operating days that friends trade on identical terms. Each entrant gets a
   fresh $100,000 challenge desk whose clock starts at 08:00 Central the day
