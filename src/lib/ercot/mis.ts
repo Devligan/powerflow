@@ -673,7 +673,7 @@ export interface RtmPriceCorrectionRow {
  * corrected. EW rows are therefore dropped outright, never taken as a stand-in.
  */
 export function parseRtmPriceCorrectionCsv(csv: string): RtmPriceCorrectionRow[] {
-  const lines = csv.replace(/^﻿/, "").split(/\r?\n/);
+  const lines = csv.replace(/^\uFEFF/, "").split(/\r?\n/);
   const headerIdx = lines.findIndex((l) => l.trim().startsWith("DeliveryDate"));
   if (headerIdx === -1) return [];
   const header = lines[headerIdx].trim().split(",");

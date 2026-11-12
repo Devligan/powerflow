@@ -92,6 +92,17 @@ for (const path of walk("src")) {
   }
 }
 
+// An invisible U+FEFF inside a file (not as its byte-order mark) is a
+// character an editor can strip without anyone seeing: the BOM-stripping
+// regexes in the CSV and .env readers were written that way. Only tracked
+// files count: untracked scratch scripts are not CI's business.
+for (const path of git("ls-files", "src", "scripts").split("\n")) {
+  if (!/\.(ts|tsx|mjs|js)$/.test(path)) continue;
+  if (readFileSync(path, "utf8").indexOf("\uFEFF", 1) >= 0) {
+    fail(`${path}: a literal U+FEFF inside the file; write it as \\uFEFF`);
+  }
+}
+
 if (failures.length > 0) {
   console.error(`ci-guards: ${failures.length} problem(s)\n  ${failures.join("\n  ")}`);
   process.exit(1);
