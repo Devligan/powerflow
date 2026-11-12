@@ -1035,12 +1035,13 @@ async function checkSignedIn(page: Page, base: string): Promise<void> {
         "the resting order appears on the book as open",
         (/Working \(\d+\)/i.exec(orderBook.bodyText) ?? ["no working section"])[0]
       );
-      const size = /\b10(\.0+)? MWh/.test(orderBook.bodyText);
+      // A bought virtual is a DEC, sized in MW per hour.
+      const size = /\b10(\.0+)? MW\b/.test(orderBook.bodyText);
       check(
-        orderBook.bodyText.includes("BUY") && size && orderBook.bodyText.includes("$34.56"),
+        orderBook.bodyText.includes("DEC") && size && orderBook.bodyText.includes("$34.56"),
         "the book's open row carries its side, size and limit",
         JSON.stringify({
-          buy: orderBook.bodyText.includes("BUY"),
+          dec: orderBook.bodyText.includes("DEC"),
           size,
           limit: orderBook.bodyText.includes("$34.56"),
         })

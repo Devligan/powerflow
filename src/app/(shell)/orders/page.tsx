@@ -3,8 +3,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
 import { getActiveDesk } from "@/lib/desk";
 import { damDeadlineUtc } from "@/lib/ercot/hour-ending";
-import { format, parseDbDec } from "@/lib/money";
-import { legsLabel, usd } from "@/lib/format";
+import { parseDbDec } from "@/lib/money";
+import { instrumentInfo, legsLabel, num, tradeSideLabel, usd } from "@/lib/format";
 import { getSimClock } from "@/lib/sim-clock";
 import { dateTime, windowLabel } from "@/lib/time";
 import { getViewerTimeZone } from "@/lib/time-zone-server";
@@ -18,6 +18,22 @@ const STATUS_TONE: Record<string, string> = {
   CANCELLED: "badge badge-neutral",
   EXPIRED: "badge badge-amber",
 };
+
+interface OrderRow {
+  id: string;
+  market_id: string;
+  counter_market_id: string | null;
+  product: string;
+  instrument: string;
+  side: "BUY" | "SELL";
+  quantity_mwh: string;
+  limit_price: string | null;
+  status: string;
+  delivery_start: string;
+  delivery_end: string;
+  filled_trade_id: string | null;
+  created_at: string;
+}
 
 /**
  * The order book: day-ahead bids and offers waiting for the market to clear,
@@ -58,15 +74,44 @@ export default async function OrdersPage() {
   };
 
   const pointById = new Map((markets ?? []).map((m) => [m.id, m.settlement_point]));
-  const legs = (o: { market_id: string; counter_market_id: string | null }) =>
+  const legs = (o: OrderRow) =>
     legsLabel(
       pointById.get(o.market_id) ?? null,
       o.counter_market_id ? pointById.get(o.counter_market_id) ?? null : null
     );
 
-  const orders = data ?? [];
-  const open = orders.filter((o) => o.status === "OPEN");
-  const history = orders.filter((o) => o.status !== "OPEN");
+  // Bids are read by the hour they deliver: the working ones in the order
+  // they clear, the history newest delivery first.
+  const byDelivery = (a: OrderRow, b: OrderRow) =>
+    Date.parse(a.delivery_start) - Date.parse(b.delivery_start) || legs(a).localeCompare(legs(b));
+  const orders = (data ?? []) as OrderRow[];
+  const open = orders.filter((o) => o.status === "OPEN").sort(byDelivery);
+  const history = orders.filter((o) => o.status !== "OPEN").sort((a, b) => byDelivery(b, a));
+
+  /** One bid as a desk reads it: side, size, price, where, and which hour. */
+  function orderLine(o: OrderRow) {
+    const inst = instrumentInfo(o.instrument);
+    return (
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className={`mono font-medium ${o.side === "BUY" ? "pos" : "neg"}`}>
+          {tradeSideLabel(o.instrument, o.side)}
+        </span>
+        <span className="mono">{num(parseDbDec(o.quantity_mwh), 1)} MW</span>
+        <span className="t-mute">
+          {o.limit_price == null ? "at the clearing price" : "limit"}
+        </span>
+        {o.limit_price != null && <span className="mono">{usd(parseDbDec(o.limit_price))}</span>}
+        <span className="t-mute">·</span>
+        <span className="mono font-medium">{legs(o)}</span>
+        <span className="text-[12px] t-dim" title={`${o.instrument} · ${o.product}`}>
+          {inst?.shortLabel ?? o.instrument}
+        </span>
+        <span className="basis-full text-[12px] t-mute">
+          {windowLabel(Date.parse(o.delivery_start), Date.parse(o.delivery_end), tz)}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -90,29 +135,7 @@ export default async function OrdersPage() {
                 key={o.id}
                 className="flex flex-wrap items-center justify-between gap-3 border border-white/10 px-3 py-2"
               >
-                <div className="flex flex-wrap items-baseline gap-2">
-                  <span className={o.side === "BUY" ? "mono pos" : "mono neg"}>
-                    {o.side}
-                  </span>
-                  <span className="mono">{format(parseDbDec(o.quantity_mwh), 2)} MWh</span>
-                  {o.limit_price == null ? (
-                    <span className="t-mute">at the clearing price</span>
-                  ) : (
-                    <>
-                      <span className="t-mute">@ limit</span>
-                      <span className="mono">{usd(parseDbDec(o.limit_price))}</span>
-                    </>
-                  )}
-                  <span className="t-mute">·</span>
-                  <span className="mono font-medium">{legs(o)}</span>
-                  <span className="text-[12px]">
-                    {o.instrument} · {o.product}
-                  </span>
-                  <span className="caption t-mute">
-                    delivery{" "}
-                    {windowLabel(Date.parse(o.delivery_start), Date.parse(o.delivery_end), tz)}
-                  </span>
-                </div>
+                {orderLine(o)}
                 {locked(o.delivery_start) ? (
                   <span className="caption t-mute">Bids closed · awaiting the clearing</span>
                 ) : (
@@ -139,25 +162,13 @@ export default async function OrdersPage() {
                 key={o.id}
                 className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-2"
               >
-                <div className="flex flex-wrap items-baseline gap-2">
-                  <span className={o.side === "BUY" ? "mono pos" : "mono neg"}>
-                    {o.side}
+                {orderLine(o)}
+                <span className="flex flex-col items-end gap-1">
+                  <span className={STATUS_TONE[o.status] ?? "badge badge-neutral"}>
+                    {o.status}
+                    {o.status === "FILLED" && o.filled_trade_id ? " · see trades" : ""}
                   </span>
-                  <span className="mono">{format(parseDbDec(o.quantity_mwh), 2)}</span>
-                  <span className="t-mute">@</span>
-                  <span className="mono">
-                    {o.limit_price == null ? "clearing" : format(parseDbDec(o.limit_price), 2)}
-                  </span>
-                  <span className="t-mute">·</span>
-                  <span className="mono">{legs(o)}</span>
-                  <span className="t-mute">· {o.instrument}</span>
-                  <span className="caption t-mute">
-                    placed {dateTime(o.created_at, tz)}
-                  </span>
-                </div>
-                <span className={STATUS_TONE[o.status] ?? "badge badge-neutral"}>
-                  {o.status}
-                  {o.status === "FILLED" && o.filled_trade_id ? " · see trades" : ""}
+                  <span className="caption t-mute">placed {dateTime(o.created_at, tz)}</span>
                 </span>
               </div>
             ))}
