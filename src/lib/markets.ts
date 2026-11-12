@@ -30,6 +30,8 @@ export interface MarketView {
 
 const HOUR_MS = 3600_000;
 
+const PAGE = 1000; // PostgREST's default max-rows: larger .limit()s are silently capped.
+
 /** The UTC bounds of the Central operating day `offsetDays` after `at`'s. */
 function centralDayBounds(at: Date, offsetDays: number): { start: number; end: number } | null {
   const [y, m, d] = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" })
@@ -71,7 +73,7 @@ async function attachDayAhead(rows: MarketView[], asOf: Date | null): Promise<Ma
     .gte("delivery_timestamp", new Date(from).toISOString())
     .lt("delivery_timestamp", new Date(to).toISOString());
   if (asOf) query = query.lte("published_at", asOf.toISOString());
-  const { data, error } = await query.order("published_at", { ascending: false }).limit(5000);
+  const { data, error } = await query.order("published_at", { ascending: false }).limit(PAGE);
   if (error) throw new Error(error.message);
 
   // Latest publication per (market, hour): rows arrive newest first.
@@ -146,7 +148,7 @@ export async function listMarkets(asOf?: Date | null): Promise<MarketView[]> {
       .gte("delivery_timestamp", new Date(asOf.getTime() - 7 * 24 * HOUR_MS).toISOString())
       .order("delivery_timestamp", { ascending: false })
       .order("published_at", { ascending: false })
-      .limit(5000);
+      .limit(PAGE);
     if (res.error) throw new Error(res.error.message);
     // First occurrence per market IS its newest hour's latest publication.
     const seen = new Set<string>();
@@ -287,6 +289,9 @@ export async function getMarketPrices(
       }));
   };
 
+  // Both reads run newest first: a response is capped at PAGE rows whatever
+  // `.limit()` asks for, and the cap must cost the oldest intervals — which
+  // the 120-interval chart drops anyway — never the latest price.
   let series: PricePoint[];
   if (asOf) {
     // Replay: observations visible by the clock, over a window that tracks
@@ -305,8 +310,8 @@ export async function getMarketPrices(
       .gte("delivery_timestamp", horizonFrom.toISOString())
       .lte("delivery_timestamp", horizonTo.toISOString())
       .lte("published_at", asOf.toISOString())
-      .order("delivery_timestamp")
-      .limit(2000);
+      .order("delivery_timestamp", { ascending: false })
+      .limit(PAGE);
     if (pricesRes.error) throw new Error(pricesRes.error.message);
     series = collapseToLatestPublication(
       (pricesRes.data ?? []) as RawPriceRow[]
@@ -323,9 +328,9 @@ export async function getMarketPrices(
       .eq("market_id", marketRes.data.id)
       .eq("product", product)
       .gte("delivery_timestamp", horizonFrom.toISOString())
-      .order("delivery_timestamp")
+      .order("delivery_timestamp", { ascending: false })
       .order("published_at", { ascending: false })
-      .limit(2000);
+      .limit(PAGE);
     if (pricesRes.error) throw new Error(pricesRes.error.message);
     series = collapseToLatestPublication(
       (pricesRes.data ?? []) as RawPriceRow[]
@@ -352,8 +357,6 @@ export async function getMarketPrices(
     asOf: asOf ? asOf.toISOString() : null,
   };
 }
-
-const PAGE = 1000; // PostgREST's default max-rows: larger .limit()s are silently capped.
 
 /**
  * Hourly history for one (market, product) over [fromMs, toMs), as of a clock:
