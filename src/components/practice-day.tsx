@@ -1,5 +1,6 @@
 "use client";
 
+import { signTone } from "@/lib/format";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -156,7 +157,7 @@ export function PracticeDay() {
           <h2 id="practice-day-title" className="card-title mb-1">
             Practice day <span className="badge badge-amber ml-1">PRACTICE</span>
           </h2>
-          <p className="caption t-mute max-w-prose">
+          <p className="hint t-mute max-w-prose">
             Pick a past operating day and run it the way ERCOT does: bid before the 10:00
             deadline, watch the day-ahead market clear, deliver against real time, settle.
             The whole cycle takes a few minutes here instead of four days.
@@ -193,7 +194,7 @@ export function PracticeDay() {
                 {done && <span className="pos ml-2">done</span>}
               </div>
               <div className="mt-1 font-medium">{s.title}</div>
-              <p className="caption t-mute mt-1">{s.body}</p>
+              <p className="hint t-mute mt-1">{s.body}</p>
               {onThisDay && state?.schedule && (
                 <p className="caption t-dim mt-1 mono">{dateTime(state.schedule[s.step], tz)}</p>
               )}
@@ -221,20 +222,20 @@ export function PracticeDay() {
         <div className="mt-4 rounded border border-white/10 p-3">
           <div className="caption t-mute">{dayLabel(day)} so far</div>
           {results.positions === 0 ? (
-            <p className="caption mt-1">
+            <p className="hint mt-1">
               No positions on this day yet. Open bidding, then bid on its hours from Markets.
             </p>
           ) : (
             <p className="mt-1">
               {results.positions} position{results.positions === 1 ? "" : "s"} ·{" "}
               {results.settled} settled · realized{" "}
-              <span className={Number(results.realizedPnl) >= 0 ? "pos" : "neg"}>
+              <span className={signTone(results.realizedPnl) ?? ""}>
                 {money(results.realizedPnl)}
               </span>
               {Number(results.unrealizedPnl) !== 0 && (
                 <>
                   {" "}· open{" "}
-                  <span className={Number(results.unrealizedPnl) >= 0 ? "pos" : "neg"}>
+                  <span className={signTone(results.unrealizedPnl) ?? ""}>
                     {money(results.unrealizedPnl)}
                   </span>
                 </>
@@ -268,7 +269,7 @@ export function PracticeDay() {
           </button>
         )}
       </div>
-      {error && <p className="caption neg mt-2">{error}</p>}
+      {error && <p className="hint neg mt-2">{error}</p>}
     </section>
   );
 }

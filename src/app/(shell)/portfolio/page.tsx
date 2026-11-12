@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireDesk } from "@/lib/desk";
 import { getPortfolioSnapshot } from "@/lib/queries";
-import { usd, sign, bpsToPercent, num, volumeUnitLabel } from "@/lib/format";
+import { usd, signedUsd, bpsToPercent, num, volumeUnitLabel, signTone } from "@/lib/format";
 import { parseDec } from "@/lib/money";
 import {
   InstrumentBreakdownTable,
@@ -37,27 +37,27 @@ export default async function PortfolioPage() {
     {
       label: "Equity",
       value: usd(met.equity),
-      tone: met.totalPnl >= 0n ? ("pos" as const) : ("neg" as const),
+      tone: signTone(met.totalPnl),
     },
     {
       label: "Total P&L",
-      value: sign(met.totalPnl),
+      value: signedUsd(met.totalPnl),
       tone: met.totalPnl > 0n ? ("pos" as const) : ("neg" as const),
     },
     {
       label: "Return",
       value: bpsToPercent(met.returnBps),
-      tone: met.returnBps >= 0n ? ("pos" as const) : ("neg" as const),
+      tone: signTone(met.returnBps),
     },
     {
       label: "Realized",
-      value: sign(met.realizedPnl),
-      tone: met.realizedPnl >= 0n ? ("pos" as const) : ("neg" as const),
+      value: signedUsd(met.realizedPnl),
+      tone: signTone(met.realizedPnl),
     },
     {
       label: "Unrealized",
-      value: sign(met.unrealizedPnl),
-      tone: met.unrealizedPnl >= 0n ? ("pos" as const) : ("neg" as const),
+      value: signedUsd(met.unrealizedPnl),
+      tone: signTone(met.unrealizedPnl),
     },
   ];
 
@@ -116,7 +116,7 @@ export default async function PortfolioPage() {
           />
         </div>
         <div className="mt-2 flex items-baseline justify-between gap-2">
-          <p className="caption">
+          <p className="hint">
             Buys must be fully covered by cash; gross exposure is capped per
             account.
           </p>

@@ -1,5 +1,6 @@
 "use client";
 
+import { signTone } from "@/lib/format";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -104,7 +105,7 @@ export function ChallengeView({ slug, activeDeskId, compact = false }: { slug: s
   }
 
   if (!state) {
-    return <section className="card p-4">{error ? <p className="caption neg">{error}</p> : <p className="caption t-mute">Loading…</p>}</section>;
+    return <section className="card p-4">{error ? <p className="hint neg">{error}</p> : <p className="hint t-mute">Loading…</p>}</section>;
   }
 
   const { entry } = state;
@@ -138,7 +139,7 @@ export function ChallengeView({ slug, activeDeskId, compact = false }: { slug: s
               <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => act("enter")}>
                 Enter this challenge
               </button>
-              <span className="caption t-mute">
+              <span className="hint t-mute">
                 Your display name appears on its standings, which anyone with this link can see. Your live account is
                 not touched.
               </span>
@@ -152,7 +153,7 @@ export function ChallengeView({ slug, activeDeskId, compact = false }: { slug: s
                   <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => act("trade")}>
                     Trade this challenge
                   </button>
-                  <span className="caption t-mute">Switches your desk to this challenge&apos;s account.</span>
+                  <span className="hint t-mute">Switches your desk to this challenge&apos;s account.</span>
                 </div>
               )}
               {onThisDesk && (
@@ -165,7 +166,7 @@ export function ChallengeView({ slug, activeDeskId, compact = false }: { slug: s
                       <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => act("move")}>
                         {moveLabel(next)}
                       </button>
-                      <span className="caption t-mute">
+                      <span className="hint t-mute">
                         {next.kind === "bid"
                           ? "Then bid on that day's hours from Markets before 10:00 Central."
                           : "Bids still open before the deadline fill at ERCOT's clearing price."}
@@ -181,7 +182,7 @@ export function ChallengeView({ slug, activeDeskId, compact = false }: { slug: s
                         <button type="button" className={`btn btn-sm ${next?.kind === "finish" ? "btn-primary" : ""}`} disabled={busy} onClick={() => act("finish")}>
                           Finish and score
                         </button>
-                        <span className="caption t-mute">
+                        <span className="hint t-mute">
                           Settles every position at the last day&apos;s final prices. Your entry then closes.
                         </span>
                       </>
@@ -199,18 +200,18 @@ export function ChallengeView({ slug, activeDeskId, compact = false }: { slug: s
           {entry?.status === "FINISHED" && (
             <p>
               Your result:{" "}
-              <span className={Number(entry.pnl) >= 0 ? "pos" : "neg"}>{money(entry.pnl)}</span>
+              <span className={signTone(entry.pnl ?? 0) ?? ""}>{money(entry.pnl)}</span>
             </p>
           )}
         </div>
-        {error && <p className="caption neg mt-2">{error}</p>}
+        {error && <p className="hint neg mt-2">{error}</p>}
       </section>
 
       {!compact && (
         <section className="card p-4">
           <h2 className="card-title">Standings</h2>
           {state.standings.length === 0 ? (
-            <p className="caption t-mute">Nobody has entered yet. Share this page&apos;s link with your friends.</p>
+            <p className="hint t-mute">Nobody has entered yet. Share this page&apos;s link with your friends.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="table">
@@ -232,7 +233,7 @@ export function ChallengeView({ slug, activeDeskId, compact = false }: { slug: s
                           {r.isViewer && <span className="badge badge-neutral">you</span>}
                         </span>
                       </td>
-                      <td className={`mono text-right ${r.pnl == null ? "t-mute" : Number(r.pnl) >= 0 ? "pos" : "neg"}`}>
+                      <td className={`mono text-right ${r.pnl == null ? "t-mute" : signTone(r.pnl) ?? "t-mute"}`}>
                         {r.status === "FINISHED" ? money(r.pnl) : "playing"}
                       </td>
                     </tr>

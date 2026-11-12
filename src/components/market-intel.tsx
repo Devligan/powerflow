@@ -50,7 +50,7 @@ export async function MarketIntel({
           <h2 className="card-title mb-0">DART by hour</h2>
           <span className="caption">real time − day-ahead</span>
         </div>
-        <p className="caption mb-3">
+        <p className="hint mb-3">
           What a 1 MWh virtual earned on average in each hour. A DEC (buy DA, sell RT) is paid the
           bar; an INC (sell DA, buy RT) is paid its negative.
         </p>

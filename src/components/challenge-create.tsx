@@ -46,7 +46,7 @@ export function ChallengeCreate({ days, maxDays }: { days: string[]; maxDays: nu
   return (
     <form onSubmit={create} className="card p-4">
       <h2 className="card-title">Start a challenge</h2>
-      <p className="caption t-mute mb-3">
+      <p className="hint t-mute mb-3">
         Pick a run of past operating days. Everyone who enters trades exactly those days, as ERCOT ran them, on a
         fresh $100,000 desk; the best P&amp;L wins. Share the link with your friends.
       </p>
@@ -87,7 +87,7 @@ export function ChallengeCreate({ days, maxDays }: { days: string[]; maxDays: nu
           Create
         </button>
       </div>
-      {error && <p className="caption neg mt-2">{error}</p>}
+      {error && <p className="hint neg mt-2">{error}</p>}
     </form>
   );
 }

@@ -43,7 +43,7 @@ export function PracticeRecap({ refreshKey }: { refreshKey: string }) {
     };
   }, [point, refreshKey]);
 
-  if (error) return <p className="caption t-mute mt-4">{error}</p>;
+  if (error) return <p className="hint t-mute mt-4">{error}</p>;
   if (!recap || recap.hours.length === 0) return null;
 
   return (
@@ -63,7 +63,7 @@ export function PracticeRecap({ refreshKey }: { refreshKey: string }) {
       </div>
 
       {recap.priced === 0 ? (
-        <p className="caption mt-2">
+        <p className="hint mt-2">
           Real time for this day is not published yet at the practice clock — that is the bet. Deliver the day to see
           how it came in.
         </p>

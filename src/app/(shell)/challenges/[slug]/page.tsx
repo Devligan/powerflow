@@ -1,3 +1,4 @@
+import { signTone } from "@/lib/format";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -94,12 +95,12 @@ export default async function ChallengePage({ params }: Props) {
             New to power markets? How it works →
           </Link>
         </div>
-        <p className="caption t-mute mt-2">Paper trading only: no card, no deposit, no real money.</p>
+        <p className="hint t-mute mt-2">Paper trading only: no card, no deposit, no real money.</p>
       </section>
       <section className="card p-4">
         <h2 className="card-title">Standings</h2>
         {standings.length === 0 ? (
-          <p className="caption t-mute">Nobody has entered yet — be the first.</p>
+          <p className="hint t-mute">Nobody has entered yet — be the first.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="table">
@@ -120,7 +121,7 @@ export default async function ChallengePage({ params }: Props) {
                         {r.displayName}
                       </span>
                     </td>
-                    <td className={`mono text-right ${r.pnl == null ? "t-mute" : Number(r.pnl) >= 0 ? "pos" : "neg"}`}>
+                    <td className={`mono text-right ${r.pnl == null ? "t-mute" : signTone(r.pnl) ?? "t-mute"}`}>
                       {r.status === "FINISHED" ? money(r.pnl) : "playing"}
                     </td>
                   </tr>

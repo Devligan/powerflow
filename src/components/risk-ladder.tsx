@@ -104,7 +104,7 @@ export function RiskLadder({ ladder }: { ladder: Ladder }) {
             ))}
           </tbody>
         </table>
-        <p className="caption mt-3">
+        <p className="hint mt-3">
           A block, swap or price option is spread evenly across its window. Different instruments are kept on
           separate rows — a basis MWh and an energy MWh are not the same exposure.
         </p>

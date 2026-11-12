@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { parseDbDec } from "@/lib/money";
 import { getSessionUser } from "@/lib/auth";
-import { usd, bpsToPercent } from "@/lib/format";
+import { usd, bpsToPercent, signTone } from "@/lib/format";
 import { localDate } from "@/lib/time";
 import { getViewerTimeZone } from "@/lib/time-zone-server";
 import { getPublicStandings, standingsSize, type StandingsRow } from "@/lib/standings";
@@ -126,12 +126,12 @@ export default async function LeaderboardPage({
                         </td>
                         <td className="mono text-right">{usd(equity)}</td>
                         <td
-                          className={`mono text-right ${parseFloat(row.returnBps) >= 0 ? "pos" : "neg"}`}
+                          className={`mono text-right ${signTone(Math.round(Number(row.returnBps))) ?? "t-mute"}`}
                         >
                           {bpsToPercent(row.returnBps)}
                         </td>
                         <td
-                          className={`mono text-right ${realized >= 0n ? "pos" : "neg"}`}
+                          className={`mono text-right ${signTone(realized) ?? "t-mute"}`}
                         >
                           {usd(realized)}
                         </td>
@@ -155,7 +155,7 @@ export default async function LeaderboardPage({
         </section>
       )}
 
-      <p className="caption">
+      <p className="hint">
         New accounts start unlisted; your entry appears only while you have
         joined. Equity = virtual cash + mark-to-market value of open positions.
       </p>

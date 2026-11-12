@@ -47,7 +47,7 @@ export function LiveDeskCard() {
             <LocalClock />
             <span className="ml-2 badge badge-green">LIVE</span>
           </div>
-          <div className="caption t-mute">
+          <div className="hint t-mute">
             Your live account trades today&apos;s market as ERCOT publishes it. To replay a past day,
             use the practice desk: its own $100,000 and clock, so nothing there touches this balance.
           </div>
@@ -61,7 +61,7 @@ export function LiveDeskCard() {
           </Link>
         </div>
       </div>
-      {error && <p className="caption neg mt-2">{error}</p>}
+      {error && <p className="hint neg mt-2">{error}</p>}
     </section>
   );
 }

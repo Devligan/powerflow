@@ -34,6 +34,18 @@ export function money(v: bigint, places = 2): string {
   return formatGrouped(v, places);
 }
 
+/**
+ * The colour a figure takes: a gain "pos", a loss "neg", and nothing for zero
+ * — a flat book is not a win. A decimal string is judged at the cent it is
+ * shown to, so a figure that reads $0.00 is never coloured; a bigint or
+ * number is compared with zero as it is.
+ */
+export function signTone(v: string | number | bigint): "pos" | "neg" | undefined {
+  const n = typeof v === "string" ? Math.round(parseFloat(v) * 100) : v;
+  if (typeof n === "number" && !Number.isFinite(n)) return undefined;
+  return n > 0 ? "pos" : n < 0 ? "neg" : undefined;
+}
+
 /** Treat a value in basis points as a percent. 920 => "+9.20%" */
 export function bpsToPercent(bps: number | bigint | string, signed = true): string {
   let v: number;

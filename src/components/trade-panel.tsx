@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { parseDec } from "@/lib/money";
 import { instrumentInfo, usd } from "@/lib/format";
-import { dateTime, localTime } from "@/lib/time";
+import { dateTime, localTime, operatingDayLabel } from "@/lib/time";
 import { useTimeZone } from "@/components/time-zone";
 import {
   damDeadlineUtc,
@@ -534,7 +534,10 @@ export function TradePanel({
           )}
           {pricedThrough != null && (
             <p className="mt-1">
-              Day-ahead prices published through <span className="mono t-dim">{dateTime(pricedThrough, tz)}</span>.
+              {/* pricedThrough is the END of the last published hour, so the
+                  instant before it names that hour's operating day. */}
+              Day-ahead prices are published through operating day{" "}
+              <span className="t-dim">{operatingDayLabel(Date.parse(pricedThrough) - 1)}</span>.
             </p>
           )}
         </div>

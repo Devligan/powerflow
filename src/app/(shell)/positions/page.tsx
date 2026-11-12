@@ -10,7 +10,7 @@ import {
   positionUnit,
   volumeUnitLabel,
 } from "@/lib/format";
-import { dateTime, localDate, shortDate, windowLabel } from "@/lib/time";
+import { briefDateTime, localDate, windowLabel } from "@/lib/time";
 import { getViewerTimeZone } from "@/lib/time-zone-server";
 import { PageHeader } from "@/components/ui/page-header";
 import { RiskLadder } from "@/components/risk-ladder";
@@ -22,8 +22,13 @@ export default async function PositionsPage() {
   const { desk } = await requireDesk();
   const { tz } = await getViewerTimeZone();
   const positions = await getPositionsView(desk.accountUserId);
-  const open = positions.filter((p) => p.isOpen);
-  const flat = positions.filter((p) => !p.isOpen);
+  // A book is read by delivery: the open one in the order it delivers, the
+  // history newest first. Ties by point keep a block's legs together.
+  const byDelivery = (a: (typeof positions)[number], b: (typeof positions)[number]) =>
+    Date.parse(a.deliveryStart) - Date.parse(b.deliveryStart) ||
+    a.settlementPoint.localeCompare(b.settlementPoint);
+  const open = positions.filter((p) => p.isOpen).sort(byDelivery);
+  const flat = positions.filter((p) => !p.isOpen).sort((a, b) => byDelivery(b, a));
 
   function table(title: string, rows: typeof open, showClosed: boolean) {
     return (
@@ -55,7 +60,6 @@ export default async function PositionsPage() {
                   <th className="text-right">Mark</th>
                   <th className="text-right">Realized</th>
                   <th className="text-right">Unrealized</th>
-                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -66,41 +70,35 @@ export default async function PositionsPage() {
                   const legB = inst?.legs === 2 ? p.counterSettlementPoint : null;
                   return (
                     <tr key={p.id}>
+                      {/* The market is the way back to trade it. */}
                       <td className="mono whitespace-nowrap font-medium">
-                        {legsLabel(p.settlementPoint, legB)}
+                        <Link href={`/markets/${p.settlementPoint}`} className="hover:underline" title={`Trade ${p.settlementPoint}`}>
+                          {legsLabel(p.settlementPoint, legB)}
+                        </Link>
                       </td>
                       <td>
                         {inst ? (
-                          <div className="flex flex-col gap-1">
-                            <span className="whitespace-nowrap">
+                          <div className="flex flex-col items-start gap-1">
+                            <span className="whitespace-nowrap" title={p.product}>
                               {inst.shortLabel}
                             </span>
-                            <span className="flex items-center gap-1">
-                              <span className={`badge ${inst.tone}`}>
-                                {inst.ruleLabel}
-                              </span>
-                              <span className="mono text-[10px] t-mute">
-                                {p.product}
-                              </span>
-                            </span>
+                            <span className={`badge ${inst.tone}`}>{inst.ruleLabel}</span>
                           </div>
                         ) : (
                           <span className="t-mute">{p.instrument}</span>
                         )}
                       </td>
-                      <td className="mono whitespace-nowrap t-mute">
+                      {/* The viewer's clock, with ERCOT's hour ending; a
+                          window instrument by its dates. */}
+                      <td className="whitespace-nowrap text-[12px] t-dim">
                         {inst?.rule === "AVERAGE"
                           ? `${localDate(p.deliveryStart, tz)} → ${localDate(p.deliveryEnd, tz)}`
-                          : shortDate(p.deliveryStart, tz)}
-                        {/* The viewer's clock, with ERCOT's hour ending. */}
-                        <div className="text-[10.5px] normal-case">
-                          {windowLabel(Date.parse(p.deliveryStart), Date.parse(p.deliveryEnd), tz)}
-                        </div>
+                          : windowLabel(Date.parse(p.deliveryStart), Date.parse(p.deliveryEnd), tz)}
                       </td>
                       <td className="whitespace-nowrap">
                         {p.settlement === "SETTLED" ? (
                           <span className="badge badge-neutral">
-                            Settled {p.settledAt ? shortDate(p.settledAt, tz) : ""}
+                            Settled {p.settledAt ? briefDateTime(p.settledAt, tz) : ""}
                           </span>
                         ) : p.settlement === "FINALIZING" ? (
                           // Delivered and priced, but ERCOT can still correct
@@ -109,7 +107,7 @@ export default async function PositionsPage() {
                             className="badge badge-blue"
                             title="ERCOT's prices are final at 16:00 Central on the second business day after the operating day; it settles then, at any corrected price."
                           >
-                            Final {dateTime(p.finalAt, tz)}
+                            Final {briefDateTime(p.finalAt, tz)}
                           </span>
                         ) : p.settlement === "AWAITING" ? (
                           // Due and priced: the next sweep cashes it out.
@@ -133,7 +131,7 @@ export default async function PositionsPage() {
                         {p.markPrice != null ? usd(p.markPrice) : "—"}
                       </td>
                       <td
-                        className={`mono text-right ${p.realizedPnl >= 0n ? "pos" : "neg"}`}
+                        className={`mono text-right ${p.realizedPnl > 0n ? "pos" : p.realizedPnl < 0n ? "neg" : "t-mute"}`}
                       >
                         {sign(p.realizedPnl)}
                       </td>
@@ -141,14 +139,6 @@ export default async function PositionsPage() {
                         className={`mono text-right ${p.unrealizedPnl > 0n ? "pos" : p.unrealizedPnl < 0n ? "neg" : ""}`}
                       >
                         {sign(p.unrealizedPnl)}
-                      </td>
-                      <td>
-                        <Link
-                          href={`/markets/${p.settlementPoint}`}
-                          className="caption t-accent hover:underline"
-                        >
-                          Trade →
-                        </Link>
                       </td>
                     </tr>
                   );

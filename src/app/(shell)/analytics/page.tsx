@@ -1,7 +1,7 @@
 import { requireDesk } from "@/lib/desk";
 import { getAnalytics } from "@/lib/analytics";
 import { AnalyticsCharts } from "./analytics-charts";
-import { usd, sign, bpsToPercent, num, volumeUnitLabel } from "@/lib/format";
+import { usd, sign, signedUsd, bpsToPercent, num, volumeUnitLabel, signTone } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { parseDec } from "@/lib/money";
 
@@ -32,33 +32,33 @@ export default async function AnalyticsPage() {
     {
       label: "Return",
       value: bpsToPercent(a.returnBps),
-      tone: a.returnBps >= 0 ? "pos" : "neg",
+      tone: signTone(Math.round(a.returnBps)),
     },
     {
       label: "Realized P&L",
-      value: sign(a.realizedPnl),
+      value: signedUsd(a.realizedPnl),
       tone: toneOf(a.realizedPnl),
     },
     {
       label: "Unrealized",
-      value: sign(a.unrealizedPnl),
+      value: signedUsd(a.unrealizedPnl),
       tone: toneOf(a.unrealizedPnl),
     },
     { label: "Executed trades", value: String(a.totalTrades) },
     { label: "Win rate", value: a.winRatePercent == null ? "—" : `${a.winRatePercent}%` },
     {
       label: "Avg trade P&L",
-      value: sign(a.avgTradePnl),
+      value: signedUsd(a.avgTradePnl),
       tone: toneOf(a.avgTradePnl),
     },
     // Coloured by the figure's own sign: a profitable worst trade is still a
     // profit, and a zero drawdown is not a loss.
-    { label: "Best trade", value: sign(a.bestTradePnl), tone: toneOf(a.bestTradePnl) },
-    { label: "Worst trade", value: sign(a.worstTradePnl), tone: toneOf(a.worstTradePnl) },
+    { label: "Best trade", value: signedUsd(a.bestTradePnl), tone: toneOf(a.bestTradePnl) },
+    { label: "Worst trade", value: signedUsd(a.worstTradePnl), tone: toneOf(a.worstTradePnl) },
     {
       label: "Max drawdown",
       // Stored as a magnitude; shown as the loss it is from the peak.
-      value: sign(-absDec(a.maxDrawdown)),
+      value: signedUsd(-absDec(a.maxDrawdown)),
       tone: parseFloat(a.maxDrawdown) !== 0 ? "neg" : undefined,
     },
   ];
@@ -105,15 +105,15 @@ export default async function AnalyticsPage() {
         <div className="mt-2 grid grid-cols-2 gap-3 text-[12px] sm:grid-cols-4">
           <div>
             <p className="caption t-mute">P&amp;L per settled MWh</p>
-            <p className="mono">{a.desk.pnlPerMwh == null ? "—" : sign(a.desk.pnlPerMwh)}</p>
+            <p className="mono">{a.desk.pnlPerMwh == null ? "—" : signedUsd(a.desk.pnlPerMwh)}</p>
           </div>
           <div>
             <p className="caption t-mute">DEC P&amp;L</p>
-            <p className={`mono ${parseFloat(a.desk.decPnl) >= 0 ? "pos" : "neg"}`}>{sign(a.desk.decPnl)}</p>
+            <p className={`mono ${signTone(a.desk.decPnl) ?? ""}`}>{signedUsd(a.desk.decPnl)}</p>
           </div>
           <div>
             <p className="caption t-mute">INC P&amp;L</p>
-            <p className={`mono ${parseFloat(a.desk.incPnl) >= 0 ? "pos" : "neg"}`}>{sign(a.desk.incPnl)}</p>
+            <p className={`mono ${signTone(a.desk.incPnl) ?? ""}`}>{signedUsd(a.desk.incPnl)}</p>
           </div>
           <div>
             <p className="caption t-mute">Sharpe (daily, annualized)</p>

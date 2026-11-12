@@ -27,14 +27,13 @@ import { Stat } from "@/components/ui/stat";
 import { Lamp } from "@/components/ui/lamp";
 import {
   usd,
-  sign,
+  sign, signedUsd,
   bpsToPercent,
   num,
   instrumentInfo,
   legsLabel,
   positionUnit,
-  volumeUnitLabel,
-} from "@/lib/format";
+  volumeUnitLabel, signTone } from "@/lib/format";
 import { localTime } from "@/lib/time";
 import { getViewerTimeZone } from "@/lib/time-zone-server";
 
@@ -62,12 +61,12 @@ export default async function DashboardPage() {
       label: "Equity",
       value: met ? usd(met.equity) : "—",
       tone:
-        met && met.totalPnl >= 0n ? "pos" : met && met.totalPnl < 0n ? "neg" : undefined,
+        met ? signTone(met.totalPnl) : undefined,
     },
     { label: "Cash", value: met ? usd(met.cashBalance) : "—" },
     {
       label: "Total P&L",
-      value: met ? sign(met.totalPnl) : "—",
+      value: met ? signedUsd(met.totalPnl) : "—",
       tone: met && met.totalPnl > 0n ? "pos" : met && met.totalPnl < 0n ? "neg" : undefined,
     },
     { label: "Return", value: met ? bpsToPercent(met.returnBps) : "—" },

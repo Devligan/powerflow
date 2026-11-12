@@ -26,7 +26,7 @@ export default async function ChallengesPage() {
       <section className="card p-4">
         <h2 className="card-title">All challenges</h2>
         {challenges.length === 0 ? (
-          <p className="caption t-mute">None yet. Start the first one above.</p>
+          <p className="hint t-mute">None yet. Start the first one above.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="table">
