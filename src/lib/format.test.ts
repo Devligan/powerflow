@@ -104,6 +104,14 @@ describe("money as a desk quotes it", () => {
     expect(bpsToPercent(-920)).toBe("−9.20%");
     expect(bpsToPercent(0)).toBe("0.00%");
   });
+
+  it("takes the sign from the rounded figure", () => {
+    // get_leaderboard's return is unrounded numeric, sent as a string.
+    expect(bpsToPercent("-0.3")).toBe("0.00%");
+    expect(bpsToPercent("0.4")).toBe("0.00%");
+    expect(bpsToPercent("122.2154321")).toBe("+1.22%");
+    expect(bpsToPercent("-0.6")).toBe("−0.01%");
+  });
 });
 
 describe("tradeSideLabel", () => {
