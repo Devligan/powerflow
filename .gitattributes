@@ -1,0 +1,5 @@
+# Migrations patch deployed function bodies in place (0043, 0049): their
+# anchors are LF text, so a CRLF checkout (Windows, core.autocrlf) cannot
+# start a local Supabase stack. run-migration.ts checksums normalise line
+# endings, so the production ledger is unaffected.
+supabase/migrations/*.sql text eol=lf
