@@ -12,7 +12,7 @@ import {
   positionUnit,
   volumeUnitLabel,
 } from "@/lib/format";
-import { dayStartUtc, shortDate } from "@/lib/time";
+import { dayStartUtc, shortDate, windowLabel } from "@/lib/time";
 import { useTimeZone } from "@/components/time-zone";
 
 /** The filter dates are calendar days in the viewer's zone: the first or last instant of one. */
@@ -39,6 +39,7 @@ interface TradeItem {
   quantityMwh: string;
   executionPrice: string;
   deliveryStart: string;
+  deliveryEnd: string;
   createdAt: string;
   realizedPnl: string;
   status: string;
@@ -258,18 +259,11 @@ export function TradesTable() {
                       </td>
                       <td>
                         {inst ? (
-                          <div className="flex flex-col gap-1">
-                            <span className="whitespace-nowrap">
+                          <div className="flex flex-col items-start gap-1">
+                            <span className="whitespace-nowrap" title={t.product}>
                               {inst.shortLabel}
                             </span>
-                            <span className="flex items-center gap-1">
-                              <span className={`badge ${inst.tone}`}>
-                                {inst.ruleLabel}
-                              </span>
-                              <span className="mono text-[10px] t-mute">
-                                {t.product}
-                              </span>
-                            </span>
+                            <span className={`badge ${inst.tone}`}>{inst.ruleLabel}</span>
                           </div>
                         ) : (
                           <span className="t-mute">{t.instrument}</span>
@@ -295,8 +289,9 @@ export function TradesTable() {
                       >
                         {r === 0n ? "—" : sign(r)}
                       </td>
-                      <td className="mono t-mute">
-                        {shortDate(t.deliveryStart, tz)}
+                      {/* The viewer's clock with ERCOT's hour ending, as on Positions. */}
+                      <td className="whitespace-nowrap text-[12px] t-dim">
+                        {windowLabel(Date.parse(t.deliveryStart), Date.parse(t.deliveryEnd), tz)}
                       </td>
                       <td>
                         <span className="badge badge-neutral">{t.status}</span>

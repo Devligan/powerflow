@@ -72,7 +72,9 @@ export function AnalyticsCharts({
     const band = yHi - yLo || 1;
 
     const n = values.length;
-    const x = (i: number) => padL + (i / Math.max(1, n - 1)) * (W - padL - padR);
+    // One day is a point, drawn in the middle rather than against the axis.
+    const x = (i: number) =>
+      n === 1 ? (padL + W - padR) / 2 : padL + (i / (n - 1)) * (W - padL - padR);
     const y = (v: number) => padT + (1 - (v - yLo) / band) * (base - padT);
 
     const coords = values.map((v, i) => ({ x: x(i), y: y(v) }));
@@ -188,6 +190,12 @@ export function AnalyticsCharts({
               className="draw"
               style={{ "--pf-length": 2400 } as React.CSSProperties}
             />
+            {/* Each day's close as a dot: a single day has no line to draw,
+                and a short run reads better point by point. */}
+            {curve.coords.length <= 62 &&
+              curve.coords.map((c, i) => (
+                <circle key={i} cx={c.x} cy={c.y} r={curve.coords.length === 1 ? 3.5 : 2} fill={curve.last >= 0 ? LONG : SHORT} />
+              ))}
 
             <line
               x1={curve.padL}
@@ -224,7 +232,7 @@ export function AnalyticsCharts({
         <div className="mb-3 flex items-baseline justify-between gap-3">
           <h2 className="card-title mb-0">P&amp;L by settlement point</h2>
           {markets && (
-            <span className="caption">{markets.rows.length} points</span>
+            <span className="caption">{markets.rows.length} point{markets.rows.length === 1 ? "" : "s"}</span>
           )}
         </div>
 

@@ -120,11 +120,31 @@ export default async function AnalyticsPage() {
             <p className="mono">{a.desk.sharpe ?? "—"}</p>
           </div>
         </div>
+        {/* Settled P&L by hour ending: where in the day the desk makes and
+            loses its money, one cell per hour it traded. */}
         {a.desk.pnlByHour.length > 0 && (
-          <p className="mt-3 text-[11px] t-mute">
-            By hour ending:{" "}
-            {a.desk.pnlByHour.map((h) => `HE${h.he} ${sign(h.pnl)}`).join(" · ")}
-          </p>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-center text-[11px]" aria-label="Settled P&L by hour ending">
+              <thead>
+                <tr>
+                  {a.desk.pnlByHour.map((h) => (
+                    <th key={h.he} scope="col" className="caption px-1 pb-1 font-normal">
+                      HE{h.he}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  {a.desk.pnlByHour.map((h) => (
+                    <td key={h.he} className={`mono border border-white/5 px-1.5 py-1.5 whitespace-nowrap ${signTone(h.pnl) ?? "t-mute"}`}>
+                      {sign(h.pnl, 0)}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
         )}
         <p className="mt-2 text-[11px] t-mute">
           {num(a.desk.settledMwh)} MWh settled. A DEC earns when real time clears above day-ahead, an INC

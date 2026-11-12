@@ -75,6 +75,7 @@ export async function getAnalytics(userId: string): Promise<AnalyticsResult> {
   const startingCash = parseDbDec(startingCashRaw);
 
   const replay = replayTrades(trades.map(replayInput));
+  const settlementIds = new Set(trades.filter((t) => t.status === "SETTLED").map((t) => t.id));
 
   const allPositions = positions.map((p) => ({
     id: p.id,
@@ -204,9 +205,11 @@ export async function getAnalytics(userId: string): Promise<AnalyticsResult> {
     bestTradePnl: m(best),
     worstTradePnl: m(worst),
     // Traded volume is signed by side, so a BUY adds long and a SELL adds
-    // short, and each is bucketed by the unit of the product traded.
+    // short, and each is bucketed by the unit of the product traded. A
+    // settlement closes a position at delivery; it is not a trade the desk
+    // made, and counting it read every settled DEC as volume sold.
     volumes: volumeBreakdown(
-      replay.trades.map((t) => ({
+      replay.trades.filter((t) => !settlementIds.has(t.id)).map((t) => ({
         product: t.product,
         quantityMwh: t.side === "BUY" ? t.quantityMwh : -t.quantityMwh,
       }))
