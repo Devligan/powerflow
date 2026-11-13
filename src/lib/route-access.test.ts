@@ -18,6 +18,7 @@ const PUBLIC = new Set([
   "/privacy",
   "/terms",
   "/learn",
+  "/status",
   "/leaderboard",
   "/challenges/[slug]",
 ]);

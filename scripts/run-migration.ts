@@ -246,6 +246,9 @@ async function main() {
     statement_timeout: 120_000,
     ssl: { rejectUnauthorized: false },
   });
+  // A migration reports what it found (a backfill's count, a first audit's
+  // result) with RAISE NOTICE, so a dry run shows it before anything is kept.
+  client.on("notice", (n) => console.log(`[migration] notice: ${n.message}`));
   await client.connect();
   try {
     if (showStatus) {

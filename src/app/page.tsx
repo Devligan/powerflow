@@ -234,6 +234,7 @@ export default async function Home() {
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-7 sm:flex-row sm:items-center sm:justify-between">
           <p className="caption">
             PowerFlow · for education only · not investment advice ·{" "}
+            <Link href="/status" className="hover:underline">Status</Link> ·{" "}
             <Link href="/privacy" className="hover:underline">Privacy</Link> ·{" "}
             <Link href="/terms" className="hover:underline">Terms</Link>
           </p>

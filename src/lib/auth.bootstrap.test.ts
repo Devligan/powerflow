@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { admin, createTestUser, dbTestsEnabled } from "@/lib/testing/db";
+import { admin, createTestUser, dbTestsEnabled, markLedgerStaged } from "@/lib/testing/db";
 import { ensureUserRecords } from "@/lib/auth";
 
 /**
@@ -52,6 +52,7 @@ describe.skipIf(!dbTestsEnabled())("account bootstrap (live database)", () => {
     const db = admin();
 
     // Spend some cash, then bootstrap again: the account must not be reset.
+    markLedgerStaged(user.id);
     await db.from("paper_accounts").update({ cash_balance: 12345.67 }).eq("user_id", user.id);
     await ensureUserRecords({ id: user.id, email: user.email } as never);
     await ensureUserRecords({ id: user.id, email: user.email } as never);

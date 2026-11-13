@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { admin, createReplayTestUser, dbTestsEnabled, userClient } from "@/lib/testing/db";
+import { admin, createReplayTestUser, dbTestsEnabled, markLedgerStaged, userClient } from "@/lib/testing/db";
 import { loadFixturePoint } from "@/lib/testing/ercot-fixture";
 
 /**
@@ -148,6 +148,7 @@ describe.skipIf(!dbTestsEnabled())("margin and settlement funding (live database
    * the engine and asserts on what the engine did with it.
    */
   const setCash = async (userId: string, amount: number) => {
+    markLedgerStaged(userId);
     const { error } = await db
       .from("paper_accounts")
       .update({ cash_balance: String(amount) })

@@ -73,7 +73,23 @@ async function main() {
       typeof pct === "number" && pct < MAX_STORAGE_PERCENT,
       typeof pct === "number" ? `${pct}% used` : "not reported",
     );
+
+    // 0054: every account's books reconcile with its fills, checked hourly by
+    // pg_cron. Out of balance, never run, or overdue are all failures.
+    const ledger = status.ledger;
+    const broken = (ledger?.checks ?? []).filter((c) => c.violations !== 0).map((c) => `${c.check}=${c.violations}`);
+    check(
+      "ledger reconciles, checked within the last two hours",
+      ledger && ledger.ok && !ledger.stale && broken.length === 0,
+      ledger
+        ? `${ledger.trades} fills, ${ledger.accounts} accounts, ${Math.round(minutesSince(ledger.checkedAt))} min ago` +
+            (broken.length ? `; ${broken.join(", ")}` : "")
+        : "no audit reported",
+    );
   }
+
+  const statusPage = await get("/status");
+  check("GET /status", statusPage.status === 200, `${statusPage.status}`);
 
   for (const r of results) {
     console.log(`${r.ok ? "ok  " : "FAIL"}  ${r.name}${r.detail ? `  (${r.detail})` : ""}`);

@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { admin, createTestUser, dbTestsEnabled, userClient } from "@/lib/testing/db";
+import { admin, createTestUser, dbTestsEnabled, markLedgerStaged, userClient } from "@/lib/testing/db";
 
 /**
  * Races against the cash balance.
@@ -79,6 +79,7 @@ describe.skipIf(!dbTestsEnabled())("cash and exposure under contention (live dat
   ): Promise<{ userId: string; client: SupabaseClient }> => {
     const user = await createTestUser("sql-race");
     const client = await userClient(user);
+    markLedgerStaged(user.id);
     const { error } = await db
       .from("paper_accounts")
       .update({

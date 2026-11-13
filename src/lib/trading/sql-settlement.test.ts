@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { admin, createReplayTestUser, dbTestsEnabled, userClient } from "@/lib/testing/db";
+import { admin, createReplayTestUser, dbTestsEnabled, markLedgerStaged, userClient } from "@/lib/testing/db";
 import { loadFixturePoint } from "@/lib/testing/ercot-fixture";
 
 /**
@@ -607,6 +607,8 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
       .eq("code", UNPRICED_PRODUCT)
       .single();
 
+    // A hand-written position, fill and balance: a fixture, not the engine's books.
+    markLedgerStaged(user.id);
     const { data: inserted, error: posErr } = await db
       .from("positions")
       .insert({
