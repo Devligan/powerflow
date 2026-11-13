@@ -5,6 +5,7 @@ import {
   cleanupTestUsers,
   createReplayTestUser,
   dbTestsEnabled,
+  markLedgerStaged,
   userClient,
 } from "@/lib/testing/db";
 import { OBS_KEY } from "@/lib/testing/ercot-fixture";
@@ -172,6 +173,7 @@ describe.skipIf(!dbTestsEnabled())("engine regressions (live database)", () => {
   };
 
   const setCash = async (d: Desk, amount: number) => {
+    markLedgerStaged(d.id);
     const { error } = await db
       .from("paper_accounts")
       .update({ cash_balance: String(amount) })

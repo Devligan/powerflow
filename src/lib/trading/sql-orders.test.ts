@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   admin,
@@ -40,7 +40,6 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
   let beforeGate: string;
   /** After the clearing was published, before delivery. */
   let afterClearing: string;
-  let createdUserIds: string[] = [];
 
   beforeAll(async () => {
     db = admin();
@@ -48,7 +47,6 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
     userB = await createReplayTestUser("orders-b");
     clientA = await userClient(userA);
     clientB = await userClient(userB);
-    createdUserIds = [userA.id, userB.id];
 
     const { data: market } = await db
       .from("markets")
@@ -82,19 +80,6 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
     if (gateErr) throw new Error(gateErr.message);
     beforeGate = new Date(Date.parse(gate as string) - 3_600_000).toISOString();
     afterClearing = new Date(Date.parse(cleared!.published_at as string) + 60_000).toISOString();
-  }, 30_000);
-
-  afterAll(async () => {
-    // Orders and their audit events cascade with the users (0026 FK); the
-    // sweep's fills are ordinary trades, removed by the standard teardown.
-    for (const id of createdUserIds) {
-      await db.from("paper_orders").delete().eq("user_id", id);
-      await db.from("audit_events").delete().eq("user_id", id);
-      await db.from("trades").delete().eq("user_id", id);
-      await db.from("positions").delete().eq("user_id", id);
-      await db.from("paper_accounts").delete().eq("user_id", id);
-      await db.from("profiles").delete().eq("id", id);
-    }
   }, 30_000);
 
   const place = (

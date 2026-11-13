@@ -12,6 +12,8 @@ export const PUBLIC_PATHS = [
   "/forgot-password", "/reset-password",
   // How the market works, readable before signing up.
   "/learn",
+  // What the platform checks about itself: data freshness and the ledger.
+  "/status",
 ];
 
 // "/auth/" is a prefix, not a path: the OAuth and email-link callback

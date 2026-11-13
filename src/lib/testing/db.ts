@@ -129,8 +129,45 @@ export function admin() {
 }
 
 /**
+ * Accounts whose books a suite wrote by hand — a cash balance set as a fixture,
+ * a position or fill inserted directly — so they no longer follow from the
+ * engine's own movements and are left out of the teardown reconciliation.
+ */
+const stagedLedgers = new Set<string>();
+
+/**
+ * Exempt an account from the teardown reconciliation. Call it where a fixture
+ * writes money state outside the engine (the platform has no deposit path, so
+ * "the member's cash is X" can only be staged); everything the engine does to
+ * every other account is still reconciled.
+ */
+export function markLedgerStaged(userId: string): void {
+  stagedLedgers.add(userId);
+}
+
+/**
+ * The 0054 reconciliation, over the accounts this file created and did not
+ * stage: whatever a suite drove the engine through, cash must still follow from
+ * the fills, positions from their trades, and bids from their fills. Read
+ * before teardown, raised after it, so a failure never leaks users.
+ */
+async function reconcileTestLedgers(userIds: string[]): Promise<string | null> {
+  const ids = userIds.filter((id) => !stagedLedgers.has(id));
+  if (ids.length === 0) return null;
+  const { data, error } = await supabaseAdmin().rpc("ledger_violations", { p_user_ids: ids });
+  if (error) return `ledger reconciliation could not run: ${error.message}`;
+  const rows = (data ?? []) as Array<{ check_name: string; user_id: string; detail: unknown }>;
+  if (rows.length === 0) return null;
+  return (
+    `the ledger does not reconcile for ${rows.length} row(s) this suite left behind:\n  ` +
+    rows.map((r) => `${r.check_name} ${r.user_id} ${JSON.stringify(r.detail)}`).join("\n  ")
+  );
+}
+
+/**
  * Delete every test user this file created, so the database is left as found.
  * The cascade takes their account, positions, fills and audit history with it.
+ * First, every unstaged account is reconciled (see `reconcileTestLedgers`).
  *
  * Deletion is retried on the auth service's rate limit for the same reason
  * sign-in is: many files tear down at once. Anything still undeleted is named
@@ -143,6 +180,7 @@ export async function cleanupTestUsers(): Promise<void> {
 
   loadTestEnv();
   const db = supabaseAdmin();
+  const unreconciled = await reconcileTestLedgers(pending.map((u) => u.id));
   const failures: string[] = [];
 
   for (const user of pending) {
@@ -173,6 +211,7 @@ export async function cleanupTestUsers(): Promise<void> {
         `and must be removed by hand:\n  ${failures.join("\n  ")}`
     );
   }
+  if (unreconciled) throw new Error(unreconciled);
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

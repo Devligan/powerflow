@@ -25,6 +25,12 @@ with virtual cash, a full risk engine, immutable audit trail, and analytics.
 - **Correct by construction.** Exact fixed-point money (`bigint`, never floats),
   idempotent orders, append-only trades and audit log, row-level security,
   automatic settlement and margin with forced liquidation and deficits.
+- **And checked in production, every hour.** `pg_cron` reconciles every
+  account's books against its fills — cash, positions, settlements, bids, audit
+  trail — in one read-only snapshot; the result is public at
+  [`/status`](https://powerflow-two.vercel.app/status) and a failed check fails
+  the Production workflow. Every engine test runs the same reconciliation over
+  its accounts before teardown (see *The ledger reconciles itself*).
 
 > **Where the prices come from**: ERCOT provides the market, PowerFlow provides
 > the trading. Every price row is ingested from ERCOT's own MIS reports
@@ -400,6 +406,44 @@ Bids post collateral (0040): MW × the 95th-percentile |RT − DA| at the point,
 least $10/MW, held on every open bid and every open margined position. Together
 they must fit within the lesser of cash and equity, so an open loss or a deficit
 reduces what a new bid can post, and an open gain does not add to it.
+
+### The ledger reconciles itself
+
+Each money path above is pinned by its own DB suite, but a suite proves a
+path, not the books. Migration 0054 states what must hold of the stored ledger
+as a whole, as one SQL statement (`ledger_violations`) over one snapshot, so a
+fill landing mid-check cannot read as half-applied:
+
+| Check | What must hold |
+| --- | --- |
+| `cash_reconciles` | `cash − deficit = starting cash + Σ fill cash flows` — −p×q per buy, +p×q per sell, and for a margined instrument (0041) only the P&L it realized. Settlement, liquidation and deficit repayment move cash and deficit together, so they cancel. Exact to the app's money scale (1e-6). |
+| `positions_match_trades` | every position's quantity is the signed sum of the fills with its identity, and no fills net to a quantity with no position |
+| `settlements_trace` | a settled position's settlement trade is the account's own `SETTLED` fill of the same instrument, market and window |
+| `fills_match_orders` | a `FILLED` bid names its fill, and that fill is the bid's account, side, size, market, instrument and window; no other bid names one |
+| `fills_audited` | every fill has its `TRADE_EXECUTED` audit event |
+
+Three places run it:
+
+- **Production, hourly.** `pg_cron` calls `record_ledger_audit()` at :40,
+  after the :25 settlement sweep; it keeps counts plus five sample rows per
+  check in `ledger_audits` (service role only — samples name accounts; 30 days
+  kept by `housekeeping()`). `GET /api/market-data/status` and the public
+  [`/status`](https://powerflow-two.vercel.app/status) page report the newest
+  result as counts only, and `scripts/smoke-production.mjs` fails when a check
+  fails, is missing, or the job has not run for two hours.
+- **Every DB suite.** The shared teardown (`src/lib/testing/db.ts`) reconciles
+  every account the suite created before deleting it, so the ~460 engine tests
+  each also prove the books still balance after what they did. A fixture that
+  writes money outside the engine (the platform has no deposit path, so "the
+  account has $X" can only be staged) calls `markLedgerStaged(userId)`.
+- **Against itself.** `src/lib/trading/sql-ledger.test.ts` breaks the books
+  one invariant at a time with the service role and asserts each break is
+  caught, named and sized — down to a millionth of a dollar of unexplained
+  cash — then repaired. An alarm that has never been seen to ring proves
+  nothing.
+
+It found something on its first run: a suite whose own teardown deleted
+positions while their (immutable) fills stayed behind.
 
 ## Market data
 

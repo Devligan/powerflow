@@ -21,6 +21,12 @@ export type Side = "BUY" | "SELL";
  *  a user order. */
 export type TradeStatus = "EXECUTED" | "REJECTED" | "SETTLED" | "LIQUIDATED";
 export type IngestionStatus = "RUNNING" | "SUCCESS" | "FAILED";
+/** One invariant's result in a ledger audit (0054). */
+export type LedgerCheckResult = {
+  check: string;
+  violations: number;
+  sample: Array<{ user_id: string; entity_id: string | null; detail: Json }>;
+};
 export type PriceSource =
   | "ERCOT_MIS"
   | "SEEDED"
@@ -429,6 +435,22 @@ export type Database = {
         applied_at: string;
         intervals_corrected: number;
         hours_republished: number;
+      };
+      Insert: never;
+      Update: never;
+      Relationships: [];
+    };
+    /** Hourly ledger reconciliation results (0054). Service role only: the
+     *  samples name accounts. */
+    ledger_audits: {
+      Row: {
+        id: number;
+        checked_at: string;
+        ok: boolean;
+        checks: LedgerCheckResult[];
+        accounts: number;
+        trades: number;
+        duration_ms: number;
       };
       Insert: never;
       Update: never;
