@@ -247,5 +247,15 @@ grant execute on function public.housekeeping() to service_role;
 -- cron.schedule replaces a job of the same name, so re-running is safe.
 select cron.schedule('powerflow-ledger-audit', '40 * * * *', $$select public.record_ledger_audit()$$);
 
--- The first result, so the status route has one the moment this is applied.
-select public.record_ledger_audit();
+-- The first result, so the status route has one the moment this is applied,
+-- reported so a dry run shows whether the existing books reconcile.
+do $$
+declare
+  v jsonb := public.record_ledger_audit();
+begin
+  raise notice '0054 first ledger audit: ok=% accounts=% trades=% ms=% violations=%',
+    v ->> 'ok', v ->> 'accounts', v ->> 'trades', v ->> 'duration_ms',
+    (select jsonb_object_agg(e ->> 'check', (e ->> 'violations')::int)
+     from jsonb_array_elements(v -> 'checks') e);
+end
+$$;
