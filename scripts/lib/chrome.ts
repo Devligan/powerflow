@@ -70,7 +70,10 @@ export class Page {
             details?.exception?.description ?? details?.text ?? "uncaught exception"
           );
         }
-        this.listeners.get(message.method)?.(message.params ?? {});
+        // Only events someone registered for, and only as a function: the
+        // method name comes off the wire.
+        const listener = this.listeners.has(message.method) ? this.listeners.get(message.method) : undefined;
+        if (typeof listener === "function") listener(message.params ?? {});
         return;
       }
       if (message.id && this.pending.has(message.id)) {
