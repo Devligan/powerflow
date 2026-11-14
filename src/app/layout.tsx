@@ -3,6 +3,7 @@ import { Archivo, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { getViewerTimeZone } from "@/lib/time-zone-server";
 import { TimeZoneProvider } from "@/components/time-zone";
+import { AUTHOR } from "@/lib/site";
 
 /*
  * Three faces, three jobs. Archivo carries structure, IBM Plex Sans carries
@@ -38,6 +39,8 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://powerflow-two.vercel.app"),
   title: "PowerFlow — ERCOT paper trading desk",
   description: DESCRIPTION,
+  authors: [{ name: AUTHOR.name, url: AUTHOR.github }],
+  creator: AUTHOR.name,
   openGraph: {
     type: "website",
     siteName: "PowerFlow",

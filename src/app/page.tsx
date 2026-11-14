@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Brand } from "@/components/brand";
+import { BuiltBy } from "@/components/built-by";
 import { MarketsStrip } from "@/components/markets-strip";
 import { Lamp } from "@/components/ui/lamp";
 import { LocalClock, ZoneCaption } from "@/components/ui/clock";
@@ -88,6 +89,21 @@ const SEQUENCE: Array<{ title: string; body: string }> = [
   },
 ];
 
+const UNDER_THE_HOOD: Array<{ title: string; body: string }> = [
+  {
+    title: "No look-ahead",
+    body: "Every price carries the moment ERCOT posted it, and every fill reads prices as of the account's own clock, so a replayed day can't see its own future.",
+  },
+  {
+    title: "Books that prove themselves",
+    body: "Money is exact to a millionth of a dollar, fills are append-only, and every hour the database reconciles every account against its fills, in public.",
+  },
+  {
+    title: "Shipped like production",
+    body: "Every change goes through CI that runs the engine against live ERCOT data on a fresh database, then a smoke check of the live site after each deploy.",
+  },
+];
+
 export default async function Home() {
   const user = await getSessionUser().catch(() => null);
 
@@ -146,9 +162,12 @@ export default async function Home() {
                   <Link href="/signup" className="btn btn-primary">
                     Start with $100,000 virtual
                   </Link>
-                  {/* /markets needs an account; this does not. */}
+                  {/* /markets needs an account; these do not. */}
                   <Link href="/learn" className="btn">
                     How it works
+                  </Link>
+                  <Link href="/engineering" className="btn">
+                    How it&apos;s built
                   </Link>
                 </>
               )}
@@ -200,7 +219,7 @@ export default async function Home() {
         </section>
 
         {/* ---- Operating sequence ---------------------------------------- */}
-        <section className="pb-20">
+        <section className="pb-14">
           <div className="mb-6 flex items-baseline gap-4">
             <h2 className="caption t-dim">Operating sequence</h2>
             <div className="h-px flex-1 bg-white/10" />
@@ -228,16 +247,45 @@ export default async function Home() {
             ))}
           </ol>
         </section>
+
+        {/* ---- Under the hood --------------------------------------------- */}
+        <section className="pb-20">
+          <div className="mb-6 flex items-baseline gap-4">
+            <h2 className="caption t-dim">Under the hood</h2>
+            <div className="h-px flex-1 bg-white/10" />
+          </div>
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+            <ul className="grid gap-5 sm:grid-cols-3">
+              {UNDER_THE_HOOD.map((item) => (
+                <li key={item.title}>
+                  <h3 className="font-display text-sm font-semibold">{item.title}</h3>
+                  <p className="mt-1.5 text-[12.5px] leading-relaxed t-dim">{item.body}</p>
+                </li>
+              ))}
+            </ul>
+            <div className="flex flex-wrap gap-3">
+              <Link href="/engineering" className="btn">
+                How it&apos;s built
+              </Link>
+              <Link href="/status" className="btn">
+                Live status
+              </Link>
+            </div>
+          </div>
+        </section>
       </main>
 
       <footer className="border-t border-white/10 bg-[var(--ink-panel)]">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-7 sm:flex-row sm:items-center sm:justify-between">
-          <p className="caption">
-            PowerFlow · for education only · not investment advice ·{" "}
-            <Link href="/status" className="hover:underline">Status</Link> ·{" "}
-            <Link href="/privacy" className="hover:underline">Privacy</Link> ·{" "}
-            <Link href="/terms" className="hover:underline">Terms</Link>
-          </p>
+          <div className="space-y-1.5">
+            <BuiltBy />
+            <p className="caption">
+              PowerFlow · for education only · not investment advice ·{" "}
+              <Link href="/status" className="hover:underline">Status</Link> ·{" "}
+              <Link href="/privacy" className="hover:underline">Privacy</Link> ·{" "}
+              <Link href="/terms" className="hover:underline">Terms</Link>
+            </p>
+          </div>
           <p className="caption">
             Times in <ZoneCaption /> · actual ERCOT market data, simulated trading
           </p>

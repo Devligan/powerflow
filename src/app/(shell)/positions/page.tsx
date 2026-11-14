@@ -90,10 +90,23 @@ export default async function PositionsPage() {
                       </td>
                       {/* The viewer's clock, with ERCOT's hour ending; a
                           window instrument by its dates. */}
-                      <td className="whitespace-nowrap text-[12px] t-dim">
-                        {inst?.rule === "AVERAGE"
-                          ? `${localDate(p.deliveryStart, tz)} → ${localDate(p.deliveryEnd, tz)}`
-                          : windowLabel(Date.parse(p.deliveryStart), Date.parse(p.deliveryEnd), tz)}
+                      {/* Wraps between the label's parts, never inside one, so
+                          the book fits a laptop screen without a scrollbar. */}
+                      <td className="min-w-[9rem] max-w-[13rem] text-[12px] t-dim">
+                        {inst?.rule === "AVERAGE" ? (
+                          <span className="whitespace-nowrap">
+                            {localDate(p.deliveryStart, tz)} → {localDate(p.deliveryEnd, tz)}
+                          </span>
+                        ) : (
+                          windowLabel(Date.parse(p.deliveryStart), Date.parse(p.deliveryEnd), tz)
+                            .split(" · ")
+                            .map((part, i) => (
+                              <span key={i}>
+                                {i > 0 && " · "}
+                                <span className="whitespace-nowrap">{part}</span>
+                              </span>
+                            ))
+                        )}
                       </td>
                       <td className="whitespace-nowrap">
                         {p.settlement === "SETTLED" ? (

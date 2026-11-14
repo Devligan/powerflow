@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Brand } from "@/components/brand";
+import { BuiltBy } from "@/components/built-by";
 
 export const LEGAL_CONTACT = "sriharshachallangi@gmail.com";
 export const LEGAL_EFFECTIVE = "November 1, 2026";
@@ -24,6 +25,9 @@ export function LegalPage({ title, children }: { title: string; children: ReactN
           <Link href="/terms" className="hover:underline">Terms</Link>
           <Link href="/" className="hover:underline">Home</Link>
         </p>
+        <div className="mt-3">
+          <BuiltBy />
+        </div>
       </main>
     </div>
   );
