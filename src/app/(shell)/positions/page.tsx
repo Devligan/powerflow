@@ -18,6 +18,17 @@ import { buildLadder } from "@/lib/risk-ladder";
 
 export const dynamic = "force-dynamic";
 
+/** "Wed, Nov 11 · 7:00 AM – 8:00 AM CST · HE8" as the day over the window. */
+function DeliveryWindow({ label }: { label: string }) {
+  const [day, ...rest] = label.split(" · ");
+  return (
+    <>
+      <div>{day}</div>
+      {rest.length > 0 && <div>{rest.join(" · ")}</div>}
+    </>
+  );
+}
+
 export default async function PositionsPage() {
   const { desk } = await requireDesk();
   const { tz } = await getViewerTimeZone();
@@ -90,22 +101,16 @@ export default async function PositionsPage() {
                       </td>
                       {/* The viewer's clock, with ERCOT's hour ending; a
                           window instrument by its dates. */}
-                      {/* Wraps between the label's parts, never inside one, so
-                          the book fits a laptop screen without a scrollbar. */}
-                      <td className="min-w-[9rem] max-w-[13rem] text-[12px] t-dim">
+                      {/* The day on one line and the window on the next, so the
+                          book fits a laptop screen without a scrollbar. A table
+                          cell ignores max-width, so the break is explicit. */}
+                      <td className="whitespace-nowrap text-[12px] t-dim">
                         {inst?.rule === "AVERAGE" ? (
-                          <span className="whitespace-nowrap">
-                            {localDate(p.deliveryStart, tz)} → {localDate(p.deliveryEnd, tz)}
-                          </span>
+                          `${localDate(p.deliveryStart, tz)} → ${localDate(p.deliveryEnd, tz)}`
                         ) : (
-                          windowLabel(Date.parse(p.deliveryStart), Date.parse(p.deliveryEnd), tz)
-                            .split(" · ")
-                            .map((part, i) => (
-                              <span key={i}>
-                                {i > 0 && " · "}
-                                <span className="whitespace-nowrap">{part}</span>
-                              </span>
-                            ))
+                          <DeliveryWindow
+                            label={windowLabel(Date.parse(p.deliveryStart), Date.parse(p.deliveryEnd), tz)}
+                          />
                         )}
                       </td>
                       <td className="whitespace-nowrap">
