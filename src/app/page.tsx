@@ -12,7 +12,6 @@ import { requestTime } from "@/lib/time";
 import { countdown } from "@/lib/format";
 import { listMarkets } from "@/lib/markets";
 import { loadMarketStory, type MarketStory } from "@/lib/market-story";
-import { AUTHOR } from "@/lib/site";
 import marketsShot from "../../public/showcase/markets.png";
 import positionsShot from "../../public/showcase/positions.png";
 import analyticsShot from "../../public/showcase/analytics.png";
@@ -22,9 +21,8 @@ import analyticsShot from "../../public/showcase/analytics.png";
  *
  * It sells the product, not the plumbing. The tape and the week's story say
  * the prices are real; the hero says what the trade is; then the desk itself,
- * three screens of it, in the words a trader would use, and a few lines on why
- * it exists. How it is built is one link away for whoever wants it
- * (/engineering).
+ * three screens of it, in the words a trader would use. How fills, marks and
+ * settlement follow ERCOT is one link away for whoever wants it (/methodology).
  */
 
 const CENTRAL = "America/Chicago";
@@ -247,30 +245,6 @@ export default async function Home() {
           </section>
         ))}
 
-        {/* ---- Why it exists ------------------------------------------------- */}
-        <section className="mt-16 grid gap-6 border-t border-white/10 pt-16 lg:grid-cols-[1fr_2fr] lg:gap-14">
-          <p className="caption">Why I built it</p>
-          <div className="max-w-2xl space-y-4 text-[16px] leading-relaxed">
-            <p>
-              I wanted to understand how a power trader actually works. Reading about ERCOT only got me so far: an
-              auction that closes before anyone knows the price, a second market that reprices the same hour as it
-              happens, and settlement two business days later.
-            </p>
-            <p className="t-dim">
-              So I built the desk, wired it to ERCOT&apos;s real prices and rules, and started bidding. Most of what I
-              learned came from getting the details right.{" "}
-              <Link href="/engineering" className="t-accent hover:underline">
-                What that took →
-              </Link>
-            </p>
-            <p className="caption">
-              <a href={AUTHOR.github} className="hover:underline">
-                {AUTHOR.name}
-              </a>
-            </p>
-          </div>
-        </section>
-
         {/* ---- The close ----------------------------------------------------- */}
         <section className="my-20 card card-bracket px-6 py-12 text-center sm:px-12 sm:py-16">
           <p className="caption">The next auction</p>
@@ -310,7 +284,7 @@ export default async function Home() {
           <BuiltBy />
           <p className="caption">
             Actual ERCOT data, simulated money · not investment advice ·{" "}
-            <Link href="/engineering" className="hover:underline">Building it</Link> ·{" "}
+            <Link href="/methodology" className="hover:underline">Methodology</Link> ·{" "}
             <Link href="/status" className="hover:underline">Status</Link> ·{" "}
             <Link href="/privacy" className="hover:underline">Privacy</Link> ·{" "}
             <Link href="/terms" className="hover:underline">Terms</Link>
