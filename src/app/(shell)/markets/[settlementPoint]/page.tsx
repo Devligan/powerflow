@@ -50,8 +50,6 @@ export default async function MarketDetailPage({
     ? forwardLast.deliveryEnd ??
       new Date(Date.parse(forwardLast.deliveryTimestamp) + 3600_000).toISOString()
     : null;
-  // The headline on the ticket: day-ahead for the next hour that can trade.
-  const nextForward = forward.series.find((p) => Date.parse(p.deliveryTimestamp) >= nowMs) ?? forwardLast;
 
   return (
     <div className="space-y-5">
@@ -109,8 +107,8 @@ export default async function MarketDetailPage({
           />
           <p className="hint mt-3">
             Day-ahead clears the afternoon before delivery; real time settles
-            each hour after it ends. Their gap is DART — what a virtual or DART
-            spread on this point is paid.
+            each hour after it ends. The gap, real time minus day-ahead, is what
+            a DEC on this point earns per MWh; an INC earns its negative.
             {latest && (
               <>
                 {" "}Latest real-time hour {dateTime(latest.deliveryTimestamp, tz)} ·{" "}
@@ -127,7 +125,6 @@ export default async function MarketDetailPage({
           <TradePanel
             marketId={market.id}
             settlementPoint={market.settlementPoint}
-            latestPrice={nextForward?.price ?? market.price}
             product={forwardLast ? FORWARD_MARKET_PRODUCT : market.product}
             pricedThrough={forwardPricedThrough ?? latest?.deliveryTimestamp ?? null}
             markets={marketOptions}

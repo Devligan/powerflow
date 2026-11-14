@@ -217,14 +217,13 @@ export function TradesTable() {
                 <th className="text-right">Price</th>
                 <th className="text-right">P&amp;L</th>
                 <th>Delivery</th>
-                <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 9 }).map((_, j) => (
+                    {Array.from({ length: 8 }).map((_, j) => (
                       <td key={j}>
                         <span className="skeleton block h-3 w-16" />
                       </td>
@@ -233,7 +232,7 @@ export function TradesTable() {
                 ))
               ) : trades.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-[13px] t-mute">
+                  <td colSpan={8} className="py-8 text-center text-[13px] t-mute">
                     No trades match that query.{" "}
                     <Link href="/markets" className="t-accent hover:underline">
                       Place your first day-ahead bid
@@ -289,9 +288,6 @@ export function TradesTable() {
                       {/* The viewer's clock with ERCOT's hour ending, as on Positions. */}
                       <td className="whitespace-nowrap text-[12px] t-dim">
                         {windowLabel(Date.parse(t.deliveryStart), Date.parse(t.deliveryEnd), tz)}
-                      </td>
-                      <td>
-                        <span className="badge badge-neutral">{t.status}</span>
                       </td>
                     </tr>
                   );

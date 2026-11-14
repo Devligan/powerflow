@@ -52,7 +52,7 @@ migration headers in `supabase/migrations/` carry the rest.
 - **Day-ahead bids, as ERCOT runs them** (migrations 0037–0038): a position
   for an operating day is a bid or offer placed before **10:00 Central the
   day before**, at the clearing price or with a limit. It fills when ERCOT
-  publishes the day-ahead clearing (~13:30), at the actual clearing price —
+  publishes the day-ahead clearing (~12:30), at the actual clearing price —
   a limit only if the price crosses it (buy at/below, sell at/above, ties
   fill). Nobody can buy a day-ahead interval at its already-published price,
   and nothing trades once its delivery has started. A bid can be withdrawn

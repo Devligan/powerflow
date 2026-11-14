@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/auth";
-import { getAnalytics } from "@/lib/analytics";
+import { getAnalytics, SHARPE_MIN_DAYS } from "@/lib/analytics";
 import { AnalyticsCharts } from "./analytics-charts";
 import { usd, sign, signedUsd, bpsToPercent, num, volumeUnitLabel, signTone } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
@@ -44,7 +44,7 @@ export default async function AnalyticsPage() {
       value: signedUsd(a.unrealizedPnl),
       tone: toneOf(a.unrealizedPnl),
     },
-    { label: "Executed trades", value: String(a.totalTrades) },
+    { label: "Closed trades", value: String(a.closedTrades), note: `of ${a.totalTrades} fills` },
     { label: "Win rate", value: a.winRatePercent == null ? "—" : `${a.winRatePercent}%` },
     {
       label: "Avg trade P&L",
@@ -78,7 +78,7 @@ export default async function AnalyticsPage() {
       <PageHeader
         kicker="Performance"
         title="Analytics"
-        aside={<span className="badge badge-neutral">{a.totalTrades} trades</span>}
+        aside={<span className="badge badge-neutral">{a.totalTrades} fills</span>}
       >
         How your trading has gone, worked out from every fill and settlement:
         which side, which hubs and which hours made you money.
@@ -117,7 +117,13 @@ export default async function AnalyticsPage() {
           </div>
           <div>
             <p className="caption t-mute">Sharpe (daily, annualized)</p>
-            <p className="mono">{a.desk.sharpe ?? "—"}</p>
+            {a.desk.sharpe != null ? (
+              <p className="mono">{a.desk.sharpe.toFixed(2)}</p>
+            ) : (
+              <p className="t-mute" title="Under a month of daily P&L, a Sharpe ratio is mostly noise">
+                After {SHARPE_MIN_DAYS} trading days ({a.desk.sharpeDays} so far)
+              </p>
+            )}
           </div>
         </div>
         {/* Settled P&L by hour ending: where in the day the desk makes and
