@@ -69,8 +69,8 @@ export function FirstTrade() {
         <li>
           <div className="caption t-mute">3 · See it play out</div>
           <p className="mt-1 text-[13px] t-dim">
-            Live, it fills this afternoon and settles in about four days. To see the whole cycle in minutes, switch
-            to the <strong>Practice</strong> desk above and run a past day.
+            It fills at the clearing price that afternoon, is marked hour by hour as real time prints on the day,
+            and settles when ERCOT calls the prices final, two business days later.
           </p>
         </li>
       </ol>

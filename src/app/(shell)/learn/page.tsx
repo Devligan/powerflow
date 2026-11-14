@@ -52,16 +52,6 @@ const STEPS: Array<{ title: string; body: React.ReactNode }> = [
       </>
     ),
   },
-  {
-    title: "Don't want to wait four days?",
-    body: (
-      <>
-        Switch to the <strong>Practice</strong> desk: it replays a recent day with its own $100,000 and{" "}
-        <Term k="replay">clock</Term>, so you bid, clear, deliver and settle in a few minutes. Or start a{" "}
-        <strong>challenge</strong> with friends: everyone trades the same past days, and the best P&amp;L wins.
-      </>
-    ),
-  },
 ];
 
 export default async function LearnPage() {
@@ -111,14 +101,9 @@ export default async function LearnPage() {
 
       <div className="flex flex-wrap gap-3">
         {user ? (
-          <>
-            <Link href="/markets" className="btn btn-primary">
-              Place a bid
-            </Link>
-            <Link href="/challenges" className="btn">
-              Challenge friends
-            </Link>
-          </>
+          <Link href="/markets" className="btn btn-primary">
+            Place a bid
+          </Link>
         ) : (
           <Link href="/signup" className="btn btn-primary">
             Start with $100,000 virtual

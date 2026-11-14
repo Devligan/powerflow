@@ -10,7 +10,7 @@
 [Live system status](https://powerflow-two.vercel.app/status) ·
 [Design reference](docs/design.md)
 
-![The practice desk after a replayed ERCOT operating day: four steps from bidding to settlement, and what the market did hour by hour](public/showcase/desk.png)
+![The HB_NORTH market: the day-ahead curve against real time, and the day-ahead bid ticket](public/showcase/markets.png)
 
 ## The trade
 
@@ -33,35 +33,31 @@ none of the shortcuts:
   reports every 15 minutes, with history back to September 2026. Only the
   money is simulated.
 
-Waiting four days for a P&L is a slow way to learn, so the **practice desk**
-replays a recent operating day with its own $100,000 and its own clock. You
-bid, run the clearing, deliver the day and settle in about two minutes, and
-your live account is never touched. **Challenges** put friends on the same
-past days and rank them by P&L.
-
-## Try it in two minutes
+## Try it
 
 1. [Create an account](https://powerflow-two.vercel.app/signup) with email or
    Google.
-2. Switch to **Practice** in the bar under the navigation and choose an
-   operating day.
-3. Open bidding, then place a few bids from **Markets**. For example, buy the
-   evening peak at `HB_NORTH` (a DEC), betting that real time comes in above
-   day-ahead.
-4. Run the clearing, deliver the day and settle. The desk tells you which
-   hours paid and why.
+2. Open **Markets**, pick a hub and bid on tomorrow's hours before 10:00
+   Central. For example, buy the evening peak at `HB_NORTH` (a DEC), betting
+   that real time comes in above day-ahead.
+3. Your bid fills at the clearing price that afternoon. Watch it marked hour
+   by hour as real time prints the next day, then settle when ERCOT calls the
+   prices final.
 
 New to power markets? [How it works](https://powerflow-two.vercel.app/learn)
 explains the market in five minutes.
 
-## A day on the desk
+## The desk
 
-| | |
-| --- | --- |
-| ![Market view for HB_NORTH: the day-ahead curve against real time, the hourly DART spread and the bid ticket](public/showcase/markets.png) | ![Order book: day-ahead bids filled at the clearing price, and a limit bid that expired unfilled](public/showcase/orders.png) |
-| **Markets.** The day-ahead curve against real time for each hub and load zone, the average spread by hour, and the bid ticket. | **Orders.** Each bid fills at ERCOT's clearing price. The $1 limit bid never crossed, so it expired unfilled. |
-| ![Positions: a risk ladder of net MWh by delivery hour, and each position marked to real time with its settlement deadline](public/showcase/positions.png) | ![Analytics after settlement: equity, win rate, P&L by settlement point and by side](public/showcase/analytics.png) |
-| **Positions.** A risk ladder by delivery hour, and each position marked to real time until ERCOT's prices are final. | **Analytics.** Computed from the immutable fill history after settlement, never from a running total. |
+![Positions: a risk ladder of net MWh by delivery hour, and each position marked to real time with its settlement deadline](public/showcase/positions.png)
+
+**Positions.** A risk ladder by delivery hour, and each position marked to real
+time until ERCOT's prices are final.
+
+![Analytics after settlement: equity, return, realized P&L, win rate, best and worst trade, drawdown](public/showcase/analytics.png)
+
+**Analytics.** Computed from the immutable fill history after settlement, never
+from a running total.
 
 ## What makes it hard
 
@@ -70,9 +66,9 @@ the problems that decide whether one is worth practising on, and how PowerFlow
 handles each one.
 
 **No look-ahead.** Every price is stored with the moment ERCOT posted it,
-revisions included. Every fill, mark and margin check reads prices *as of*
-the account's own clock. A replay desk rewinds its clock, and the database,
-not the UI, hides the future. See
+revisions included. Every fill, mark and margin check reads only the prices
+posted by then, so a later revision never rewrites a past fill, and the
+database, not the UI, enforces it. See
 [`0021_asof_price_engine.sql`](supabase/migrations/0021_asof_price_engine.sql)
 and [`sql-replay.test.ts`](src/lib/trading/sql-replay.test.ts).
 
@@ -196,8 +192,8 @@ view of the market is in
 | `src/lib/ercot/` | ERCOT report adapters, hour-ending and DST handling, the settlement calendar |
 | `src/lib/ingestion.ts` | Resumable, budgeted ingestion with gap-fill |
 | `src/app/` | Pages (App Router) and API routes, which validate input and call the engine |
-| `scripts/` | Migration runner, production smoke check, end-to-end checks, backfills, screenshots |
-| `docs/` | Design reference, market notes, screenshots |
+| `scripts/` | Migration runner, production smoke check, browser check, backfills |
+| `docs/` | Design reference and market notes |
 
 </details>
 

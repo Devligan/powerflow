@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireDesk } from "@/lib/desk";
+import { requireUser } from "@/lib/auth";
 import { getPositionsView } from "@/lib/queries";
 import {
   usd,
@@ -30,9 +30,9 @@ function DeliveryWindow({ label }: { label: string }) {
 }
 
 export default async function PositionsPage() {
-  const { desk } = await requireDesk();
+  const user = await requireUser();
   const { tz } = await getViewerTimeZone();
-  const positions = await getPositionsView(desk.accountUserId);
+  const positions = await getPositionsView(user.id);
   // A book is read by delivery: the open one in the order it delivers, the
   // history newest first. Ties by point keep a block's legs together.
   const byDelivery = (a: (typeof positions)[number], b: (typeof positions)[number]) =>

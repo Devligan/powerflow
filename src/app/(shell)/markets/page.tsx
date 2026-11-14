@@ -3,16 +3,13 @@ import { listMarkets } from "@/lib/markets";
 import { usd, signedUsd, timeAgo, sourceInfo } from "@/lib/format";
 import { parseDec } from "@/lib/money";
 import { PageHeader } from "@/components/ui/page-header";
-import { requireDesk } from "@/lib/desk";
-import { getSimClock } from "@/lib/sim-clock";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function MarketsPage() {
-  const { desk } = await requireDesk();
-  const clock = await getSimClock(desk.accountUserId).catch(() => null);
-  const asOf = clock && clock.mode === "REPLAY" ? new Date(clock.now) : null;
-  const markets = await listMarkets(asOf).catch(() => []);
+  await requireUser();
+  const markets = await listMarkets().catch(() => []);
   type Market = (typeof markets)[number];
   const rtHour = markets.find((m) => m.deliveryTimestamp)?.deliveryTimestamp ?? null;
 
@@ -111,7 +108,7 @@ export default async function MarketsPage() {
         )}
       >
         ERCOT trading hubs and load zones, priced from ERCOT&apos;s own MIS
-        reports at the desk&apos;s simulation clock. Real time is the settled
+        reports. Real time is the settled
         hourly price
         {rtHour ? <> for the hour that ended {timeAgo(new Date(Date.parse(rtHour) + 3600_000).toISOString())}</> : null};
         day-ahead is the clearing for that same hour, and DART is the gap

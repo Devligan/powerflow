@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getHourlyHistory } from "@/lib/markets";
 import { centralHourEnding, operatingDayHours } from "@/lib/ercot/hour-ending";
-import { summarizeRecap, type RecapHour } from "@/lib/practice-recap";
+import { summarizeRecap, type RecapHour } from "@/lib/day-recap";
 
 /**
  * "Yesterday on the Texas grid": the hour of the latest complete operating day

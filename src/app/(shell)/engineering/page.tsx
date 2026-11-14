@@ -28,7 +28,7 @@ type Proof = { label: string; path: string };
 const IDEAS: Array<{ title: string; line: string; proof: Proof[] }> = [
   {
     title: "No peeking at tomorrow",
-    line: "Every price carries the moment ERCOT posted it, and every fill reads prices as of the account's own clock, so a replayed day can't see its own future.",
+    line: "Every price carries the moment ERCOT posted it, and every fill and mark reads only what had been posted by then, never a later revision.",
     proof: [
       { label: "As-of engine", path: "supabase/migrations/0021_asof_price_engine.sql" },
       { label: "Tests", path: "src/lib/trading/sql-replay.test.ts" },
@@ -80,7 +80,7 @@ const FLOW: Array<{ stage: string; detail: string }> = [
   { stage: "ERCOT", detail: "Public market reports" },
   { stage: "Ingest", detail: "Every 15 minutes, each price kept with its posting time" },
   { stage: "Engine", detail: "Bids, fills, margin and settlement in Postgres" },
-  { stage: "Desk", detail: "The book, as of each account's clock" },
+  { stage: "Desk", detail: "Each trader's book, marked to the latest prices" },
   { stage: "Audit", detail: "Every book reconciled hourly, in public" },
 ];
 
