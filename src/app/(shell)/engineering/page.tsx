@@ -2,7 +2,6 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { Lamp } from "@/components/ui/lamp";
 import { Stat } from "@/components/ui/stat";
-import { BuiltBy } from "@/components/built-by";
 import { loadSystemStatus } from "@/lib/system-status";
 import { timeAgo } from "@/lib/format";
 import { SOURCE_REPO, sourceUrl } from "@/lib/site";
@@ -236,9 +235,6 @@ export default async function EngineeringPage() {
             — every forward-only migration, the engine&apos;s test suites, and the pull requests behind them.
           </li>
         </ul>
-        <div className="mt-4">
-          <BuiltBy />
-        </div>
       </section>
     </div>
   );
