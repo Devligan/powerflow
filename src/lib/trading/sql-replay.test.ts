@@ -99,7 +99,7 @@ describe.skipIf(!dbTestsEnabled())("historical replay on actual ERCOT data (live
     return row ? { price: num(row.mark_price), asOf: row.mark_timestamp } : null;
   };
   const setClock = async (iso: string) => {
-    const { error } = await client.rpc("set_sim_clock", { p_user_id: user.id, p_iso: iso });
+    const { error } = await admin().rpc("set_sim_clock", { p_user_id: user.id, p_iso: iso });
     expect(error).toBeNull();
   };
   const trade = (over: Record<string, unknown> = {}) => ({

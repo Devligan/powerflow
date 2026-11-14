@@ -59,22 +59,24 @@ describe.skipIf(!dbTestsEnabled())("desks: who may act for an account (live data
     expect(profile!.onboarded_at).toBeNull();
   });
 
-  it("lets the owner's session act for the desk", async () => {
-    const past = new Date(Date.now() - 3 * 86_400_000).toISOString();
-    const { error: clockError } = await ownerClient.rpc("set_sim_clock", { p_user_id: deskUserId, p_iso: past });
-    expect(clockError).toBeNull();
+  it("lets the owner's session act for the desk, but not move its clock (0055)", async () => {
     const { error: marginError } = await ownerClient.rpc("account_margin", { p_user_id: deskUserId });
     expect(marginError).toBeNull();
     const { error: marksError } = await ownerClient.rpc("position_marks", { p_user_id: deskUserId });
     expect(marksError).toBeNull();
-    const { error: clearError } = await ownerClient.rpc("clear_sim_clock", { p_user_id: deskUserId });
-    expect(clearError).toBeNull();
+    // Clocks are moved by the service role only, for anyone's account.
+    const past = new Date(Date.now() - 3 * 86_400_000).toISOString();
+    for (const [fn, args] of [
+      ["set_sim_clock", { p_user_id: deskUserId, p_iso: past }],
+      ["clear_sim_clock", { p_user_id: deskUserId }],
+    ] as const) {
+      const { error } = await ownerClient.rpc(fn, args);
+      expect(error?.message, fn).toMatch(/permission denied/i);
+    }
   });
 
   it("refuses every caller-checked function to anyone else's session", async () => {
     const calls: Array<[string, Record<string, unknown>]> = [
-      ["set_sim_clock", { p_user_id: deskUserId, p_iso: new Date(Date.now() - 86_400_000).toISOString() }],
-      ["clear_sim_clock", { p_user_id: deskUserId }],
       ["account_margin", { p_user_id: deskUserId }],
       ["position_marks", { p_user_id: deskUserId }],
       ["cancel_order", { p_user_id: deskUserId, p_order_id: crypto.randomUUID() }],

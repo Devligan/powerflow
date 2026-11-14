@@ -104,12 +104,12 @@ migration headers in `supabase/migrations/` carry the rest.
   by a secret; `vercel.json` keeps a once-a-day fallback, which is all the
   Hobby plan allows. ERCOT MIS adapter via `ERCOT_SOURCE=ERCOT_MIS`.
 - **One account per trader, always live.** Each trader trades today's market
-  as ERCOT publishes it. The engine also carries per-account simulation
-  clocks, desks (0048) and challenges (0049) from an earlier design that let
-  extra accounts replay past days; the app no longer uses them. Migration 0053
-  keeps every non-desk account on the live clock, so nothing a past clock
-  produced can reach a trader's balance or the standings. The database suites
-  still use replay desks to test the as-of engine.
+  as ERCOT publishes it. Every account still has a simulation clock (0020),
+  but only a desk (0048) may displace it (0053) and only the service role may
+  move it (0055), so nothing a past clock produces can reach a trader's
+  balance or the standings. The app creates no desks; the database suites use
+  them to test the as-of engine on past days. Challenges (0049) were dropped
+  in 0055.
 
 ## Stack
 
@@ -696,10 +696,11 @@ instrument that cannot be marked is reported as **unpriced, never zero**.
 - Least privilege (migration 0046). A session's JWT and the browser's anon key
   both reach PostgREST directly, so the database, not a route, decides what
   they can do. `anon` can call nothing and read nothing. A session can call
-  eight `SECURITY DEFINER` functions, each checking `auth.uid()`
-  (`account_margin`, `cancel_order`, `clear_sim_clock`, `place_limit_order`,
-  `position_marks`, `set_leaderboard_opt_in`, `set_sim_clock`,
-  `update_profile`), and read its own rows plus the small reference tables.
+  six `SECURITY DEFINER` functions, each checking `auth.uid()`
+  (`account_margin`, `cancel_order`, `place_limit_order`, `position_marks`,
+  `set_leaderboard_opt_in`, `update_profile`; the clock functions went back
+  to the service role in 0055), and read its own rows plus the small
+  reference tables.
   Everything else — `execute_trade`, every price helper, every sweep — is the
   service role's and the engine's. The price store is read only through the
   service role, so no visitor can run arbitrary scans over it. Supabase's

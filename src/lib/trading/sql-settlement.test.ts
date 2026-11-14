@@ -267,7 +267,7 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
 
     // The desk sits just before the trading day: clearings visible, outcomes
     // not yet. Every entry below fills at this simulated instant.
-    const { error: clockErr } = await client.rpc("set_sim_clock", {
+    const { error: clockErr } = await admin().rpc("set_sim_clock", {
       p_user_id: user.id,
       p_iso: shift(hours[FIRST], -1),
     });
