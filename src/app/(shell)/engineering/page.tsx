@@ -9,69 +9,69 @@ import { SOURCE_REPO, sourceUrl } from "@/lib/site";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "How it's built — PowerFlow",
+  title: "Building it — PowerFlow",
   description:
-    "How PowerFlow holds a paper desk to a real one: no look-ahead, ERCOT's own bidding and settlement rules, exact money, and books that reconcile themselves every hour.",
+    "What it took to make a paper desk trade like ERCOT: prices that get revised, an auction that closes blind, settlement on ERCOT's calendar, and money that has to add up.",
 };
 
 /**
- * The engineering case study, public so it can be read without an account.
+ * The story of building the desk, public so it can be read without an account.
  *
- * Short on purpose: one sentence per idea, and a link to the code that proves
- * it for anyone who wants the detail (the design reference has all of it).
- * The live figures come from the same status /status and the Production
- * workflow read, so the page's claims about itself are checked, not asserted.
+ * Told as the problems the market threw up, in the order a trader meets them,
+ * one sentence each with a link to the code for anyone who wants the detail
+ * (the design reference has all of it). The live figures come from the same
+ * status /status reads.
  */
 
 type Proof = { label: string; path: string };
 
-const IDEAS: Array<{ title: string; line: string; proof: Proof[] }> = [
+const PROBLEMS: Array<{ title: string; line: string; proof: Proof[] }> = [
   {
-    title: "No peeking at tomorrow",
-    line: "Every price carries the moment ERCOT posted it, and every fill and mark reads only what had been posted by then, never a later revision.",
+    title: "Prices change after they're published",
+    line: "ERCOT posts a price, then sometimes corrects it. So every price is kept with the moment it was posted, and a fill or a mark only sees what had been posted by then. A later correction can't rewrite a trade made before it.",
     proof: [
-      { label: "As-of engine", path: "supabase/migrations/0021_asof_price_engine.sql" },
+      { label: "Price engine", path: "supabase/migrations/0021_asof_price_engine.sql" },
       { label: "Tests", path: "src/lib/trading/sql-replay.test.ts" },
     ],
   },
   {
-    title: "ERCOT's rules, enforced",
-    line: "Bids close at 10 AM the day before and fill only at the real clearing price. The engine refuses anything ERCOT would.",
+    title: "The auction closes before you know anything",
+    line: "Day-ahead bids close at 10 AM the day before and fill at the price ERCOT clears that afternoon, or not at all. Once the gate passes there's no taking a bid back.",
     proof: [
-      { label: "Bid deadline", path: "supabase/migrations/0038_dam_bid_deadline.sql" },
+      { label: "Bid gate", path: "supabase/migrations/0038_dam_bid_deadline.sql" },
       { label: "Tests", path: "src/lib/trading/sql-orders.test.ts" },
     ],
   },
   {
-    title: "Settled on ERCOT's calendar",
-    line: "Positions pay out when ERCOT calls prices final, two business days later with holidays and daylight-saving days counted, at any corrected price.",
+    title: "Settlement runs on ERCOT's calendar",
+    line: "Real-time prices become final at 4 PM two business days later. Holidays push that back, and the daylight-saving changes give some days 23 or 25 hours. Positions settle then, at the corrected price.",
     proof: [
       { label: "Calendar", path: "supabase/migrations/0044_settlement_calendar.sql" },
       { label: "Tests", path: "src/lib/ercot/settlement-calendar.test.ts" },
     ],
   },
   {
-    title: "Every cent accounted for",
-    line: "Money is exact decimal with no floats, fills can only be appended, and every book is reconciled against its fills each hour, in public.",
+    title: "A missing price is not zero",
+    line: "Sometimes an hour hasn't been priced yet. Filling it at an old price or at $0 would quietly make up P&L, so it waits, and the screen says why.",
+    proof: [
+      { label: "Strict pricing", path: "supabase/migrations/0011_strict_pricing.sql" },
+      { label: "Tests", path: "src/lib/trading/sql-settlement.test.ts" },
+    ],
+  },
+  {
+    title: "The money has to add up",
+    line: "Money is exact decimal, fills can only ever be added, and every hour each account is checked against its own fill history. The result is public on the status page.",
     proof: [
       { label: "Reconciliation", path: "supabase/migrations/0054_ledger_reconciliation.sql" },
       { label: "Tests", path: "src/lib/trading/sql-ledger.test.ts" },
     ],
   },
   {
-    title: "The database is the engine",
-    line: "Trades run as locked, idempotent Postgres functions, so a double-click or a forged request can't spend the same cash twice.",
+    title: "Two clicks, one trade",
+    line: "Trades happen inside the database, one account at a time, so a double-click or two open tabs can't spend the same cash twice.",
     proof: [
       { label: "Concurrency tests", path: "src/lib/trading/sql-concurrency.test.ts" },
       { label: "Exploit tests", path: "src/lib/security.exploits.test.ts" },
-    ],
-  },
-  {
-    title: "Shipped like production",
-    line: "Every change runs the engine against live ERCOT data on a fresh database before it ships, and the live site is checked after every deploy.",
-    proof: [
-      { label: "CI", path: ".github/workflows/ci.yml" },
-      { label: "Production check", path: ".github/workflows/production.yml" },
     ],
   },
 ];
@@ -93,8 +93,8 @@ export default async function EngineeringPage() {
   return (
     <div className="space-y-10">
       <PageHeader
-        kicker="How it's built"
-        title="A paper desk, held to the standard of a real one"
+        kicker="Building it"
+        title="Making a paper desk trade like ERCOT"
         aside={
           ledger && (
             <span className={`badge ${balanced ? "badge-green" : "badge-red"}`}>
@@ -104,8 +104,8 @@ export default async function EngineeringPage() {
           )
         }
       >
-        A trading simulator is easy to build and easy to get subtly wrong. Here is what PowerFlow refuses to get
-        wrong, with a link to the code that proves each one.
+        I built PowerFlow to learn how power traders work, and the market turned out to be in the details. These
+        are the ones that took the most getting right, each with a link to the code.
       </PageHeader>
 
       <section aria-label="Live evidence" className="grid gap-3 sm:grid-cols-3">
@@ -146,14 +146,14 @@ export default async function EngineeringPage() {
         </ol>
       </section>
 
-      <section aria-label="What PowerFlow refuses to get wrong">
+      <section aria-label="The problems">
         <ol className="grid gap-x-10 gap-y-8 md:grid-cols-2 lg:grid-cols-3">
-          {IDEAS.map((idea) => (
-            <li key={idea.title} className="border-t border-white/10 pt-4">
-              <h2 className="font-display text-lg font-semibold tracking-tight">{idea.title}</h2>
-              <p className="mt-2 text-[14px] leading-relaxed t-dim">{idea.line}</p>
+          {PROBLEMS.map((problem) => (
+            <li key={problem.title} className="border-t border-white/10 pt-4">
+              <h2 className="font-display text-lg font-semibold tracking-tight">{problem.title}</h2>
+              <p className="mt-2 text-[14px] leading-relaxed t-dim">{problem.line}</p>
               <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[12px]">
-                {idea.proof.map((link) => (
+                {problem.proof.map((link) => (
                   <a key={link.path} href={sourceUrl(link.path)} className="t-accent hover:underline">
                     {link.label} ↗
                   </a>

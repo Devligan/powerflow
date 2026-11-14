@@ -2,48 +2,51 @@
 
 **Paper-trade the Texas power grid on real ERCOT prices.**
 
-[![CI](https://github.com/Devligan/powerflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Devligan/powerflow/actions/workflows/ci.yml)
-[![Production check](https://github.com/Devligan/powerflow/actions/workflows/production.yml/badge.svg)](https://github.com/Devligan/powerflow/actions/workflows/production.yml)
-[![CodeQL](https://github.com/Devligan/powerflow/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/Devligan/powerflow/security/code-scanning)
-
 **[Open the live desk](https://powerflow-two.vercel.app)** ·
-[How it's built](https://powerflow-two.vercel.app/engineering) ·
-[Live system status](https://powerflow-two.vercel.app/status) ·
-[Design reference](docs/design.md)
+[How the market works](https://powerflow-two.vercel.app/learn) ·
+[Building it](https://powerflow-two.vercel.app/engineering)
 
 ![The HB_NORTH market: the day-ahead curve against real time, and the day-ahead bid ticket](public/showcase/markets.png)
+
+## Why I built it
+
+I wanted to understand how a power trader actually works. Reading about ERCOT
+only got me so far: an auction that closes before anyone knows the price, a
+second market that prices the same hour again as it happens, and settlement
+two business days later at prices that can still be corrected.
+
+So I built the desk, wired it to ERCOT's real prices and rules, and started
+bidding. Most of what I learned came from getting the details right.
 
 ## The trade
 
 ERCOT prices every hour of Texas electricity twice. The **day-ahead market**
 clears an auction for tomorrow, today. The **real-time market** prices the
-same hour again as it is delivered. A heat wave, a plant trip or a windy night
-pulls the two apart. That gap, the DART spread, is what a virtual trader bets
-on.
+same hour again as it is delivered. A cold snap, a plant trip or a windy night
+pulls the two apart.
 
-PowerFlow is a desk for making that bet with $100,000 of virtual cash and
-none of the shortcuts:
+On November 11, 2026, power in the Panhandle cleared at **$84/MWh** day-ahead
+for 9 PM. When 9 PM came, it traded at **$519**. A trader who had bought
+10 MW the day before and sold it back in real time made about $4,350 on one
+hour. That bet on the gap is a virtual bid, and it is what PowerFlow lets you
+make, with $100,000 of pretend money:
 
 - **You bid blind, as ERCOT requires.** Bids close at 10:00 Central the day
-  before delivery. They fill at the actual clearing price ERCOT publishes that
-  afternoon, and a limit bid fills only if the price crosses it.
-- **You settle on ERCOT's calendar.** Positions are marked on real-time prices
-  as each hour runs. They settle when ERCOT calls those prices final, two
-  business days later, at any corrected price.
-- **The data is real.** Every price is ingested from ERCOT's public market
-  reports every 15 minutes, with history back to September 2026. Only the
-  money is simulated.
+  before and fill at the clearing price ERCOT publishes that afternoon.
+- **You settle on ERCOT's calendar.** Positions are marked to real time as each
+  hour runs and settle when ERCOT calls the prices final, two business days
+  later.
+- **The prices are real.** They come from ERCOT's public market reports every
+  15 minutes. Only the money is simulated.
 
 ## Try it
 
 1. [Create an account](https://powerflow-two.vercel.app/signup) with email or
    Google.
 2. Open **Markets**, pick a hub and bid on tomorrow's hours before 10:00
-   Central. For example, buy the evening peak at `HB_NORTH` (a DEC), betting
-   that real time comes in above day-ahead.
-3. Your bid fills at the clearing price that afternoon. Watch it marked hour
-   by hour as real time prints the next day, then settle when ERCOT calls the
-   prices final.
+   Central.
+3. Your bid fills that afternoon. Watch it marked hour by hour the next day,
+   then settle when ERCOT calls the prices final.
 
 New to power markets? [How it works](https://powerflow-two.vercel.app/learn)
 explains the market in five minutes.
@@ -52,125 +55,82 @@ explains the market in five minutes.
 
 ![Positions: a risk ladder of net MWh by delivery hour, and each position marked to real time with its settlement deadline](public/showcase/positions.png)
 
-**Positions.** A risk ladder by delivery hour, and each position marked to real
-time until ERCOT's prices are final.
+**Positions.** Every megawatt you hold, laid out by delivery hour and marked to
+real time until ERCOT's prices are final.
 
 ![Analytics after settlement: equity, return, realized P&L, win rate, best and worst trade, drawdown](public/showcase/analytics.png)
 
-**Analytics.** Computed from the immutable fill history after settlement, never
-from a running total.
+**Analytics.** Return, win rate, best and worst trade and drawdown, worked out
+from your settled fills.
 
-## What makes it hard
+## What was hard
 
-A trading simulator is easy to build and easy to get subtly wrong. These are
-the problems that decide whether one is worth practising on, and how PowerFlow
-handles each one.
+The market is in the details, and each of these took a few tries to get right.
 
-**No look-ahead.** Every price is stored with the moment ERCOT posted it,
-revisions included. Every fill, mark and margin check reads only the prices
-posted by then, so a later revision never rewrites a past fill, and the
-database, not the UI, enforces it. See
-[`0021_asof_price_engine.sql`](supabase/migrations/0021_asof_price_engine.sql)
-and [`sql-replay.test.ts`](src/lib/trading/sql-replay.test.ts).
+- **Prices change after they're published.** ERCOT posts a price, then
+  sometimes corrects it. Every price is kept with the moment it was posted, and
+  a fill or a mark only sees what had been posted by then, so a correction can't
+  rewrite an earlier trade
+  ([price engine](supabase/migrations/0021_asof_price_engine.sql),
+  [tests](src/lib/trading/sql-replay.test.ts)).
+- **ERCOT's calendar.** The 10:00 bid gate, no withdrawing a bid after it,
+  final prices at 16:00 on the second business day with holidays counted, and
+  the 23- and 25-hour days when daylight saving changes
+  ([bid gate](supabase/migrations/0038_dam_bid_deadline.sql),
+  [calendar](supabase/migrations/0044_settlement_calendar.sql),
+  [tests](src/lib/ercot/settlement-calendar.test.ts)).
+- **A missing price is not zero.** An hour ERCOT hasn't priced yet is never
+  filled or settled at an old price or at $0. It waits
+  ([strict pricing](supabase/migrations/0011_strict_pricing.sql)).
+- **The money has to add up.** Amounts are exact decimals, never floats
+  ([`money.ts`](src/lib/money.ts)). Fills can only be added, and every hour each
+  account is checked against its own fill history, with the result public on
+  the [status page](https://powerflow-two.vercel.app/status)
+  ([reconciliation](supabase/migrations/0054_ledger_reconciliation.sql)).
+- **Two clicks, one trade.** Trades run inside Postgres, one account at a time,
+  so a double-click or a second tab can't spend the same cash twice
+  ([concurrency tests](src/lib/trading/sql-concurrency.test.ts)).
 
-**ERCOT's rules, not a simplification of them.** These rules are enforced in
-the engine, not just in the form:
+The full set of rules is in the [design reference](docs/design.md), and the
+trader's-eye view of the market is in
+[`docs/power-trading-industry.md`](docs/power-trading-industry.md).
 
-- the 10:00 bid gate the day before;
-- a 14-day bid window;
-- the 0.1 MW quantity grid;
-- no withdrawal after the gate;
-- no trading once delivery starts;
-- settlement at 16:00 Central on the second business day, holidays included,
-  at ERCOT's corrected prices;
-- 23- and 25-hour days at the daylight-saving changes.
+<details>
+<summary>How it fits together</summary>
 
-See [`0038_dam_bid_deadline.sql`](supabase/migrations/0038_dam_bid_deadline.sql),
-[`0044_settlement_calendar.sql`](supabase/migrations/0044_settlement_calendar.sql)
-and [`settlement-calendar.test.ts`](src/lib/ercot/settlement-calendar.test.ts).
-
-**No guessed prices.** An hour with no published price is never filled,
-marked or settled at an older price or at zero. It waits, and the screen says
-why.
-
-**Exact money.** Postgres stores `numeric`, and the browser uses `bigint` at a
-fixed scale of a millionth of a dollar. There are no floats anywhere in the
-accounting path ([`money.ts`](src/lib/money.ts)).
-
-**The database is the engine.** Fills, marks, margin, forced liquidation and
-settlement are Postgres functions. Each runs in one transaction under a
-per-account lock, so two tabs or a double-click cannot spend the same cash
-twice. Orders are idempotent by client id. Fills and the audit log are
-append-only, enforced by triggers. Row-level security and least-privilege
-grants mean a browser session can call only the handful of functions it needs
-and read only its own rows. These are proved against a real database in
-[`sql-concurrency.test.ts`](src/lib/trading/sql-concurrency.test.ts) and
-[`security.exploits.test.ts`](src/lib/security.exploits.test.ts).
-
-**Books that prove themselves.** Every hour, `pg_cron` reconciles every
-account against its fills in one read-only snapshot. It checks cash,
-positions, settlements, bids and the audit trail. The result is public on
-[/status](https://powerflow-two.vercel.app/status), and a failure fails the
-Production workflow. Every engine test runs the same reconciliation before
-teardown
-([`0054_ledger_reconciliation.sql`](supabase/migrations/0054_ledger_reconciliation.sql)).
-
-## How it fits together
+A Next.js app on Vercel, with the trading engine written as Postgres functions
+in Supabase. `pg_cron` pulls ERCOT's reports every 15 minutes and settles what
+has become final.
 
 ```mermaid
 flowchart LR
-    ERCOT["ERCOT MIS reports<br/>day-ahead · real-time · ancillary"]
+    ERCOT["ERCOT market reports<br/>day-ahead · real-time"]
     subgraph Postgres["Supabase Postgres"]
         cron["pg_cron<br/>every 15 min"]
-        prices[("market_prices<br/>every revision + posting time")]
-        engine["Engine functions<br/>bids · fills · marks · margin · settlement"]
-        books[("accounts · positions<br/>append-only fills + audit log")]
-        audit["Hourly ledger<br/>reconciliation"]
+        prices[("prices<br/>every revision, with its posting time")]
+        engine["Engine functions<br/>bids · fills · marks · settlement"]
+        books[("accounts · positions · fills")]
     end
-    app["Next.js on Vercel<br/>desk UI + API routes"]
+    app["Next.js on Vercel"]
     trader(("Trader"))
 
-    cron -->|"/api/cron/ingest"| app
+    cron -->|"ingest"| app
     app -->|"fetch + parse"| ERCOT
     app --> prices
     trader --> app
-    app -->|"RPC, as the user"| engine
+    app -->|"as the user"| engine
     engine --> prices
     engine --> books
-    audit --> books
-    audit -->|"/status"| app
 ```
 
-The TypeScript in [`src/lib/trading/`](src/lib/trading) mirrors the SQL rules
-for previews and analytics. It is pinned to the SQL by database-backed test
-suites, so the two cannot drift apart unnoticed.
+Changes ship by pull request. CI applies every migration to a fresh database
+and runs the engine tests against live ERCOT data, and a scheduled job checks
+the live site after each deploy.
 
-## How it ships
+</details>
 
-Every change reaches production through a pull request:
-
-1. **CI** ([`ci.yml`](.github/workflows/ci.yml)) runs repository guards
-   ([`ci-guards.mjs`](scripts/ci-guards.mjs)). They enforce append-only
-   migrations, pinned `search_path` and revoked grants on every privileged
-   function, and no mojibake. Then come zero-warning lint, type-check, the unit
-   suites, the production build, a dependency audit and a secret scan. Last,
-   **every migration is applied in order to a fresh Supabase stack**, and the
-   engine suites run there against live ERCOT data.
-2. **Migrations** are forward-only. Each one is rehearsed against production
-   inside a rolled-back transaction, applied before the code that needs it,
-   and recorded in a ledger table, so `--status` says exactly what production
-   has.
-3. **Vercel** deploys master.
-4. **The Production workflow**
-   ([`production.yml`](.github/workflows/production.yml)) runs
-   [`smoke-production.mjs`](scripts/smoke-production.mjs) after every deploy
-   and every six hours. It checks the live site, auth gating, data freshness,
-   the ledger reconciliation and database headroom.
-
-Alongside CI, GitHub's CodeQL scans every change, secret scanning blocks a
-credential from being pushed at all, and Dependabot watches the dependencies.
-
-## Run it locally
+<details>
+<summary>Run it locally</summary>
 
 ```bash
 npm install
@@ -181,22 +141,15 @@ npm run test:db         # engine suites against a real database
 ```
 
 To run the database suites the way CI does, start a disposable local stack
-with `npx supabase start` and point the suites at it. Setup, scripts and every
-engine rule are in the [design reference](docs/design.md). The trader's-eye
-view of the market is in
-[`docs/power-trading-industry.md`](docs/power-trading-industry.md).
-
-<details>
-<summary>Repository map</summary>
+with `npx supabase start` and point the suites at it. Setup and scripts are in
+the [design reference](docs/design.md).
 
 | Path | What lives there |
 | --- | --- |
-| `supabase/migrations/` | The schema and the engine, as forward-only migrations; the latest one to touch a function defines it |
-| `src/lib/trading/` | TypeScript mirror of the engine rules, plus the SQL-pinning test suites |
-| `src/lib/ercot/` | ERCOT report adapters, hour-ending and DST handling, the settlement calendar |
-| `src/lib/ingestion.ts` | Resumable, budgeted ingestion with gap-fill |
-| `src/app/` | Pages (App Router) and API routes, which validate input and call the engine |
-| `scripts/` | Migration runner, production smoke check, browser check, backfills |
+| `supabase/migrations/` | The schema and the engine, as forward-only migrations |
+| `src/lib/trading/` | The engine's rules in TypeScript for previews and analytics, pinned to the SQL by tests |
+| `src/lib/ercot/` | ERCOT report parsing, hour-ending and daylight-saving handling, the settlement calendar |
+| `src/app/` | Pages and API routes |
 | `docs/` | Design reference and market notes |
 
 </details>
@@ -205,6 +158,6 @@ view of the market is in
 
 Built by **[Sriharsha Challangi](https://github.com/Devligan)**.
 
-Market data is published by ERCOT. This is a simulation for education: no
-real orders, no real money, not investment advice. Copyright © 2026 Sriharsha
+Market data is published by ERCOT. This is a simulation for learning: no real
+orders, no real money, not investment advice. Copyright © 2026 Sriharsha
 Challangi, all rights reserved (see [LICENSE](LICENSE)).

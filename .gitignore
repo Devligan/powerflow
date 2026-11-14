@@ -41,8 +41,11 @@ yarn-error.log*
 # supabase CLI local state
 supabase/.temp
 
-# editor/agent tooling state
+# editor/agent tooling state, kept local
 .freebuff
+/.claude/
+/CLAUDE.md
+/AGENTS.md
 
 # typescript
 *.tsbuildinfo

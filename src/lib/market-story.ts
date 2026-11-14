@@ -4,10 +4,11 @@ import { centralHourEnding, operatingDayHours } from "@/lib/ercot/hour-ending";
 import { summarizeRecap, type RecapHour } from "@/lib/day-recap";
 
 /**
- * "Yesterday on the Texas grid": the hour of the latest complete operating day
- * where day-ahead and real time were furthest apart, at the trading hubs, for
- * the landing page to lead with. Real ERCOT data, read as published; nothing
- * here moves money.
+ * "This past week on the Texas grid": the hour of the last week's complete
+ * operating days where day-ahead and real time were furthest apart, at the
+ * trading hubs, for the landing page to lead with. A week rather than one day,
+ * because a quiet day's widest gap is a few dollars and says nothing. Real
+ * ERCOT data, read as published; nothing here moves money.
  */
 
 /** The physical hubs, by the name a Texan would use. The averages are left out
@@ -34,16 +35,19 @@ export interface MarketStory {
 /** Enough hours priced to call the day complete (a DST day has 23 or 25). */
 const MIN_PRICED = 23;
 
+/** How many days back the story looks. */
+const STORY_DAYS = 7;
+
 /**
  * The widest gap across the hubs' days. Pure, so the choice is tested on its
- * own; a hub with a gap in its prices is passed over rather than half-drawn.
+ * own; a hub-day with a gap in its prices is passed over rather than
+ * half-drawn.
  */
 export function pickStory(
-  day: string,
-  byPoint: Array<{ point: string; hours: RecapHour[] }>
+  hubDays: Array<{ day: string; point: string; hours: RecapHour[] }>
 ): MarketStory | null {
   let best: MarketStory | null = null;
-  for (const { point, hours } of byPoint) {
+  for (const { day, point, hours } of hubDays) {
     if (hours.filter((h) => h.dart != null).length < MIN_PRICED) continue;
     for (const h of hours) {
       if (h.dart == null || h.da == null || h.rt == null) continue;
@@ -74,28 +78,30 @@ async function loadStoryUncached(nowMs: number): Promise<MarketStory | null> {
   if (error) throw new Error(error.message);
   const hubs = data ?? [];
 
-  // Yesterday in Central time, or the day before while yesterday's last real
-  // time prices are still arriving.
+  // The week of Central days before today. Yesterday counts once its last real
+  // time prices are in; until then pickStory passes it over as incomplete.
   const today = centralHourEnding(nowMs).day;
-  for (const back of [1, 2, 3]) {
-    const day = daysBefore(today, back);
-    const hours = operatingDayHours(day);
-    if (hours.length === 0) continue;
-    const from = hours[0].startMs;
-    const to = hours[hours.length - 1].startMs + 3_600_000;
-    const byPoint = await Promise.all(
-      hubs.map(async (m) => {
-        const [da, rt] = await Promise.all([
-          getHourlyHistory(m.id, "DAM_HOURLY", from, to),
-          getHourlyHistory(m.id, "RTM_HOURLY", from, to),
-        ]);
-        return { point: m.settlement_point, hours: summarizeRecap(da, rt).hours };
-      })
-    );
-    const story = pickStory(day, byPoint);
-    if (story) return story;
-  }
-  return null;
+  const first = operatingDayHours(daysBefore(today, STORY_DAYS));
+  const last = operatingDayHours(daysBefore(today, 1));
+  if (first.length === 0 || last.length === 0) return null;
+  const from = first[0].startMs;
+  const to = last[last.length - 1].startMs + 3_600_000;
+
+  const hubDays = await Promise.all(
+    hubs.map(async (m) => {
+      const [da, rt] = await Promise.all([
+        getHourlyHistory(m.id, "DAM_HOURLY", from, to),
+        getHourlyHistory(m.id, "RTM_HOURLY", from, to),
+      ]);
+      const byDay = new Map<string, RecapHour[]>();
+      for (const h of summarizeRecap(da, rt).hours) {
+        const { day } = centralHourEnding(h.startMs);
+        byDay.set(day, [...(byDay.get(day) ?? []), h]);
+      }
+      return [...byDay].map(([day, hours]) => ({ day, point: m.settlement_point, hours }));
+    })
+  );
+  return pickStory(hubDays.flat());
 }
 
 // The story changes once a day; the landing page is read far more often. One
