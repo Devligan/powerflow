@@ -35,6 +35,10 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  async redirects() {
+    // Folded into the desk; old bookmarks still land somewhere useful.
+    return [{ source: "/portfolio", destination: "/dashboard", permanent: true }];
+  },
   async headers() {
     // The dev server needs eval and its own websocket; production does not.
     if (process.env.NODE_ENV !== "production") return [];

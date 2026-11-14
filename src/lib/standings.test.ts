@@ -21,7 +21,7 @@ const row: StandingsRow = {
 };
 
 describe("publicStandingsJson", () => {
-  it("gives the return in plain basis points, as /api/portfolio does", () => {
+  it("gives the return in plain basis points, as the portfolio snapshot does", () => {
     expect(publicStandingsJson(row).returnBps).toBeCloseTo(122.21543211, 8);
     expect(publicStandingsJson({ ...row, returnBps: "-50" }).returnBps).toBe(-50);
   });

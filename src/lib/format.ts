@@ -96,6 +96,13 @@ export function timeAgo(iso: string | null | undefined): string {
   return `${d}d ago`;
 }
 
+/** Time left on a deadline, as a desk reads it: "10h 32m", "45m". */
+export function countdown(minutes: number): string {
+  const m = Math.max(0, Math.floor(minutes));
+  const h = Math.floor(m / 60);
+  return h > 0 ? `${h}h ${String(m % 60).padStart(2, "0")}m` : `${m}m`;
+}
+
 /**
  * How a quantity unit is written.
  *

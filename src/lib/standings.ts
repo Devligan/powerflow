@@ -85,7 +85,7 @@ async function rankedStandings(top: number): Promise<Ranked[]> {
 
 /**
  * A row as the public JSON carries it. Money is exact decimal strings;
- * returnBps is a plain number of basis points, as /api/portfolio gives it —
+ * returnBps is a plain number of basis points, as the portfolio snapshot gives it —
  * not a fixed-point value (parseDbDec's 1e6 scale would multiply it).
  */
 export function publicStandingsJson(r: StandingsRow) {

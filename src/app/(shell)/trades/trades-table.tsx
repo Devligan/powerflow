@@ -259,12 +259,9 @@ export function TradesTable() {
                       </td>
                       <td>
                         {inst ? (
-                          <div className="flex flex-col items-start gap-1">
-                            <span className="whitespace-nowrap" title={t.product}>
-                              {inst.shortLabel}
-                            </span>
-                            <span className={`badge ${inst.tone}`}>{inst.ruleLabel}</span>
-                          </div>
+                          <span className="whitespace-nowrap" title={inst.ruleLabel}>
+                            {inst.shortLabel}
+                          </span>
                         ) : (
                           <span className="t-mute">{t.instrument}</span>
                         )}

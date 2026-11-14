@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { parseDec } from "@/lib/money";
-import { instrumentInfo, usd } from "@/lib/format";
+import { usd } from "@/lib/format";
 import { dateTime, localTime, operatingDayLabel } from "@/lib/time";
 import { useTimeZone } from "@/components/time-zone";
 import {
@@ -134,7 +134,6 @@ export function TradePanel({
   const [resultKey, setResultKey] = useState<string | null>(null);
 
   const instrument = requireInstrument(instrumentCode);
-  const info = instrumentInfo(instrument.code);
   const isPath = needsCounterPoint(instrument.settlementRule);
   const sideLabels = SIDE_LABEL[instrument.code] ?? SIDE_LABEL.VIRTUAL;
 
@@ -300,10 +299,7 @@ export function TradePanel({
               </option>
             ))}
           </select>
-          <p className="mt-2 flex flex-wrap items-center gap-2">
-            {info && <span className={`badge ${info.tone}`}>{info.ruleLabel}</span>}
-            <span className="text-[11px] leading-relaxed t-mute">{HOW_IT_PAYS[instrument.code]}</span>
-          </p>
+          <p className="mt-2 text-[11px] leading-relaxed t-mute">{HOW_IT_PAYS[instrument.code]}</p>
         </div>
 
         {/* Path sink */}
@@ -583,10 +579,6 @@ export function TradePanel({
         {qtyNum > MAX_QUANTITY && (
           <p className="text-[11px] t-short">The desk accepts at most {MAX_QUANTITY} MW per hour.</p>
         )}
-        <p className="text-[10.5px] leading-relaxed t-mute">
-          Forwards, swaps and CRRs are not offered: they would enter and settle on the same published day-ahead price.
-          Real term trading needs a forward curve (ICE/OTC) and ERCOT&apos;s CRR auctions.
-        </p>
       </div>
     </form>
   );

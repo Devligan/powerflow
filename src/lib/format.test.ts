@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bpsToPercent,
+  countdown,
   signTone,
   instrumentInfo,
   legsLabel,
@@ -69,6 +70,15 @@ describe("centralWindowLabel", () => {
     expect(
       centralWindowLabel(Date.parse("2027-03-14T08:00:00Z"), Date.parse("2027-03-14T09:00:00Z"))
     ).toBe("Sun, Mar 14 · 3:00 AM – 4:00 AM CDT · HE4");
+  });
+});
+
+describe("countdown", () => {
+  it("reads hours and zero-padded minutes, or minutes alone under an hour", () => {
+    expect(countdown(632)).toBe("10h 32m");
+    expect(countdown(65)).toBe("1h 05m");
+    expect(countdown(45)).toBe("45m");
+    expect(countdown(-3)).toBe("0m");
   });
 });
 

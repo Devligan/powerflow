@@ -80,8 +80,8 @@ export default async function AnalyticsPage() {
         title="Analytics"
         aside={<span className="badge badge-neutral">{a.totalTrades} trades</span>}
       >
-        Derived exclusively from reconciled, immutable trades. Nothing here is
-        carried forward from a running total.
+        How your trading has gone, worked out from every fill and settlement:
+        which side, which hubs and which hours made you money.
       </PageHeader>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">

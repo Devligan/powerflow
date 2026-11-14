@@ -105,8 +105,8 @@ export function RiskLadder({ ladder }: { ladder: Ladder }) {
           </tbody>
         </table>
         <p className="hint mt-3">
-          A block, swap or price option is spread evenly across its window. Different instruments are kept on
-          separate rows — a basis MWh and an energy MWh are not the same exposure.
+          Long hours are green, short hours red. A virtual and a PTP path are kept on separate rows: a congestion MWh
+          and an energy MWh are not the same exposure.
         </p>
       </div>
     </section>
