@@ -85,8 +85,9 @@ export async function createTestUser(prefix: string): Promise<TestUser> {
   loadTestEnv();
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL!.replace(/\/$/, "");
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  const email = `${prefix}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}@powerflow.test`;
-  const password = `Audit-${Math.random().toString(36).slice(2, 12)}!1`;
+  // A real password, however short-lived the account: from the CSPRNG.
+  const email = `${prefix}.${Date.now()}.${crypto.randomUUID().slice(0, 8)}@powerflow.test`;
+  const password = `Audit-${crypto.randomUUID()}!1`;
 
   const res = await fetch(`${base}/auth/v1/admin/users`, {
     method: "POST",
