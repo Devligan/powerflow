@@ -12,8 +12,8 @@ export const PUBLIC_PATHS = [
   "/forgot-password", "/reset-password",
   // How the market works, readable before signing up.
   "/learn",
-  // How it is built, for anyone evaluating it without an account.
-  "/engineering",
+  // How fills, marks and settlement follow ERCOT, readable before signing up.
+  "/methodology",
   // What the platform checks about itself: data freshness and the ledger.
   "/status",
 ];

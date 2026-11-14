@@ -44,7 +44,7 @@ export default async function ShellLayout({
             <BuiltBy />
             <p className="caption">
               PowerFlow · paper trading desk · no real orders or money ·{" "}
-              <Link href="/engineering" className="hover:underline">Building it</Link> ·{" "}
+              <Link href="/methodology" className="hover:underline">Methodology</Link> ·{" "}
               <Link href="/status" className="hover:underline">Status</Link> ·{" "}
               <Link href="/privacy" className="hover:underline">Privacy</Link> ·{" "}
               <Link href="/terms" className="hover:underline">Terms</Link>

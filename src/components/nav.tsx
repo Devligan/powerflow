@@ -20,7 +20,7 @@ const NAV = [
  *  desk sections that would each send them to sign in. */
 const PUBLIC_NAV = [
   { href: "/learn", label: "How it works" },
-  { href: "/engineering", label: "Building it" },
+  { href: "/methodology", label: "Methodology" },
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/status", label: "Status" },
 ];

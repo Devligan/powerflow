@@ -4,19 +4,9 @@
 
 **[Open the live desk](https://powerflow-two.vercel.app)** ·
 [How the market works](https://powerflow-two.vercel.app/learn) ·
-[Building it](https://powerflow-two.vercel.app/engineering)
+[Methodology](https://powerflow-two.vercel.app/methodology)
 
 ![The HB_NORTH market: the day-ahead curve against real time, and the day-ahead bid ticket](public/showcase/markets.png)
-
-## Why I built it
-
-I wanted to understand how a power trader actually works. Reading about ERCOT
-only got me so far: an auction that closes before anyone knows the price, a
-second market that prices the same hour again as it happens, and settlement
-two business days later at prices that can still be corrected.
-
-So I built the desk, wired it to ERCOT's real prices and rules, and started
-bidding. Most of what I learned came from getting the details right.
 
 ## The trade
 
@@ -28,8 +18,8 @@ pulls the two apart.
 On November 11, 2026, power in the Panhandle cleared at **$84/MWh** day-ahead
 for 9 PM. When 9 PM came, it traded at **$519**. A trader who had bought
 10 MW the day before and sold it back in real time made about $4,350 on one
-hour. That bet on the gap is a virtual bid, and it is what PowerFlow lets you
-make, with $100,000 of pretend money:
+hour. That bet on the gap is a virtual bid, and PowerFlow is a desk for making it,
+with $100,000 of virtual cash:
 
 - **You bid blind, as ERCOT requires.** Bids close at 10:00 Central the day
   before and fill at the clearing price ERCOT publishes that afternoon.
@@ -63,36 +53,28 @@ real time until ERCOT's prices are final.
 **Analytics.** Return, win rate, best and worst trade and drawdown, worked out
 from your settled fills.
 
-## What was hard
+## Methodology
 
-The market is in the details, and each of these took a few tries to get right.
+- **Bids close at the gate.** An operating day takes bids from midnight Central
+  fourteen days before it until 10:00 Central the day before, in steps of
+  0.1 MW. A bid can be cancelled until the gate and not after.
+- **Fills at the clearing price.** A bid fills at the day-ahead price ERCOT
+  publishes that afternoon. A limit bid fills only if the price crosses it.
+- **Marked to real time.** Open positions are marked to ERCOT's real-time price
+  as each hour is delivered, using only prices published by then. A later
+  revision never rewrites an earlier fill or mark.
+- **Settled when prices are final.** Real-time prices are final at 16:00
+  Central on the second business day after the operating day, with ERCOT's
+  holidays counted. Positions settle then, at any corrected price. Days with
+  23 or 25 hours at the daylight-saving changes are handled.
+- **No price, no fill.** An hour without a published price is never filled,
+  marked or settled at an older price or at zero. It waits.
+- **Exact accounting.** Money is exact to a millionth of a dollar, fills are
+  permanent, and every account is checked against its fill history each hour,
+  with the result on the [status page](https://powerflow-two.vercel.app/status).
 
-- **Prices change after they're published.** ERCOT posts a price, then
-  sometimes corrects it. Every price is kept with the moment it was posted, and
-  a fill or a mark only sees what had been posted by then, so a correction can't
-  rewrite an earlier trade
-  ([price engine](supabase/migrations/0021_asof_price_engine.sql),
-  [tests](src/lib/trading/sql-replay.test.ts)).
-- **ERCOT's calendar.** The 10:00 bid gate, no withdrawing a bid after it,
-  final prices at 16:00 on the second business day with holidays counted, and
-  the 23- and 25-hour days when daylight saving changes
-  ([bid gate](supabase/migrations/0038_dam_bid_deadline.sql),
-  [calendar](supabase/migrations/0044_settlement_calendar.sql),
-  [tests](src/lib/ercot/settlement-calendar.test.ts)).
-- **A missing price is not zero.** An hour ERCOT hasn't priced yet is never
-  filled or settled at an old price or at $0. It waits
-  ([strict pricing](supabase/migrations/0011_strict_pricing.sql)).
-- **The money has to add up.** Amounts are exact decimals, never floats
-  ([`money.ts`](src/lib/money.ts)). Fills can only be added, and every hour each
-  account is checked against its own fill history, with the result public on
-  the [status page](https://powerflow-two.vercel.app/status)
-  ([reconciliation](supabase/migrations/0054_ledger_reconciliation.sql)).
-- **Two clicks, one trade.** Trades run inside Postgres, one account at a time,
-  so a double-click or a second tab can't spend the same cash twice
-  ([concurrency tests](src/lib/trading/sql-concurrency.test.ts)).
-
-The full set of rules is in the [design reference](docs/design.md), and the
-trader's-eye view of the market is in
+The full rules are in the [design reference](docs/design.md), and the market
+itself is described in
 [`docs/power-trading-industry.md`](docs/power-trading-industry.md).
 
 <details>
