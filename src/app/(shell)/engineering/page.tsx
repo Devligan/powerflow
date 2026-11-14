@@ -11,99 +11,77 @@ export const dynamic = "force-dynamic";
 export const metadata = {
   title: "How it's built — PowerFlow",
   description:
-    "What a power-trading desk can't get wrong, and how PowerFlow gets it right: no look-ahead, ERCOT's own bidding and settlement rules, exact money, and books that reconcile themselves every hour.",
+    "How PowerFlow holds a paper desk to a real one: no look-ahead, ERCOT's own bidding and settlement rules, exact money, and books that reconcile themselves every hour.",
 };
 
 /**
  * The engineering case study, public so it can be read without an account.
  *
- * Written as the problems a real desk has rather than as a list of tools: each
- * one says what goes wrong, what PowerFlow does about it, and where in the
- * source (and its tests) a reader can check. The live figures at the top come
- * from the same status the /status page and the Production workflow read, so
- * the page's claims about itself are checked, not asserted.
+ * Short on purpose: one sentence per idea, and a link to the code that proves
+ * it for anyone who wants the detail (the design reference has all of it).
+ * The live figures come from the same status /status and the Production
+ * workflow read, so the page's claims about itself are checked, not asserted.
  */
 
 type Proof = { label: string; path: string };
 
-const PROBLEMS: Array<{ title: string; risk: string; answer: string; proof: Proof[] }> = [
+const IDEAS: Array<{ title: string; line: string; proof: Proof[] }> = [
   {
     title: "No peeking at tomorrow",
-    risk:
-      "A replay that can see a price before ERCOT published it is a backtest that lies. It is the easiest bug to ship and the hardest to notice.",
-    answer:
-      "Every price is stored with the moment ERCOT posted it, revisions included, and every fill, mark and margin check reads prices as of the account's own clock. A practice desk rewinds its clock; the database, not the screen, hides what had not happened yet.",
+    line: "Every price carries the moment ERCOT posted it, and every fill reads prices as of the account's own clock, so a replayed day can't see its own future.",
     proof: [
-      { label: "As-of price engine", path: "supabase/migrations/0021_asof_price_engine.sql" },
-      { label: "Replay tests", path: "src/lib/trading/sql-replay.test.ts" },
+      { label: "As-of engine", path: "supabase/migrations/0021_asof_price_engine.sql" },
+      { label: "Tests", path: "src/lib/trading/sql-replay.test.ts" },
     ],
   },
   {
-    title: "The day-ahead market's own rules",
-    risk:
-      "Paper trading that lets you buy at a price you can already see teaches the wrong game. In ERCOT you bid blind, before the auction closes.",
-    answer:
-      "Every position starts as a bid placed before 10:00 Central the day before delivery, on ERCOT's 0.1 MW grid, up to fourteen days out. It fills only at the actual clearing price, a limit only if the price crosses it, and it cannot be withdrawn once the gate has closed.",
+    title: "ERCOT's rules, enforced",
+    line: "Bids close at 10 AM the day before and fill only at the real clearing price. The engine refuses anything ERCOT would.",
     proof: [
       { label: "Bid deadline", path: "supabase/migrations/0038_dam_bid_deadline.sql" },
-      { label: "Order tests", path: "src/lib/trading/sql-orders.test.ts" },
+      { label: "Tests", path: "src/lib/trading/sql-orders.test.ts" },
     ],
   },
   {
-    title: "Settlement on ERCOT's calendar",
-    risk:
-      "Real-time prices are not final when they are first posted. ERCOT corrects them for two business days, and holidays, weekends and the 23- and 25-hour days of daylight saving all move the deadline.",
-    answer:
-      "A delivered position is marked on the prices as they arrive and settles at 16:00 Central on the second business day, at the corrected price where ERCOT corrected it. An hour with no published price is never filled or settled at a guess: it waits, and the screen says so.",
+    title: "Settled on ERCOT's calendar",
+    line: "Positions pay out when ERCOT calls prices final, two business days later with holidays and daylight-saving days counted, at any corrected price.",
     proof: [
-      { label: "Settlement calendar", path: "supabase/migrations/0044_settlement_calendar.sql" },
-      { label: "Calendar tests", path: "src/lib/ercot/settlement-calendar.test.ts" },
-      { label: "Price corrections", path: "src/lib/ercot/price-corrections.test.ts" },
+      { label: "Calendar", path: "supabase/migrations/0044_settlement_calendar.sql" },
+      { label: "Tests", path: "src/lib/ercot/settlement-calendar.test.ts" },
     ],
   },
   {
     title: "Every cent accounted for",
-    risk:
-      "Floating-point money drifts, and a balance that can be edited in place can be wrong without anyone knowing.",
-    answer:
-      "Money is exact decimal in the database and fixed-point integers in the browser, to a millionth of a dollar. Fills and the audit log are append-only. Every hour the database proves every account's books against its fills, and the result is public.",
+    line: "Money is exact decimal with no floats, fills can only be appended, and every book is reconciled against its fills each hour, in public.",
     proof: [
-      { label: "Ledger reconciliation", path: "supabase/migrations/0054_ledger_reconciliation.sql" },
-      { label: "Money math", path: "src/lib/money.ts" },
-      { label: "Ledger tests", path: "src/lib/trading/sql-ledger.test.ts" },
+      { label: "Reconciliation", path: "supabase/migrations/0054_ledger_reconciliation.sql" },
+      { label: "Tests", path: "src/lib/trading/sql-ledger.test.ts" },
     ],
   },
   {
     title: "The database is the engine",
-    risk:
-      "When the web server computes fills, two clicks, two tabs or one forged request can spend the same cash twice.",
-    answer:
-      "Fills, marks, margin and settlement run as Postgres functions in one transaction under a per-account lock. Orders are idempotent by client id, so a double submit fills once. A browser session may call only the handful of functions it needs and read only its own rows.",
+    line: "Trades run as locked, idempotent Postgres functions, so a double-click or a forged request can't spend the same cash twice.",
     proof: [
       { label: "Concurrency tests", path: "src/lib/trading/sql-concurrency.test.ts" },
       { label: "Exploit tests", path: "src/lib/security.exploits.test.ts" },
-      { label: "Least privilege", path: "supabase/migrations/0046_least_privilege.sql" },
     ],
   },
   {
     title: "Shipped like production",
-    risk: "A trading system that is only correct on the day it was written is not correct.",
-    answer:
-      "Every change is a pull request. CI lints, type-checks, runs the unit suites, builds, audits dependencies, scans for secrets, and applies every migration to a fresh Postgres to run the engine suites against live ERCOT data. Schema changes are rehearsed in a rolled-back transaction against production first. After every deploy, and every six hours, a smoke check verifies the site, data freshness and the ledger.",
+    line: "Every change runs the engine against live ERCOT data on a fresh database before it ships, and the live site is checked after every deploy.",
     proof: [
-      { label: "CI pipeline", path: ".github/workflows/ci.yml" },
+      { label: "CI", path: ".github/workflows/ci.yml" },
       { label: "Production check", path: ".github/workflows/production.yml" },
-      { label: "Repository guards", path: "scripts/ci-guards.mjs" },
     ],
   },
 ];
 
 const FLOW: Array<{ stage: string; detail: string }> = [
-  { stage: "ERCOT", detail: "Public MIS reports: day-ahead clearing, 15-minute real time, ancillary services" },
-  { stage: "Ingest", detail: "Scheduled in Postgres every 15 minutes; each price kept with its posting time" },
-  { stage: "Engine", detail: "Bids, fills, marks, margin and settlement as audited database functions" },
-  { stage: "Desk", detail: "The trading screens, reading the book as of each account's clock" },
-  { stage: "Audit", detail: "Hourly reconciliation of every book, published on /status and alarmed in CI" },
+  { stage: "ERCOT", detail: "Public market reports" },
+  { stage: "Ingest", detail: "Every 15 minutes, each price kept with its posting time" },
+  { stage: "Engine", detail: "Bids, fills, margin and settlement in Postgres" },
+  { stage: "Desk", detail: "The book, as of each account's clock" },
+  { stage: "Audit", detail: "Every book reconciled hourly, in public" },
 ];
 
 export default async function EngineeringPage() {
@@ -113,10 +91,10 @@ export default async function EngineeringPage() {
   const balanced = ledger != null && ledger.ok && !ledger.stale;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       <PageHeader
         kicker="How it's built"
-        title="What a trading desk can't get wrong"
+        title="A paper desk, held to the standard of a real one"
         aside={
           ledger && (
             <span className={`badge ${balanced ? "badge-green" : "badge-red"}`}>
@@ -126,9 +104,8 @@ export default async function EngineeringPage() {
           )
         }
       >
-        PowerFlow is a paper desk, but its books are kept to the standard of a real one. These are the six problems
-        that decide whether a power-trading simulator is worth practising on, what PowerFlow does about each, and where
-        to check it in the source.
+        A trading simulator is easy to build and easy to get subtly wrong. Here is what PowerFlow refuses to get
+        wrong, with a link to the code that proves each one.
       </PageHeader>
 
       <section aria-label="Live evidence" className="grid gap-3 sm:grid-cols-3">
@@ -144,59 +121,39 @@ export default async function EngineeringPage() {
         <Stat
           label="Last ERCOT ingestion"
           value={run ? timeAgo(run.started_at) : "—"}
-          note={run ? `${run.status.toLowerCase()} · runs every 15 minutes` : undefined}
+          note={run ? `${run.status.toLowerCase()} · every 15 minutes` : undefined}
           delay={60}
         />
         <Stat
           label="Price feed"
           value={status?.mode === "ERCOT_LIVE" ? "Live ERCOT" : (status?.mode ?? "—")}
-          note="Actual MIS publications, never synthetic"
+          note="Actual market reports, never synthetic"
           delay={120}
         />
       </section>
 
-      <section aria-labelledby="flow-heading">
-        <div className="mb-4 flex items-baseline gap-4">
-          <h2 id="flow-heading" className="caption t-dim">
-            How a price becomes a P&amp;L
-          </h2>
-          <div className="h-px flex-1 bg-white/10" />
-        </div>
+      <section aria-label="How a price becomes a P&L">
         <ol className="grid gap-px overflow-hidden border border-white/10 bg-white/10 sm:grid-cols-5">
           {FLOW.map((step, i) => (
-            <li key={step.stage} className="bg-[var(--ink-panel)] p-3">
+            <li key={step.stage} className="bg-[var(--ink-panel)] p-4">
               <div className="flex items-center gap-2">
                 <span className="mono text-[11px] t-accent">{String(i + 1).padStart(2, "0")}</span>
-                <span className="font-display text-sm font-semibold">{step.stage}</span>
+                <span className="font-display text-[15px] font-semibold">{step.stage}</span>
               </div>
-              <p className="mt-1.5 text-[12px] leading-relaxed t-dim">{step.detail}</p>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed t-dim">{step.detail}</p>
             </li>
           ))}
         </ol>
       </section>
 
-      <section aria-labelledby="problems-heading">
-        <div className="mb-4 flex items-baseline gap-4">
-          <h2 id="problems-heading" className="caption t-dim">
-            Six problems, six answers
-          </h2>
-          <div className="h-px flex-1 bg-white/10" />
-        </div>
-        <ol className="grid gap-3 md:grid-cols-2">
-          {PROBLEMS.map((p, i) => (
-            <li key={p.title} className="card reveal p-4" style={{ animationDelay: `${i * 50}ms` }}>
-              <div className="caption t-mute">{String(i + 1).padStart(2, "0")}</div>
-              <h3 className="mt-1 font-display text-[15px] font-semibold">{p.title}</h3>
-              <p className="mt-2 text-[13px] leading-relaxed t-dim">
-                <span className="t-fg">The risk. </span>
-                {p.risk}
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed t-dim">
-                <span className="t-fg">What PowerFlow does. </span>
-                {p.answer}
-              </p>
+      <section aria-label="What PowerFlow refuses to get wrong">
+        <ol className="grid gap-x-10 gap-y-8 md:grid-cols-2 lg:grid-cols-3">
+          {IDEAS.map((idea) => (
+            <li key={idea.title} className="border-t border-white/10 pt-4">
+              <h2 className="font-display text-lg font-semibold tracking-tight">{idea.title}</h2>
+              <p className="mt-2 text-[14px] leading-relaxed t-dim">{idea.line}</p>
               <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[12px]">
-                {p.proof.map((link) => (
+                {idea.proof.map((link) => (
                   <a key={link.path} href={sourceUrl(link.path)} className="t-accent hover:underline">
                     {link.label} ↗
                   </a>
@@ -207,35 +164,21 @@ export default async function EngineeringPage() {
         </ol>
       </section>
 
-      <section className="card p-4">
-        <h2 className="card-title">Go deeper</h2>
-        <ul className="space-y-1.5 text-[13px] leading-relaxed t-dim">
-          <li>
-            <Link href="/status" className="t-fg underline">
-              System status
-            </Link>{" "}
-            — every reconciliation check and the ingestion runs, live.
-          </li>
-          <li>
-            <Link href="/learn" className="t-fg underline">
-              How the market works
-            </Link>{" "}
-            — the trader&apos;s view: day-ahead, real time and the spread between them.
-          </li>
-          <li>
-            <a href={sourceUrl("docs/design.md")} className="t-fg underline">
-              Design reference
-            </a>{" "}
-            — pricing, execution, settlement, margin, instruments and the security model in full.
-          </li>
-          <li>
-            <a href={SOURCE_REPO} className="t-fg underline">
-              The source
-            </a>{" "}
-            — every forward-only migration, the engine&apos;s test suites, and the pull requests behind them.
-          </li>
-        </ul>
-      </section>
+      <p className="border-t border-white/10 pt-6 text-[14px] t-dim">
+        All of it is in{" "}
+        <a href={SOURCE_REPO} className="t-fg underline">
+          the source
+        </a>
+        , in full in the{" "}
+        <a href={sourceUrl("docs/design.md")} className="t-fg underline">
+          design reference
+        </a>
+        , and checked live on{" "}
+        <Link href="/status" className="t-fg underline">
+          the status page
+        </Link>
+        .
+      </p>
     </div>
   );
 }

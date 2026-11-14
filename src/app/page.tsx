@@ -2,110 +2,102 @@ import Link from "next/link";
 import { Brand } from "@/components/brand";
 import { BuiltBy } from "@/components/built-by";
 import { MarketsStrip } from "@/components/markets-strip";
-import { Lamp } from "@/components/ui/lamp";
-import { LocalClock, ZoneCaption } from "@/components/ui/clock";
+import { StoryChart } from "@/components/story-chart";
+import { LocalClock } from "@/components/ui/clock";
 import { getSessionUser } from "@/lib/auth";
+import { loadMarketStory, type MarketStory } from "@/lib/market-story";
+import { loadSystemStatus } from "@/lib/system-status";
+import { timeAgo } from "@/lib/format";
 
 /**
  * The landing page.
  *
- * Deliberately not a centred hero above a row of equal feature cards. The
- * product is a screen full of live numbers, so the page shows one: the same
- * settlement-point monitor the desk uses, running on the real feed, beside a
- * left-aligned statement. Everything below it is written as a specification
- * rather than as a set of promises, because a trading desk is bought on what
- * it does with a number, not on adjectives.
+ * It leads with one true thing rather than a list of features: the hour of
+ * yesterday's Texas market where day-ahead and real time were furthest apart,
+ * drawn from the same ERCOT data the desk trades on. The story explains the
+ * product (that gap is the trade), the chart proves the data is real, and
+ * everything after it is short: three moves, three facts, two links. The
+ * detail lives on /learn and /engineering for whoever wants it.
  */
 
-const SPEC: Array<{ term: string; detail: string }> = [
+const CENTRAL = "America/Chicago";
+const hourLabel = (ms: number) =>
+  new Intl.DateTimeFormat("en-US", { timeZone: CENTRAL, hour: "numeric" }).format(ms);
+const weekday = (day: string) =>
+  new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric" }).format(
+    Date.parse(`${day}T12:00:00Z`)
+  );
+const price = (v: number) =>
+  `${v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+
+/** The size of the bet the payoff line prices, in MW. */
+const STORY_MW = 10;
+
+const MOVES: Array<{ title: string; body: string }> = [
   {
-    term: "Market",
-    detail:
-      "All seven ERCOT trading hubs and eight load zones, with the day-ahead curve through the next operating day.",
+    title: "Bid blind",
+    body: "Day-ahead bids close at 10 AM the day before, as they do at ERCOT. Nobody knows the clearing price when they bid, and neither do you.",
   },
   {
-    term: "Series",
-    detail:
-      "Day-ahead hourly clearing, real-time hourly and 15-minute settlement prices, and the five day-ahead ancillary-service prices — continuous since September 20, refreshed every 15 minutes.",
+    title: "Watch it deliver",
+    body: "As each hour of the day happens, your position is marked against ERCOT's real-time price.",
   },
   {
-    term: "Instruments",
-    detail:
-      "Virtual bids (INC/DEC) and day-ahead point-to-point obligations, each paid the gap between the day-ahead clearing and real time.",
-  },
-  {
-    term: "Starting capital",
-    detail:
-      "$100,000 virtual cash per account. Open bids and positions hold collateral sized on each point's recent day-ahead to real-time gap.",
-  },
-  {
-    term: "Practice",
-    detail:
-      "A practice desk with its own $100,000 replays any recent operating day — bid, clear, deliver and settle in a few minutes — without touching your live account or its place on the standings.",
-  },
-  {
-    term: "Execution",
-    detail:
-      "Bids close at 10:00 Central the day before and fill at ERCOT's actual clearing price. An hour with no published price never fills at an older one.",
-  },
-  {
-    term: "Accounting",
-    detail:
-      "Weighted-average cost basis, realized P&L booked on every close, and positions cashed out automatically at delivery.",
-  },
-  {
-    term: "Order integrity",
-    detail:
-      "Idempotent by client order id, so a repeated or concurrent submission fills exactly once. The blotter is append-only and immutable.",
-  },
-  {
-    term: "Privacy",
-    detail:
-      "Row-level security isolates every account. Leaderboard participation is opt-in.",
-  },
-  {
-    term: "Data source",
-    detail:
-      "Actual ERCOT MIS publications — the same reports a real desk reads, never a synthetic feed. Only the clock, orders and accounts are simulated.",
+    title: "Settle for real",
+    body: "It pays out when ERCOT calls the price final, two business days later. Or replay a past day on the practice desk in about two minutes.",
   },
 ];
 
-const SEQUENCE: Array<{ title: string; body: string }> = [
-  {
-    title: "Fund the desk",
-    body: "Sign up with email or Google. The account bootstraps itself with virtual cash and an exposure limit.",
-  },
-  {
-    title: "Pick a point and an hour",
-    body: "Choose a hub or load zone and an hour of an upcoming operating day — tomorrow, or up to fourteen days out — and whether real time will price above or below day-ahead.",
-  },
-  {
-    title: "Bid before the deadline",
-    body: "Bids close at 10:00 Central the day before. ERCOT clears the day-ahead market in the early afternoon, and each bid fills at the actual clearing price — a limit bid only if the price crosses it.",
-  },
-  {
-    title: "Settle against real time",
-    body: "Through delivery the position is marked on ERCOT's real-time prices, and it settles when they are final, two business days later. The book shows realized and open P&L, margin and drawdown.",
-  },
-];
-
-const UNDER_THE_HOOD: Array<{ title: string; body: string }> = [
-  {
-    title: "No look-ahead",
-    body: "Every price carries the moment ERCOT posted it, and every fill reads prices as of the account's own clock, so a replayed day can't see its own future.",
-  },
-  {
-    title: "Books that prove themselves",
-    body: "Money is exact to a millionth of a dollar, fills are append-only, and every hour the database reconciles every account against its fills, in public.",
-  },
-  {
-    title: "Shipped like production",
-    body: "Every change goes through CI that runs the engine against live ERCOT data on a fresh database, then a smoke check of the live site after each deploy.",
-  },
-];
+function StoryHero({ story }: { story: MarketStory }) {
+  const { peak } = story;
+  const up = peak.dart > 0;
+  return (
+    <>
+      <p className="caption">Yesterday on the Texas grid · {weekday(story.day)}</p>
+      <h1 className="mt-4 max-w-4xl font-display text-4xl leading-[1.05] font-bold tracking-tight sm:text-6xl">
+        At {hourLabel(peak.startMs)}, power in {story.place} went from{" "}
+        <span className="mono t-steel">{price(peak.da)}</span> to{" "}
+        <span className={`mono ${up ? "pos" : "neg"}`}>{price(peak.rt)}</span>.
+      </h1>
+      <p className="mt-6 max-w-2xl text-[16px] leading-relaxed t-dim">
+        The first is the day-ahead price, set in an auction the afternoon before. The second is what the same
+        megawatt-hour cost as the hour happened. The gap is a trade, and PowerFlow lets you make it on real ERCOT
+        prices with $100,000 of pretend money.
+      </p>
+    </>
+  );
+}
 
 export default async function Home() {
-  const user = await getSessionUser().catch(() => null);
+  const [user, story, status] = await Promise.all([
+    getSessionUser().catch(() => null),
+    loadMarketStory().catch(() => null),
+    loadSystemStatus().catch(() => null),
+  ]);
+  const ledger = status?.ledger ?? null;
+  const run = status?.latestRuns[0] ?? null;
+
+  const FACTS: Array<{ figure: string; label: string; note: string | null }> = [
+    {
+      // The audit's own count, whatever it is: this line must never claim a
+      // clean book the reconciliation did not report.
+      figure: ledger ? String(ledger.checks.reduce((n, c) => n + (c.violations ?? 0), 0)) : "—",
+      label: "discrepancies in the books",
+      note: ledger
+        ? `Every account reconciled against its ${ledger.trades.toLocaleString("en-US")} fills, ${timeAgo(ledger.checkedAt)}. It runs every hour.`
+        : null,
+    },
+    {
+      figure: "15 min",
+      label: "from ERCOT's report to the desk",
+      note: run ? `Last pulled ${timeAgo(run.started_at)}. Real data only, never a simulated feed.` : null,
+    },
+    {
+      figure: "0",
+      label: "floating-point numbers in the money",
+      note: "Every balance is exact to a millionth of a dollar, from the database to the screen.",
+    },
+  ];
 
   return (
     <div className="min-h-dvh">
@@ -113,7 +105,10 @@ export default async function Home() {
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
           <Brand tag="paper trading" />
           <div className="ml-auto flex items-center gap-3">
-            <span className="hidden border-l border-white/10 pl-3 sm:block">
+            <Link href="/engineering" className="nav-link hidden sm:inline-flex">
+              How it&apos;s built
+            </Link>
+            <span className="hidden border-l border-white/10 pl-3 md:block">
               <LocalClock />
             </span>
             {user ? (
@@ -126,7 +121,7 @@ export default async function Home() {
                   Sign in
                 </Link>
                 <Link href="/signup" className="btn btn-primary btn-sm">
-                  Create account
+                  Start trading
                 </Link>
               </>
             )}
@@ -135,159 +130,118 @@ export default async function Home() {
       </header>
 
       <main className="mx-auto max-w-6xl px-4">
-        {/* ---- Statement + the actual product ---------------------------- */}
-        {/* The base column is pinned to minmax(0,1fr): an implicit column sizes
-            to its content, and the market strip's row of tiles made the hero
-            ~2,600px wide on a phone. */}
-        <section className="grid grid-cols-[minmax(0,1fr)] gap-10 py-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,27rem)] lg:gap-14 lg:py-20">
-          <div className="reveal min-w-0">
-            <p className="caption">ERCOT · day-ahead and real-time</p>
-            <h1 className="mt-4 max-w-2xl font-display text-4xl leading-[1.05] font-bold tracking-tight sm:text-5xl">
-              Trade the Texas power curve, hour by hour.
-            </h1>
-            <p className="mt-6 max-w-xl text-[15px] leading-relaxed t-dim">
-              PowerFlow is a paper-trading desk for the ERCOT market. Bid
-              virtuals and point-to-point obligations into the day-ahead market
-              before it closes, and every position settles against the actual
-              ERCOT real-time price.
-            </p>
+        {/* ---- The story ---------------------------------------------------- */}
+        <section className="reveal pt-12 pb-10 lg:pt-20">
+          {story ? (
+            <StoryHero story={story} />
+          ) : (
+            <>
+              <p className="caption">ERCOT · day-ahead and real-time</p>
+              <h1 className="mt-4 max-w-3xl font-display text-4xl leading-[1.05] font-bold tracking-tight sm:text-6xl">
+                Trade the Texas power grid on real ERCOT prices.
+              </h1>
+            </>
+          )}
 
-            <div className="mt-8 flex flex-wrap gap-3">
-              {user ? (
-                <Link href="/dashboard" className="btn btn-primary">
-                  Go to the desk
+          <div className="mt-8 flex flex-wrap gap-3">
+            {user ? (
+              <Link href="/dashboard" className="btn btn-primary">
+                Go to the desk
+              </Link>
+            ) : (
+              <>
+                <Link href="/signup" className="btn btn-primary">
+                  Start with $100,000 virtual
                 </Link>
-              ) : (
-                <>
-                  <Link href="/signup" className="btn btn-primary">
-                    Start with $100,000 virtual
-                  </Link>
-                  {/* /markets needs an account; these do not. */}
-                  <Link href="/learn" className="btn">
-                    How it works
-                  </Link>
-                  <Link href="/engineering" className="btn">
-                    How it&apos;s built
-                  </Link>
-                </>
-              )}
-            </div>
-
-            <p className="mt-5 caption">
-              No card, no deposit, no real money. Simulation only.
-            </p>
-          </div>
-
-          <div className="reveal min-w-0" style={{ animationDelay: "80ms" }}>
-            <section className="card card-bracket p-0">
-              <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
-                <h2 className="card-title mb-0">Settlement point monitor</h2>
-                <span className="badge badge-amber">
-                  <Lamp pulse />
-                  Live
-                </span>
-              </div>
-              <div className="p-4">
-                <MarketsStrip />
-              </div>
-            </section>
-            <p className="mt-3 caption">
-              Running on the live feed right now, not a screenshot.
-            </p>
+                <Link href="/learn" className="btn">
+                  How the market works
+                </Link>
+              </>
+            )}
           </div>
         </section>
 
-        {/* ---- Specification --------------------------------------------- */}
-        <section className="pb-14">
-          <div className="mb-5 flex items-baseline gap-4">
-            <h2 className="caption t-dim">System specification</h2>
-            <div className="h-px flex-1 bg-white/10" />
-          </div>
-          <dl className="border-t border-white/10">
-            {SPEC.map((row) => (
-              <div
-                key={row.term}
-                className="grid gap-1 border-b border-white/[0.07] py-3 sm:grid-cols-[13rem_1fr] sm:gap-6"
-              >
-                <dt className="caption pt-0.5">{row.term}</dt>
-                <dd className="text-[12.5px] leading-relaxed t-dim">
-                  {row.detail}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-
-        {/* ---- Operating sequence ---------------------------------------- */}
-        <section className="pb-14">
-          <div className="mb-6 flex items-baseline gap-4">
-            <h2 className="caption t-dim">Operating sequence</h2>
-            <div className="h-px flex-1 bg-white/10" />
-          </div>
-          <ol className="grid gap-7 sm:grid-cols-2 lg:grid-cols-4">
-            {SEQUENCE.map((step, i) => (
-              <li
-                key={step.title}
-                className="reveal"
-                style={{ animationDelay: `${i * 70}ms` }}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="mono text-[11px] t-accent">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <span className="h-px flex-1 bg-white/10" />
+        <section className="reveal pb-16" style={{ animationDelay: "80ms" }}>
+          <div className="card card-bracket p-4 sm:p-6">
+            {story ? (
+              <>
+                <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+                  <h2 className="card-title mb-0">
+                    {story.point} · {weekday(story.day)}
+                  </h2>
+                  <span className="caption">Actual ERCOT prices · $/MWh · Central time</span>
                 </div>
-                <h3 className="mt-3 font-display text-sm font-semibold">
-                  {step.title}
-                </h3>
-                <p className="mt-1.5 text-[12.5px] leading-relaxed t-dim">
-                  {step.body}
+                <StoryChart story={story} />
+                <p className="mt-5 border-t border-white/10 pt-4 text-[14px] leading-relaxed">
+                  A {STORY_MW} MW {story.peak.dart > 0 ? "DEC" : "INC"} on that hour, a bet that real time would land{" "}
+                  {story.peak.dart > 0 ? "above" : "below"} day-ahead, would have made{" "}
+                  <span className="mono pos">
+                    ${(Math.abs(story.peak.dart) * STORY_MW).toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                  </span>
+                  . <span className="t-dim">Placing it the day before is the hard part.</span>
                 </p>
+              </>
+            ) : (
+              <MarketsStrip />
+            )}
+          </div>
+        </section>
+
+        {/* ---- Three moves --------------------------------------------------- */}
+        <section className="pb-16">
+          <ol className="grid gap-8 sm:grid-cols-3">
+            {MOVES.map((move, i) => (
+              <li key={move.title}>
+                <span className="mono text-[12px] t-accent">{String(i + 1).padStart(2, "0")}</span>
+                <h3 className="mt-2 font-display text-xl font-semibold tracking-tight">{move.title}</h3>
+                <p className="mt-2 text-[14px] leading-relaxed t-dim">{move.body}</p>
               </li>
             ))}
           </ol>
         </section>
 
-        {/* ---- Under the hood --------------------------------------------- */}
-        <section className="pb-20">
-          <div className="mb-6 flex items-baseline gap-4">
-            <h2 className="caption t-dim">Under the hood</h2>
-            <div className="h-px flex-1 bg-white/10" />
-          </div>
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-            <ul className="grid gap-5 sm:grid-cols-3">
-              {UNDER_THE_HOOD.map((item) => (
-                <li key={item.title}>
-                  <h3 className="font-display text-sm font-semibold">{item.title}</h3>
-                  <p className="mt-1.5 text-[12.5px] leading-relaxed t-dim">{item.body}</p>
-                </li>
-              ))}
-            </ul>
-            <div className="flex flex-wrap gap-3">
-              <Link href="/engineering" className="btn">
-                How it&apos;s built
-              </Link>
-              <Link href="/status" className="btn">
-                Live status
-              </Link>
+        {/* ---- Built like a desk ----------------------------------------------- */}
+        <section className="border-t border-white/10 py-16">
+          <div className="grid gap-10 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+            <div>
+              <h2 className="font-display text-2xl font-bold tracking-tight">Built like a real trading desk.</h2>
+              <p className="mt-3 text-[14px] leading-relaxed t-dim">
+                The engine runs inside the database and is held to ERCOT&apos;s own rules. A replayed day can&apos;t see
+                its own future. The books check themselves every hour, in public.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link href="/engineering" className="btn">
+                  How it&apos;s built
+                </Link>
+                <Link href="/status" className="btn">
+                  Live status
+                </Link>
+              </div>
             </div>
+            <dl className="grid gap-6 sm:grid-cols-3">
+              {FACTS.map((fact) => (
+                <div key={fact.label} className="border-t border-white/10 pt-4">
+                  <dt className="sr-only">{fact.label}</dt>
+                  <dd>
+                    <div className="mono text-4xl font-medium t-fg">{fact.figure}</div>
+                    <div className="mt-1 text-[13px] font-medium">{fact.label}</div>
+                    {fact.note && <p className="mt-2 text-[12.5px] leading-relaxed t-dim">{fact.note}</p>}
+                  </dd>
+                </div>
+              ))}
+            </dl>
           </div>
         </section>
       </main>
 
       <footer className="border-t border-white/10 bg-[var(--ink-panel)]">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-7 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1.5">
-            <BuiltBy />
-            <p className="caption">
-              PowerFlow · for education only · not investment advice ·{" "}
-              <Link href="/status" className="hover:underline">Status</Link> ·{" "}
-              <Link href="/privacy" className="hover:underline">Privacy</Link> ·{" "}
-              <Link href="/terms" className="hover:underline">Terms</Link>
-            </p>
-          </div>
+          <BuiltBy />
           <p className="caption">
-            Times in <ZoneCaption /> · actual ERCOT market data, simulated trading
+            Actual ERCOT data, simulated money · not investment advice ·{" "}
+            <Link href="/status" className="hover:underline">Status</Link> ·{" "}
+            <Link href="/privacy" className="hover:underline">Privacy</Link> ·{" "}
+            <Link href="/terms" className="hover:underline">Terms</Link>
           </p>
         </div>
       </footer>
