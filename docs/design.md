@@ -19,9 +19,10 @@ migration headers in `supabase/migrations/` carry the rest.
   row lock; a TypeScript mirror is pinned to them by tests. Prices are read
   *as of* a clock (only what had been posted by then), so a later revision
   never rewrites a past fill.
-- **Instruments, not just prices.** Energy spot, virtuals, DART and basis
-  spreads, point-to-point obligations/options, CRRs, block forwards and swaps,
-  each reduced to a single price by its settlement rule.
+- **Instruments, not just prices.** The desk trades what a participant with no
+  assets can bid into ERCOT's day-ahead market: virtual INC/DEC bids and
+  day-ahead PTP obligations. Each instrument is reduced to a single price by
+  its settlement rule, so one accounting engine holds them all.
 - **Correct by construction.** Exact fixed-point money (`bigint`, never floats),
   idempotent orders, append-only trades and audit log, row-level security,
   automatic settlement and margin with forced liquidation and deficits.
@@ -45,8 +46,8 @@ migration headers in `supabase/migrations/` carry the rest.
 - Secure auth via Supabase: email/password and Google; any provider enabled
   in the Supabase project appears automatically.
 - $100,000 starting virtual cash; $500,000 gross-exposure limit per account.
-- Buy/sell of hourly delivery windows per **product** on 7 hubs + 8 load
-  zones, with server-authoritative execution prices taken from the persisted
+- DEC and INC bids (and PTP paths) on hourly delivery windows on 7 hubs + 8
+  load zones, with server-authoritative execution prices taken from the persisted
   price *for the interval and market actually traded* — never from the client
   and never from an unrelated series.
 - **Day-ahead bids, as ERCOT runs them** (migrations 0037–0038): a position
@@ -544,8 +545,8 @@ A product's `tradable` flag is about the **series**, not about whether the desk
 can open a position. Ancillary services stay non-tradable because supplying one
 is a resource obligation that needs a qualified asset behind it; this desk
 simulates a financial participant with none. Positions are held in
-*instruments* (below), and a CRR or day-ahead PTP instrument is open to order
-entry even though the congestion series it settles off is not. A day-ahead and
+*instruments* (below), and a day-ahead PTP obligation is open to order entry
+even though the congestion series it settles off is not. A day-ahead and
 a real-time position for the same market and hour are **different instruments**
 — the position identity is
 `(user, instrument, market, second leg, product, delivery window)`.
@@ -559,7 +560,7 @@ Price bounds follow ERCOT's actual economics rather than one clamp:
   (`-2000 < price < 20000`) so extreme congestion — which really can push LMP
   past the cap — is representable rather than silently truncated.
 
-The simulated feed models the two energy markets separately, derives the
+The labelled development feed (`GENERATED`) models the two energy markets separately, derives the
 hourly real-time price as the average of its four 15-minute intervals, and
 prices the load zones in the IMM's 2024–2025 ordering (West rich, Houston
 cheap).
@@ -600,14 +601,18 @@ day-ahead market product unrepresentable.
 OTC instruments are a **venue** rather than a price source: they carry no
 series of their own and settle against the ERCOT prices they reference.
 
-Every one of these can be placed from the order ticket on a market page, where
-the instrument choice drives the rest of the form — a spread asks for a second
-settlement point, a block forward asks for a window length, and a legless or
-path instrument settles in a market it does not get to choose, so it shows the
-derived product instead of offering one. The ticket previews a price only where
-it can derive one from what the page holds (a point, or a fully covered
-window) and says *composed at execution* otherwise, rather than previewing a
-spread from its first leg. The form logic is `src/lib/trading/order-form.ts`,
+**The desk offers two of them**: `VIRTUAL` and `PTP_OBLIGATION`
+(`instruments.orderable`, 0042). Each enters at the day-ahead clearing and
+settles in real time, so its P&L is a genuine bet on the DA→RT spread. The
+rest of the catalog stays in the engine, and its rules are tested, but none is
+offered: without a forward curve or ERCOT's CRR auction prices, each would
+enter and settle on the same published day-ahead price and could never make
+or lose money.
+
+Both are placed from the order ticket on a market page, where the instrument
+choice drives the rest of the form: a path asks for a second settlement point,
+and since both settle in a market the trader does not choose, the ticket shows
+the derived product instead of offering one. The form logic is `src/lib/trading/order-form.ts`,
 kept out of the component so the window arithmetic, the derived product and the
 request body are unit-tested instead of click-tested.
 

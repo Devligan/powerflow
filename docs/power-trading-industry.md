@@ -1,9 +1,8 @@
 # How ERCOT power trading works, and how PowerFlow models it
 
-A design reference: what a trader in the Texas power market actually does, where
-PowerFlow matched it, where it did not, and what remains. Facts are from ERCOT,
-ICE and industry sources listed at the end; anything not confirmed there is
-marked as such.
+A design reference: what a trader in the Texas power market actually does, and
+how PowerFlow models it. Facts are from ERCOT, ICE and industry sources listed
+at the end; anything not confirmed there is marked as such.
 
 ## 1. The market a trader faces
 
@@ -74,34 +73,26 @@ offers netted. Available credit = total credit limit − total potential exposur
    outages; positions settle hour by hour against real time.
 5. **End of day**: P&L by hour, point and strategy; risk and collateral.
 
-## 3. PowerFlow against that picture
+## 3. How PowerFlow models it
 
-| Area | Before | Now |
-|---|---|---|
-| Day-ahead timing | Buy or sell a DA hour at its *already published* price, up to delivery | Bids only before 10:00 Central the day before; fill at the clearing price when published (0038) |
-| Trading into a live hour | Accepted until the hour **ended**, with RT prints visible | Closed when delivery **starts** (0037) |
-| Negative prices | Limits had to be > $0; amounts printed "$-5" | Limits from -$250 to $5,000; "−$5.00" everywhere (0039) |
-| Instruments | 11, of which 8 entered and settled on the same DA price (always $0 P&L) and PTP options bought optionality for $0 | Desk offers virtual INC/DEC and DA PTP obligations, the instruments a QSE without assets bids; PTP options retired |
-| Vocabulary | Buy/Sell, MWh | DEC/INC, MW per hour, hour ending, operating day |
-| Shapes | Consecutive-hour strips | Hour sheet with 5x16 / 2x16 / 7x8 / 7x24 presets, NERC-holiday aware |
-| Time | UTC | Viewer's zone; ERCOT HE and operating days on Central |
+| Area | PowerFlow |
+|---|---|
+| Day-ahead timing | Bids only before 10:00 Central the day before; each fills at the clearing price when ERCOT publishes it, around 12:30 (0038) |
+| Live hours | Nothing trades once delivery starts (0037) |
+| Price range | Limits from -$250 to $5,000; negative prices shown as "−$5.00" (0039) |
+| Instruments | Virtual INC/DEC and DA PTP obligations, the instruments a QSE without assets bids. No PTP options: in the DAM those are for NOIEs |
+| Vocabulary | DEC/INC, MW per hour, hour ending, operating day |
+| Shapes | Hour sheet with 5x16 / 2x16 / 7x8 / 7x24 presets, NERC-holiday aware |
+| Time | Viewer's zone; ERCOT hour endings and operating days on Central |
+| Bid curves | A limit bid is up to four MW-at-price steps per hour, each its own order: the same fills as a step curve |
+| Collateral | A bid holds MW × the 95th-percentile \|RT − DA\| at its point over 30 days (≥ $10/MW), and open bids must fit within cash: ERCOT's exposure logic in simple form (0040). Positions are margined, not paid for: opening one moves no cash, and settlement pays (RT − DA) × MW (0041) |
+| Settlement | On ERCOT's calendar: real-time prices are final at 16:00 Central two business days after the operating day, corrections included (0044) |
+| Fundamentals | Tomorrow's hourly load, wind and solar forecasts, net load and reserve, from ERCOT's public dashboard feeds |
+| Analytics | P&L per settled MWh, DEC vs INC, by hour ending; a daily Sharpe once there are 20 trading days of it |
 
-## 4. Since then
-
-- **Collateral (0040)**: a bid holds MW × the 95th-percentile |RT − DA| at its
-  point over 30 days (≥ $10/MW), and open bids must fit within cash — ERCOT's
-  exposure logic in simple form. Since 0041 virtuals and PTP obligations are margined:
-  opening one moves no cash, it is worth its P&L, settlement pays (RT − DA) × MW,
-  and open positions hold collateral too. Only legacy instruments still move notional.
-- **Fundamentals**: the market page shows tomorrow's hourly load, wind and
-  solar forecasts, net load and reserve, and the week's peak load, from ERCOT's
-  public dashboard feeds (src/lib/fundamentals.ts).
-- **Bid curves**: a limit bid is up to four MW-at-price steps per hour, each
-  its own order — the same fills as a step curve.
-- **Desk analytics**: P&L per settled MWh, DEC vs INC, by hour ending, daily
-  Sharpe.
-- **Not done**: futures/forwards (no public forward curve) and CRRs (needs
-  ERCOT auction prices). Both need a data source before they can be honest.
+**Not modelled**: futures and OTC forwards (no public forward curve) and CRRs
+(they need ERCOT's auction prices). Each needs a data source before it can be
+traded honestly.
 
 ## Sources
 
