@@ -705,6 +705,17 @@
     scrollbar-width: thin;
   }
 
+  /* A bank of stats, two to a row on a phone: an odd one out takes the whole
+     row rather than leaving a hole beside it. */
+  .stat-grid > :last-child:nth-child(odd) {
+    grid-column: span 2;
+  }
+  @media (min-width: 48rem) {
+    .stat-grid > :last-child:nth-child(odd) {
+      grid-column: auto;
+    }
+  }
+
   /* The landing page's price tape: two copies of the strip, moved left by
      one copy's width so the loop has no seam. */
   @keyframes pf-tape {

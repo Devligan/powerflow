@@ -4,6 +4,7 @@
 
 [![CI](https://github.com/Devligan/powerflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Devligan/powerflow/actions/workflows/ci.yml)
 [![Production check](https://github.com/Devligan/powerflow/actions/workflows/production.yml/badge.svg)](https://github.com/Devligan/powerflow/actions/workflows/production.yml)
+[![CodeQL](https://github.com/Devligan/powerflow/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/Devligan/powerflow/security/code-scanning)
 
 **[Open the live desk](https://powerflow-two.vercel.app)** ·
 [How it's built](https://powerflow-two.vercel.app/engineering) ·
@@ -165,6 +166,9 @@ Every change reaches production through a pull request:
    [`smoke-production.mjs`](scripts/smoke-production.mjs) after every deploy
    and every six hours. It checks the live site, auth gating, data freshness,
    the ledger reconciliation and database headroom.
+
+Alongside CI, GitHub's CodeQL scans every change, secret scanning blocks a
+credential from being pushed at all, and Dependabot watches the dependencies.
 
 ## Run it locally
 

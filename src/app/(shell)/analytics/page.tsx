@@ -84,7 +84,7 @@ export default async function AnalyticsPage() {
         which side, which hubs and which hours made you money.
       </PageHeader>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+      <div className="stat-grid grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
         {kpis.map((k, i) => (
           <Stat
             key={k.label}
