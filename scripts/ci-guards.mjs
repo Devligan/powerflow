@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Repository rules CI enforces, each one a mistake this repo has already paid
- * for or could not otherwise catch (CLAUDE.md has the history):
+ * for or could not otherwise catch:
  *
  *   - migrations are append-only and numbered without gaps;
  *   - a new SECURITY DEFINER function pins search_path and revokes EXECUTE;

@@ -14,7 +14,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     ".vercel/**",
     "scripts/typecheck-app.ts",
-    // Local one-off probes (see "Repo hygiene" in CLAUDE.md): never committed.
+    // Local one-off probes: never committed.
     "test-*.cjs",
     "fetch-*.js",
     "probe-*",
