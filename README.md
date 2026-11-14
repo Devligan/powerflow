@@ -10,7 +10,7 @@
 [Live system status](https://powerflow-two.vercel.app/status) ·
 [Design reference](docs/design.md)
 
-![The practice desk after a replayed ERCOT operating day: four steps from bidding to settlement, and what the market did hour by hour](docs/screenshots/desk.png)
+![The practice desk after a replayed ERCOT operating day: four steps from bidding to settlement, and what the market did hour by hour](public/showcase/desk.png)
 
 ## The trade
 
@@ -58,9 +58,9 @@ explains the market in five minutes.
 
 | | |
 | --- | --- |
-| ![Market view for HB_NORTH: the day-ahead curve against real time, the hourly DART spread and the bid ticket](docs/screenshots/markets.png) | ![Order book: day-ahead bids filled at the clearing price, and a limit bid that expired unfilled](docs/screenshots/orders.png) |
+| ![Market view for HB_NORTH: the day-ahead curve against real time, the hourly DART spread and the bid ticket](public/showcase/markets.png) | ![Order book: day-ahead bids filled at the clearing price, and a limit bid that expired unfilled](public/showcase/orders.png) |
 | **Markets.** The day-ahead curve against real time for each hub and load zone, the average spread by hour, and the bid ticket. | **Orders.** Each bid fills at ERCOT's clearing price. The $1 limit bid never crossed, so it expired unfilled. |
-| ![Positions: a risk ladder of net MWh by delivery hour, and each position marked to real time with its settlement deadline](docs/screenshots/positions.png) | ![Analytics after settlement: equity, win rate, P&L by settlement point and by side](docs/screenshots/analytics.png) |
+| ![Positions: a risk ladder of net MWh by delivery hour, and each position marked to real time with its settlement deadline](public/showcase/positions.png) | ![Analytics after settlement: equity, win rate, P&L by settlement point and by side](public/showcase/analytics.png) |
 | **Positions.** A risk ladder by delivery hour, and each position marked to real time until ERCOT's prices are final. | **Analytics.** Computed from the immutable fill history after settlement, never from a running total. |
 
 ## What makes it hard

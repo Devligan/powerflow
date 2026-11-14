@@ -89,6 +89,7 @@ describe("route access", () => {
       "/icon-app/192",
       "/apple-icon",
       "/opengraph-image",
+      "/showcase/markets.png",
       "/_next/static/chunks/x.js",
     ]) {
       expect(matcher.test(path), path).toBe(false);
