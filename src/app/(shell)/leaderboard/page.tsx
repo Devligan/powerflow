@@ -5,7 +5,6 @@ import { usd, bpsToPercent, signTone } from "@/lib/format";
 import { localDate } from "@/lib/time";
 import { getViewerTimeZone } from "@/lib/time-zone-server";
 import { getPublicStandings, standingsSize, type StandingsRow } from "@/lib/standings";
-import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { LeaderboardOptIn } from "@/components/leaderboard-opt-in";
 import { Avatar } from "@/components/ui/avatar";
@@ -60,18 +59,10 @@ export default async function LeaderboardPage({
       <PageHeader
         kicker="Standings"
         title="Rank"
-        aside={
-          <>
-            <span className="badge badge-neutral">Opt-in</span>
-            <Link href="/challenges" className="btn btn-sm">
-              Challenge friends
-            </Link>
-          </>
-        }
+        aside={<span className="badge badge-neutral">Opt-in</span>}
       >
         Ranked by marked equity. Aggregate figures only, no positions or trades
-        of anyone else are exposed. Live results take days to settle; a
-        challenge ranks friends on the same past days in one sitting.
+        of anyone else are exposed.
       </PageHeader>
 
       {optedIn != null && <LeaderboardOptIn optedIn={optedIn} replayed={replayed} />}

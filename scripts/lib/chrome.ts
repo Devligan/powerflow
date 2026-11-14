@@ -7,8 +7,7 @@ import { join } from "node:path";
 /**
  * Chrome over the DevTools Protocol, with no browser framework: Chrome is
  * already on the machine, and Node has spoken the protocol's WebSocket since
- * v22. Shared by the browser check (scripts/browser-check.ts) and the README
- * screenshots (scripts/screenshots.ts).
+ * v22. Used by the browser check (scripts/browser-check.ts).
  */
 
 export const CHROME_CANDIDATES = [

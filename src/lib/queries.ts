@@ -2,7 +2,6 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { format, parseDbDec } from "@/lib/money";
 import { settlementState, type SettlementState } from "@/lib/settlement";
-import { getSimClock } from "@/lib/sim-clock";
 import { getInstrument } from "@/lib/ercot/types";
 import { positionFinalAt } from "@/lib/ercot/settlement-calendar";
 import {
@@ -160,10 +159,9 @@ export function allPositions(userId: string): Promise<DbBookkeeping[]> {
 
 async function loadContexts(userId: string) {
   const admin = supabaseAdmin();
-  const [rows, marketsRes, clock] = await Promise.all([
+  const [rows, marketsRes] = await Promise.all([
     allPositions(userId),
     admin.from("markets").select("id, settlement_point"),
-    getSimClock(userId),
   ]);
 
   // Marks are resolved by the engine itself (`position_marks`, migration 0008)
@@ -188,8 +186,7 @@ async function loadContexts(userId: string) {
       m.settlement_point,
     ])
   );
-  // "Delivered" is on the account's clock, as it is for the sweep.
-  const nowMs = clock ? Date.parse(clock.now) : Date.now();
+  const nowMs = Date.now();
   return { rows, markById, settlementByMarket, nowMs };
 }
 

@@ -7,11 +7,10 @@ import { TradePanel } from "@/components/trade-panel";
 import { PriceChart } from "@/components/price-chart";
 import { FundamentalsPanel } from "@/components/fundamentals-panel";
 import { sourceInfo } from "@/lib/format";
-import { dateTime, operatingDayLabel, shortDate } from "@/lib/time";
+import { dateTime, operatingDayLabel, requestTime } from "@/lib/time";
 import { getViewerTimeZone } from "@/lib/time-zone-server";
 import { Lamp } from "@/components/ui/lamp";
-import { requireDesk } from "@/lib/desk";
-import { getSimClock } from "@/lib/sim-clock";
+import { requireUser } from "@/lib/auth";
 import { DEFAULT_MARKET_PRODUCT, FORWARD_MARKET_PRODUCT } from "@/lib/ercot/types";
 
 export const dynamic = "force-dynamic";
@@ -21,11 +20,10 @@ export default async function MarketDetailPage({
 }: {
   params: Promise<{ settlementPoint: string }>;
 }) {
-  const { desk } = await requireDesk();
+  await requireUser();
   const { tz } = await getViewerTimeZone();
   const { settlementPoint } = await params;
-  const clock = await getSimClock(desk.accountUserId).catch(() => null);
-  const asOf = clock && clock.mode === "REPLAY" ? new Date(clock.now) : null;
+  const nowMs = requestTime();
 
   let data: Awaited<ReturnType<typeof getMarketPrices>>;
   let forward: Awaited<ReturnType<typeof getMarketPrices>>;
@@ -35,8 +33,8 @@ export default async function MarketDetailPage({
     // trades forward, and the only orderable energy series. The point list
     // feeds the ticket's second leg, so a spread can be placed in place.
     [data, forward, marketOptions] = await Promise.all([
-      getMarketPrices(settlementPoint, DEFAULT_MARKET_PRODUCT, asOf),
-      getMarketPrices(settlementPoint, FORWARD_MARKET_PRODUCT, asOf),
+      getMarketPrices(settlementPoint, DEFAULT_MARKET_PRODUCT),
+      getMarketPrices(settlementPoint, FORWARD_MARKET_PRODUCT),
       listMarketOptions(),
     ]);
   } catch {
@@ -45,12 +43,6 @@ export default async function MarketDetailPage({
 
   const { market, latest, series } = data;
   const sr = sourceInfo(market.source);
-  // The desk's own clock (wall time when live, replay time otherwise).
-  const nowMs = clock
-    ? Date.parse(clock.now)
-    : latest
-      ? Date.parse(latest.deliveryTimestamp) + 3600_000
-      : undefined;
   const forwardLast = forward.latest;
   // The ticket checks delivery END against this, so it is the end of the last
   // published hour, not its start.
@@ -59,10 +51,7 @@ export default async function MarketDetailPage({
       new Date(Date.parse(forwardLast.deliveryTimestamp) + 3600_000).toISOString()
     : null;
   // The headline on the ticket: day-ahead for the next hour that can trade.
-  const nextForward =
-    (nowMs != null
-      ? forward.series.find((p) => Date.parse(p.deliveryTimestamp) >= nowMs)
-      : undefined) ?? forwardLast;
+  const nextForward = forward.series.find((p) => Date.parse(p.deliveryTimestamp) >= nowMs) ?? forwardLast;
 
   return (
     <div className="space-y-5">
@@ -91,16 +80,6 @@ export default async function MarketDetailPage({
           {sr.label}
         </span>
       </header>
-
-      {asOf && (
-        <p className="note">
-          Replay · showing only observations ERCOT had published by
-          <span className="moni">
-            {" "}{shortDate(clock!.now, tz)}</span
-          >
-          .
-        </p>
-      )}
 
       {market.type === "LOAD_ZONE" && (
         <p className="note">
@@ -153,28 +132,23 @@ export default async function MarketDetailPage({
             pricedThrough={forwardPricedThrough ?? latest?.deliveryTimestamp ?? null}
             markets={marketOptions}
             series={forwardLast ? forward.series : series}
-            // The account's clock in both modes: the ticket counts down to the
-            // day-ahead deadline from it (the engine re-checks on submit).
-            simNowMs={asOf ? asOf.getTime() : clock ? Date.parse(clock.now) : undefined}
+            // The ticket counts down to the day-ahead deadline from the
+            // server's clock (the engine re-checks on submit).
+            simNowMs={nowMs}
           />
         </div>
 
         {/* Streams in after the ticket: weeks of history, not on the trade path. */}
-        {clock && (
-          <div className="min-w-0 lg:col-start-1 lg:row-start-2">
-            <Suspense fallback={<MarketIntelSkeleton />}>
-              <MarketIntel marketId={market.id} nowMs={Date.parse(clock.now)} asOf={asOf} />
-            </Suspense>
-          </div>
-        )}
-        {/* Live forecasts describe today's grid, not a replayed day. */}
-        {!asOf && (
-          <div className="min-w-0 lg:col-start-1">
-            <Suspense fallback={null}>
-              <FundamentalsPanel />
-            </Suspense>
-          </div>
-        )}
+        <div className="min-w-0 lg:col-start-1 lg:row-start-2">
+          <Suspense fallback={<MarketIntelSkeleton />}>
+            <MarketIntel marketId={market.id} nowMs={nowMs} />
+          </Suspense>
+        </div>
+        <div className="min-w-0 lg:col-start-1">
+          <Suspense fallback={null}>
+            <FundamentalsPanel />
+          </Suspense>
+        </div>
       </div>
     </div>
   );

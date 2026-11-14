@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pickStory } from "@/lib/market-story";
-import type { RecapHour } from "@/lib/practice-recap";
+import type { RecapHour } from "@/lib/day-recap";
 
 /** A 24-hour day at one hub with a flat $30 day-ahead and real time set per hour. */
 function day(rtByHe: Record<number, number | null> = {}): RecapHour[] {

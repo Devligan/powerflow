@@ -19,7 +19,7 @@ import {
   loadTestEnv,
   type TestUser,
 } from "../src/lib/testing/db";
-import { damDeadlineUtc, firstOpenOperatingDay, hourEndingStartUtc } from "../src/lib/ercot/hour-ending";
+import { firstOpenOperatingDay, hourEndingStartUtc } from "../src/lib/ercot/hour-ending";
 
 /**
  * A real-browser check of the sign-in screens: `npm run build && npm run test:browser`.
@@ -711,102 +711,15 @@ async function checkSignedIn(page: Page, base: string): Promise<void> {
     );
     checkNoRenderingNoise(emptyPositions, page, "positions");
 
-    // 4. one real fill, the way the desk makes one: a day-ahead bid placed
-    // before the deadline on a replay clock, filled by the sweep when the
-    // clock moves past delivery. Replay runs on the practice desk — the live
-    // account's clock is always live (0053) — so the live clock refuses first.
-    // A virtual is margined, so cash does not move; the book does.
+    // 4. a working limit bid: placed for the first day still open, seen on
+    // the book, withdrawn before its deadline. Nothing clears before the
+    // deadline, so it rests until it is cancelled. (A fill needs ERCOT's
+    // clearing for that day, which a check cannot wait for.)
     type Reply = { status: number; body: Record<string, unknown> };
     const interval = await page.evaluate<Interval>(FIND_INTERVAL);
     if (!interval.ok) {
-      note(`skipped the trade: ${interval.reason}`);
+      note(`skipped the bid: ${interval.reason}`);
     } else {
-      const refused = await page.evaluate<Reply>(
-        fetchJson("/api/clock", "PUT", { to: new Date(Date.now() - 86_400_000).toISOString() })
-      );
-      check(refused.status === 422, "the live account's clock will not leave live", JSON.stringify(refused.body));
-      const practice = await page.evaluate<Reply>(fetchJson("/api/desk", "PUT", { desk: "PRACTICE" }));
-      check(practice.status === 200, "the practice desk opens", JSON.stringify(practice.body).slice(0, 200));
-      const quantity = "10";
-      const startMs = Date.parse(interval.deliveryStart!);
-      const before = new Date(damDeadlineUtc(startMs)! - 3_600_000).toISOString();
-      const rewound = await page.evaluate<Reply>(fetchJson("/api/clock", "PUT", { to: before }));
-      check(rewound.status === 200, "the replay clock rewinds before the day's deadline", JSON.stringify(rewound.body));
-
-      const bid = await page.evaluate<Reply>(
-        fetchJson("/api/orders", "POST", {
-          marketId: interval.marketId,
-          instrument: "VIRTUAL",
-          product: "DAM_HOURLY",
-          side: "BUY",
-          quantityMwh: quantity,
-          deliveryStart: interval.deliveryStart,
-          deliveryEnd: interval.deliveryEnd,
-        })
-      );
-      check(bid.status === 201, `a ${quantity} MW DEC bids on ${interval.settlementPoint}`, JSON.stringify(bid.body).slice(0, 200));
-
-      const after = new Date(Date.parse(interval.deliveryEnd!) + 600_000).toISOString();
-      const advanced = await page.evaluate<Reply>(fetchJson("/api/clock", "PUT", { to: after }));
-      check(advanced.status === 200, "the clock moves past delivery", JSON.stringify(advanced.body));
-      const orders = await page.evaluate<Reply>(fetchJson("/api/orders", "GET"));
-      const filled = (orders.body.orders as Array<{ status: string }> | undefined)?.[0]?.status === "FILLED";
-      check(filled, "the sweep fills the bid at the clearing", JSON.stringify(orders.body).slice(0, 200));
-
-      if (filled) {
-        // 5. the position shows up, with the figures the fill returned
-        await page.load(`${base}/positions`, { settleMs: 1200 });
-        const withPosition = await page.evaluate<ShellSnapshot>(SHELL_SNAPSHOT);
-        check(withPosition.tableRows >= 1, "the position appears as a row", String(withPosition.tableRows));
-        check(
-          withPosition.tableText.includes(String(interval.settlementPoint)),
-          "the row names the market that was traded",
-          String(interval.settlementPoint)
-        );
-        // The quantity column is the fifth; the unit is rendered beside the
-        // figure, so this reads the cell rather than searching the page for a
-        // number that occurs in half a dozen other places.
-        check(
-          withPosition.firstRowCells[4] === `${quantity} MWh`,
-          `the row's quantity cell reads ${quantity} MWh`,
-          JSON.stringify(withPosition.firstRowCells[4])
-        );
-        // Delivered and priced, but not settled until ERCOT's price is final
-        // (0044) — or already settled, for an hour old enough.
-        check(
-          /Final |Settled|Settles next run/.test(withPosition.firstRowCells[3] ?? ""),
-          "the row says where it stands against ERCOT's settlement",
-          JSON.stringify(withPosition.firstRowCells[3])
-        );
-        check(
-          withPosition.sectionCaptions.includes("1 position"),
-          "the open book is counted as one position",
-          JSON.stringify(withPosition.sectionCaptions)
-        );
-        checkNoRenderingNoise(withPosition, page, "positions with a book");
-
-        // and the desk shows the book: a virtual is margined, so cash holds
-        // and equity carries the position's P&L
-        await page.load(`${base}/dashboard`, { settleMs: 1500 });
-        const afterTrade = await page.evaluate<ShellSnapshot>(SHELL_SNAPSHOT);
-        check(isMoney(afterTrade.stats.cash), "cash still reads as money", String(afterTrade.stats.cash));
-        check(
-          afterTrade.stats.cash === startingCash,
-          "a margined fill leaves cash where it was",
-          `${startingCash} -> ${afterTrade.stats.cash}`
-        );
-        check(
-          !afterTrade.bodyText.includes("No open positions"),
-          "the desk now shows the open book"
-        );
-        checkNoRenderingNoise(afterTrade, page, "the desk with a book");
-      }
-
-      // 5b. a working limit bid on the live desk: placed for the first day
-      // still open, seen on the book, withdrawn before its deadline. Nothing
-      // clears before the deadline, so it rests until it is cancelled.
-      const live = await page.evaluate<Reply>(fetchJson("/api/desk", "PUT", { desk: "LIVE" }));
-      check(live.status === 200, "back on the live desk", JSON.stringify(live.body));
       const he18 = hourEndingStartUtc(firstOpenOperatingDay(Date.now()), 18)!;
       const placedOrder = await page.evaluate<Reply>(
         fetchJson("/api/orders", "POST", {
@@ -879,7 +792,7 @@ async function checkSignedIn(page: Page, base: string): Promise<void> {
       }
     }
 
-    // 6. the standings, which must not leak who anyone is
+    // 5. the standings, which must not leak who anyone is
     await page.load(`${base}/leaderboard`, { settleMs: 1200 });
     const board = await page.evaluate<ShellSnapshot>(SHELL_SNAPSHOT);
     checkShell(board, "/leaderboard");

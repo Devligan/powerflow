@@ -230,6 +230,15 @@ export function windowLabel(startMs: number, endMs: number, tz: string): string 
   return label;
 }
 
+/**
+ * The wall clock, for a server component. A server component renders once
+ * per request, so this is that request's "now"; client components keep the
+ * time in state instead.
+ */
+export function requestTime(): number {
+  return Date.now();
+}
+
 /** "US Central", "Pacific"… a readable name for a zone, for captions. */
 export function zoneName(tz: string, at = Date.now()): string {
   const long = fmt(tz, "long", { timeZoneName: "long" })

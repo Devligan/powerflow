@@ -1,5 +1,4 @@
 import { getSessionUser } from "@/lib/auth";
-import { getActiveDesk } from "@/lib/desk";
 import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 import { fail, serverError } from "@/lib/api";
 import { format, parseDbDec } from "@/lib/money";
@@ -46,8 +45,7 @@ export async function GET(req: Request) {
   if (!filters) return fail("Invalid filter", 422);
 
   try {
-    const desk = await getActiveDesk(user.id);
-    const { rows } = await getTrades(desk.accountUserId, { ...filters, all: true });
+    const { rows } = await getTrades(user.id, { ...filters, all: true });
 
     const lines = [COLUMNS.join(",")];
     for (const r of rows) {

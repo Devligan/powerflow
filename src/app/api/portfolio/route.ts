@@ -1,7 +1,6 @@
 import { getPortfolioSnapshot } from "@/lib/queries";
 import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 import { getSessionUser } from "@/lib/auth";
-import { getActiveDesk } from "@/lib/desk";
 import { serverError, fail, ok, m } from "@/lib/api";
 import { parseDbDec } from "@/lib/money";
 
@@ -13,8 +12,7 @@ export async function GET() {
   if (await overLimit(LIMITS.reads, user.id)) return tooManyRequests(LIMITS.reads);
 
   try {
-    const desk = await getActiveDesk(user.id);
-    const snapshot = await getPortfolioSnapshot(desk.accountUserId);
+    const snapshot = await getPortfolioSnapshot(user.id);
     const met = snapshot.metrics;
     return ok({
       account: {

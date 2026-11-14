@@ -17,8 +17,8 @@ migration headers in `supabase/migrations/` carry the rest.
 - **The engine lives in the database.** Fills, marks, margin and settlement are
   `SECURITY DEFINER` Postgres functions, run in one transaction with a per-account
   row lock; a TypeScript mirror is pinned to them by tests. Prices are read
-  *as of* each account's own simulation clock, so replaying history has no
-  look-ahead.
+  *as of* a clock (only what had been posted by then), so a later revision
+  never rewrites a past fill.
 - **Instruments, not just prices.** Energy spot, virtuals, DART and basis
   spreads, point-to-point obligations/options, CRRs, block forwards and swaps,
   each reduced to a single price by its settlement rule.
@@ -103,28 +103,13 @@ migration headers in `supabase/migrations/` carry the rest.
   ERCOT's 15-minute posting rhythm and `GET /api/cron/settle` hourly, guarded
   by a secret; `vercel.json` keeps a once-a-day fallback, which is all the
   Hobby plan allows. ERCOT MIS adapter via `ERCOT_SOURCE=ERCOT_MIS`.
-- **Practice desk** (migration 0048): a second account with its own $100,000
-  and clock, switched to from the bar under the navigation. Its *practice day*
-  replays one recent operating day in four steps — open bidding (08:00
-  Central the day before), run the day-ahead clearing (14:00), deliver the
-  day, settle when its real-time prices are final — so a new trader sees a bid
-  clear, deliver and settle in minutes. A desk is an engine account its
-  owner's session may act for (`acts_for`), checked in the database.
-- **The live account is always live** (migration 0053): only a desk's clock
-  may stand in the past — a trigger on `paper_accounts` refuses a nonzero
-  `sim_clock_offset` for any other account, from any caller — so replay never
-  moves a trader's real balance or their place on the standings. Live
-  accounts the migration found in replay were returned to live, and their
-  open bids for days already past the gate were cancelled.
-- **Challenges** (migration 0049, `/challenges`): a run of one to five past
-  operating days that friends trade on identical terms. Each entrant gets a
-  fresh $100,000 challenge desk whose clock starts at 08:00 Central the day
-  before the first day; they open each day's bidding, bid, run its clearing,
-  then finish — which moves the desk to the instant the last day's real-time
-  prices were final, settles it and records its P&L on the challenge's
-  standings. The engine keeps it a contest: a challenge desk's clock only
-  moves forward and never past the finish or back to live, it bids only on
-  the challenge's days, and a finished entry takes no more bids or moves.
+- **One account per trader, always live.** Each trader trades today's market
+  as ERCOT publishes it. The engine also carries per-account simulation
+  clocks, desks (0048) and challenges (0049) from an earlier design that let
+  extra accounts replay past days; the app no longer uses them. Migration 0053
+  keeps every non-desk account on the live clock, so nothing a past clock
+  produced can reach a trader's balance or the standings. The database suites
+  still use replay desks to test the as-of engine.
 
 ## Stack
 
@@ -272,13 +257,11 @@ accepted only before `dam_gate(delivery_start)` — 10:00 Central on the day
 before the delivery's operating day — on the account's own clock. A bid with
 no limit is a `MARKET` order (fill at whatever clears); otherwise `LIMIT`.
 When ERCOT publishes the clearing prices, the service-role sweep
-`fill_crossing_limit_orders` (run by every ingest, and right after a replay
-clock jump) fills each bid that crosses, at the price the fill will actually be
-made at. A bid is judged on what had cleared while it stood in the market, on
-its own account's clock, not on when the sweep happens to run: a replay clock
-jumping past delivery, or ingestion catching up after an outage, still fills a
-bid ERCOT cleared the day before, and a clearing posted after delivery started
-never does. A user calling `execute_trade`
+`fill_crossing_limit_orders` (run by every ingest) fills each bid that
+crosses, at the price the fill will actually be made at. A bid is judged on
+what had cleared while it stood in the market, not on when the sweep happens to
+run: ingestion catching up after an outage still fills a bid ERCOT cleared the
+day before, and a clearing posted after delivery started never does. A user calling `execute_trade`
 directly for a day-ahead interval is refused (`DAM_ORDER_REQUIRED` before the
 deadline, `DAM_CLOSED` after): knowing the clearing price, and watching real
 time come in, before choosing a side was the edge this closes. And nothing is

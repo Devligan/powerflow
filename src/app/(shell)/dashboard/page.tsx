@@ -1,12 +1,9 @@
 import Link from "next/link";
 import { requireUser, getUserProfile } from "@/lib/auth";
-import { getActiveDesk } from "@/lib/desk";
-import { PracticeDay } from "@/components/practice-day";
-import { ChallengeView } from "@/components/challenge-view";
 import { FirstTrade } from "@/components/first-trade";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-/** Whether the trader's live account has ever placed a bid. */
+/** Whether the trader has ever placed a bid. */
 async function hasEverOrdered(userId: string): Promise<boolean> {
   const { count, error } = await supabaseAdmin()
     .from("paper_orders")
@@ -18,8 +15,6 @@ async function hasEverOrdered(userId: string): Promise<boolean> {
 import { getPortfolioSnapshot } from "@/lib/queries";
 import { getMarketStatus } from "@/lib/markets";
 import { MarketsStrip } from "@/components/markets-strip";
-import { getSimClock } from "@/lib/sim-clock";
-import { LiveDeskCard } from "@/components/live-desk-card";
 import { InstrumentBreakdownTable } from "@/components/instrument-breakdown";
 import { MarginSummary } from "@/components/margin-summary";
 import { PageHeader } from "@/components/ui/page-header";
@@ -42,12 +37,10 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const user = await requireUser();
   const { tz } = await getViewerTimeZone();
-  const desk = await getActiveDesk(user.id);
-  const [snapshot, status, profile, clock, everOrdered] = await Promise.all([
-    getPortfolioSnapshot(desk.accountUserId).catch(() => null),
+  const [snapshot, status, profile, everOrdered] = await Promise.all([
+    getPortfolioSnapshot(user.id).catch(() => null),
     getMarketStatus().catch(() => null),
     getUserProfile(user.id).catch(() => null),
-    getSimClock(desk.accountUserId).catch(() => null),
     hasEverOrdered(user.id).catch(() => true),
   ]);
 
@@ -80,7 +73,7 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <PageHeader
         kicker={`Account · ${account}`}
-        title={desk.kind === "PRACTICE" ? "Practice desk" : desk.kind === "CHALLENGE" ? "Challenge desk" : "Desk"}
+        title="Desk"
         aside={
           <>
             {status && (
@@ -95,24 +88,13 @@ export default async function DashboardPage() {
           </>
         }
       >
-        Marked to the desk&apos;s simulation clock and recomputed from executed
+        Marked to ERCOT&apos;s latest prices and recomputed from executed
         trades. Every price is actual ERCOT MIS data, labelled with its report
         source and publication time.
       </PageHeader>
 
-      {/* A trader who has never bid, on the live desk: the first trade, walked through. */}
-      {desk.kind === "LIVE" && !everOrdered && <FirstTrade />}
-
-      {/* The clock: what "now" means for this desk. Every mark, fill and
-          settlement resolves through it. The practice desk walks it through a
-          past operating day; the live desk is always live (0053). */}
-      {desk.kind === "PRACTICE" ? (
-        <PracticeDay />
-      ) : desk.kind === "CHALLENGE" && desk.challenge ? (
-        <ChallengeView slug={desk.challenge.slug} activeDeskId={desk.id} compact />
-      ) : (
-        <LiveDeskCard />
-      )}
+      {/* A trader who has never bid: the first trade, walked through. */}
+      {!everOrdered && <FirstTrade />}
 
       {/* Bank of readouts. */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
@@ -153,8 +135,7 @@ export default async function DashboardPage() {
             All markets →
           </Link>
         </div>
-        {/* On the desk's clock: a replay must not see its own future. */}
-        <MarketsStrip offsetMs={clock?.mode === "REPLAY" ? clock.offsetSeconds * 1000 : 0} />
+        <MarketsStrip />
       </section>
 
       {/* Positions preview */}

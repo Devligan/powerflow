@@ -28,9 +28,6 @@ export const LIMITS = {
   forgotByEmail: { name: "forgot-email", max: 3, windowSeconds: 3600 },
   accountEmail: { name: "account-email", max: 5, windowSeconds: 3600 },
   avatar: { name: "avatar", max: 10, windowSeconds: 3600 },
-  clock: { name: "clock", max: 30, windowSeconds: 60 },
-  // Creating or resetting a desk creates or deletes an account.
-  desk: { name: "desk", max: 20, windowSeconds: 3600 },
   // One ticket is up to 25 hours of 4 bid-curve steps: 100 requests.
   orders: { name: "orders", max: 120, windowSeconds: 60 },
   profile: { name: "profile", max: 20, windowSeconds: 60 },

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { hourEndingStartUtc } from "@/lib/ercot/hour-ending";
-import { summarizeRecap } from "@/lib/practice-recap";
+import { summarizeRecap } from "@/lib/day-recap";
 
 const he = (n: number) => hourEndingStartUtc("2026-11-05", n)!;
 
-describe("practice recap", () => {
+describe("day recap", () => {
   it("pairs each hour's day-ahead clearing with real time and names the best DEC and INC hours", () => {
     const s = summarizeRecap(
       [

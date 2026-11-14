@@ -7,6 +7,8 @@ import { PriceTape } from "@/components/price-tape";
 import { StoryChart } from "@/components/story-chart";
 import { LocalClock } from "@/components/ui/clock";
 import { getSessionUser } from "@/lib/auth";
+import { damDeadlineUtc, firstOpenOperatingDay, hourEndingStartUtc } from "@/lib/ercot/hour-ending";
+import { requestTime } from "@/lib/time";
 import { listMarkets } from "@/lib/markets";
 import { loadMarketStory, type MarketStory } from "@/lib/market-story";
 import marketsShot from "../../public/showcase/markets.png";
@@ -40,8 +42,6 @@ interface TourStop {
   title: string;
   body: string;
   shot: StaticImageData;
-  /** The region of the screenshot to show, in its pixels. */
-  crop: { x: number; y: number; w: number; h: number };
   path: string;
   alt: string;
 }
@@ -52,7 +52,6 @@ const TOUR: TourStop[] = [
     title: "Bid tomorrow before anyone knows the price.",
     body: "Pick a hub, read the curve, and put in a DEC or an INC on any hour before ERCOT's 10 AM gate. It fills that afternoon at the real clearing price.",
     shot: marketsShot,
-    crop: { x: 150, y: 296, w: 1130, h: 420 },
     path: "markets/HB_NORTH",
     alt: "The HB_NORTH market: the day-ahead curve against real time, and the bid ticket",
   },
@@ -61,7 +60,6 @@ const TOUR: TourStop[] = [
     title: "Watch your risk, hour by hour.",
     body: "Every megawatt you hold, laid out across the delivery day and marked to ERCOT's real-time price as each hour prints.",
     shot: positionsShot,
-    crop: { x: 150, y: 288, w: 1130, h: 612 },
     path: "positions",
     alt: "Positions: a risk ladder of net megawatt-hours by delivery hour, each position marked to real time",
   },
@@ -70,7 +68,6 @@ const TOUR: TourStop[] = [
     title: "Find out if you're any good.",
     body: "Positions settle when ERCOT calls the price final. Then the numbers that matter: return, win rate, your best and worst trade, drawdown.",
     shot: analyticsShot,
-    crop: { x: 150, y: 244, w: 1130, h: 302 },
     path: "analytics",
     alt: "Analytics after a settled day: equity, return, realized P&L, win rate, best and worst trade, drawdown",
   },
@@ -97,13 +94,11 @@ function StoryHero({ story }: { story: MarketStory }) {
 }
 
 /**
- * A screen of the desk, framed as a browser window and cropped to the part
- * worth reading (`crop` is in the screenshot's own pixels), so it is shown
- * near its real size instead of shrunk whole.
+ * A screen of the desk, framed as a browser window. The screenshots are
+ * cropped to the part worth reading, so they show near their real size.
  */
 function Screen({ stop }: { stop: TourStop }) {
-  const { shot, crop, path, alt } = stop;
-  const pct = (v: number, of: number) => `${(v / of) * 100}%`;
+  const { shot, path, alt } = stop;
   return (
     <div className="screen">
       <div className="flex h-8 items-center gap-1.5 border-b border-white/10 bg-[var(--ink-plate)] px-3">
@@ -112,20 +107,7 @@ function Screen({ stop }: { stop: TourStop }) {
         <span className="h-2 w-2 rounded-full bg-white/15" aria-hidden="true" />
         <span className="mono mx-auto truncate pr-8 text-[10.5px] t-mute">powerflow / {path}</span>
       </div>
-      <div className="relative overflow-hidden" style={{ aspectRatio: `${crop.w} / ${crop.h}` }}>
-        <Image
-          src={shot}
-          alt={alt}
-          placeholder="blur"
-          sizes={`(min-width: 1152px) ${Math.round((1120 * shot.width) / crop.w)}px, ${Math.round((100 * shot.width) / crop.w)}vw`}
-          className="absolute h-auto max-w-none"
-          style={{
-            width: pct(shot.width, crop.w),
-            left: `-${pct(crop.x, crop.w)}`,
-            top: `-${pct(crop.y, crop.h)}`,
-          }}
-        />
-      </div>
+      <Image src={shot} alt={alt} placeholder="blur" sizes="(min-width: 1152px) 1120px, 100vw" className="block h-auto w-full" />
     </div>
   );
 }
@@ -136,6 +118,13 @@ export default async function Home() {
     loadMarketStory().catch(() => null),
     listMarkets().catch(() => []),
   ]);
+
+  // The next auction a new trader can still get into, and how long is left.
+  const nowMs = requestTime();
+  const openDay = firstOpenOperatingDay(nowMs);
+  const firstHour = hourEndingStartUtc(openDay, 1);
+  const gate = firstHour == null ? null : damDeadlineUtc(firstHour);
+  const minutesLeft = gate == null ? null : Math.max(0, Math.floor((gate - nowMs) / 60_000));
 
   const startButtons = user ? (
     <Link href="/dashboard" className="btn btn-primary">
@@ -234,7 +223,7 @@ export default async function Home() {
         <section className="border-t border-white/10 pt-20 pb-8">
           <p className="caption">Inside the desk</p>
           <h2 className="mt-3 max-w-2xl font-display text-3xl leading-tight font-bold tracking-tight sm:text-4xl">
-            Everything a power trader looks at, on a market that actually happened.
+            Everything a power trader looks at, on the real ERCOT market.
           </h2>
         </section>
 
@@ -257,12 +246,22 @@ export default async function Home() {
 
         {/* ---- The close ----------------------------------------------------- */}
         <section className="my-20 card card-bracket px-6 py-12 text-center sm:px-12 sm:py-16">
-          <h2 className="mx-auto max-w-2xl font-display text-3xl leading-tight font-bold tracking-tight sm:text-4xl">
-            Don&apos;t want to wait for tomorrow?
+          <p className="caption">The next auction</p>
+          <h2 className="mx-auto mt-3 max-w-2xl font-display text-3xl leading-tight font-bold tracking-tight sm:text-4xl">
+            Bids for {weekday(openDay)} close
+            {minutesLeft != null && (
+              <>
+                {" "}in{" "}
+                <span className="mono t-accent">
+                  {Math.floor(minutesLeft / 60)}h {String(minutesLeft % 60).padStart(2, "0")}m
+                </span>
+              </>
+            )}
+            .
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed t-dim">
-            The practice desk replays any recent day on the prices that really happened. Bid, clear, deliver and settle
-            in about two minutes, then see how you&apos;d have done.
+            Pick a hub, take a side on any hour, and find out what Texas actually paid. Real ERCOT prices, $100,000 of
+            pretend money.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             {user ? (

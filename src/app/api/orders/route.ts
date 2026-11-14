@@ -1,8 +1,6 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
-import { getActiveDesk } from "@/lib/desk";
 import { fail, ok, m, serverError } from "@/lib/api";
 import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 import { parseDbDec, parseDec } from "@/lib/money";
@@ -34,15 +32,13 @@ export async function GET(req: Request) {
     return fail("Invalid status", 422);
   }
 
-  // The service role, scoped to the desk the caller was just verified to own:
-  // row-level security would show a session only its own live account.
-  const desk = await getActiveDesk(user.id);
-  let query = supabaseAdmin()
+  // Through the caller's session: row-level security shows it its own orders.
+  let query = (await createClient())
     .from("paper_orders")
     .select(
       "id, market_id, product, instrument, counter_market_id, side, quantity_mwh, limit_price, order_type, status, delivery_start, delivery_end, filled_trade_id, expires_at, created_at, updated_at"
     )
-    .eq("user_id", desk.accountUserId)
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(100);
   if (status) query = query.eq("status", status);
@@ -130,8 +126,6 @@ const FRIENDLY: Record<string, string> = {
   DAM_CLOSED: "Day-ahead bids for that operating day closed at 10:00 AM Central the day before.",
   DAM_NOT_OPEN: "ERCOT takes day-ahead bids for an operating day from fourteen days before it.",
   QUANTITY_INCREMENT: "ERCOT takes bid quantities in steps of 0.1 MW.",
-  CHALLENGE_DAY_OUTSIDE: "This challenge desk only bids on the challenge's own operating days.",
-  CHALLENGE_FINISHED: "This challenge entry is finished: its desk takes no more bids.",
 };
 
 export async function POST(req: Request) {
@@ -168,11 +162,10 @@ export async function POST(req: Request) {
   const product = resolveTradedProduct(instrument, o.product);
 
   // Through the caller's own session: the engine checks that it may act for
-  // this account (its own, or a desk it owns — acts_for, 0048).
-  const desk = await getActiveDesk(user.id);
+  // this account (acts_for, 0048).
   const db = await createClient();
   const { data, error } = await db.rpc("place_limit_order", {
-    p_user_id: desk.accountUserId,
+    p_user_id: user.id,
     p_market_id: o.marketId,
     p_instrument: instrument.code,
     p_product: product,

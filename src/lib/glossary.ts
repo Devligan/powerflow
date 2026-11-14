@@ -66,10 +66,6 @@ export const GLOSSARY = {
     term: "Collateral",
     short: "Cash held aside while a bid or position is open, sized on how far real time has strayed from day-ahead at that point recently. It limits how much one account can bet.",
   },
-  replay: {
-    term: "Simulation clock and replay",
-    short: "Practice and challenge desks each have their own clock, set in the past: the desk sees only the prices published by then, so you trade history without knowing how it ends. Your live account always runs on the live clock, so replay never moves its balance.",
-  },
 } as const satisfies Record<string, GlossaryEntry>;
 
 export type GlossaryKey = keyof typeof GLOSSARY;

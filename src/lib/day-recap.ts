@@ -1,7 +1,7 @@
 import { centralHourEnding } from "@/lib/ercot/hour-ending";
 
 /**
- * What the market did on a practice day, hour by hour, at one settlement
+ * What the market did on one operating day, hour by hour, at one settlement
  * point: the day-ahead clearing against real time, and the DART spread a
  * virtual bid is paid (src/lib/glossary.ts). Browser-safe; prices here are
  * for display only — every fill and settlement still goes through the engine.
@@ -12,7 +12,7 @@ export interface RecapHour {
   he: number;
   startMs: number;
   da: number | null;
-  /** Real time as the desk's clock sees it: null before it is published. */
+  /** Real time, or null before it is published. */
   rt: number | null;
   /** rt − da: what a 1 MW DEC earned (an INC earned the opposite). */
   dart: number | null;

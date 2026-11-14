@@ -21,7 +21,6 @@ const PUBLIC = new Set([
   "/engineering",
   "/status",
   "/leaderboard",
-  "/challenges/[slug]",
 ]);
 const SIGNED_IN = new Set([
   "/dashboard",
@@ -33,7 +32,6 @@ const SIGNED_IN = new Set([
   "/trades",
   "/analytics",
   "/settings",
-  "/challenges",
   "/welcome",
 ]);
 
@@ -71,10 +69,8 @@ describe("route access", () => {
 
   it("keeps the OAuth callback public and sends a signed-in trader past the front door", () => {
     expect(isPublicPath("/auth/callback")).toBe(true);
-    expect(isPublicPath("/challenges")).toBe(false);
     for (const p of ["/", "/login", "/signup"]) expect(sendsSignedInToDesk(p)).toBe(true);
     expect(sendsSignedInToDesk("/learn")).toBe(false);
-    expect(sendsSignedInToDesk("/challenges/abcd2345")).toBe(false);
   });
 
   it("runs the proxy on every page, and never on the metadata files a crawler fetches", () => {

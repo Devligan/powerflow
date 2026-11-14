@@ -11,27 +11,22 @@ const HEATMAP_DAYS = 14;
 
 /**
  * The desk's read on a settlement point: how day-ahead has cleared hour by
- * hour, and how real time has settled against it. Everything is as of the
- * account's clock, so a replay sees only what had been published by then.
+ * hour, and how real time has settled against it.
  */
 export async function MarketIntel({
   marketId,
   nowMs: now,
-  asOf,
 }: {
   marketId: string;
-  /** The account's clock: wall time when live, replay time otherwise. */
   nowMs: number;
-  /** Set only in replay, where reads are limited to what was published by then. */
-  asOf: Date | null;
 }) {
   const from = now - DART_DAYS * DAY_MS;
   let dayAhead, realTime;
   try {
     [dayAhead, realTime] = await Promise.all([
       // Day-ahead runs into tomorrow once it has cleared.
-      getHourlyHistory(marketId, FORWARD_MARKET_PRODUCT, from, now + 2 * DAY_MS, asOf),
-      getHourlyHistory(marketId, DEFAULT_MARKET_PRODUCT, from, now, asOf),
+      getHourlyHistory(marketId, FORWARD_MARKET_PRODUCT, from, now + 2 * DAY_MS),
+      getHourlyHistory(marketId, DEFAULT_MARKET_PRODUCT, from, now),
     ]);
   } catch {
     // Analysis is optional; it must never take the ticket down with it.
