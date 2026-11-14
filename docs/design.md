@@ -723,8 +723,7 @@ instrument that cannot be marked is reported as **unpriced, never zero**.
   internal paths (`safeNextPath`).
 - Leaderboard is computed by a `SECURITY DEFINER` function (returning raw
   `user_id`s) and is reached only from server code with the service role; the
-  browser-facing RPC is not exposed. Its public faces (the Rank page and
-  `GET /api/leaderboard`) go through `src/lib/standings.ts`, which drops user
+  browser-facing RPC is not exposed. Its public face, the Rank page, goes through `src/lib/standings.ts`, which drops user
   ids and usernames and lists only accounts that have chosen a display name.
   Default names are random, never derived from the email (migration 0036), and
   uploaded pictures are stored under random names, not user ids.

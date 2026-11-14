@@ -26,7 +26,6 @@ const SIGNED_IN = new Set([
   "/dashboard",
   "/markets",
   "/markets/[settlementPoint]",
-  "/portfolio",
   "/positions",
   "/orders",
   "/trades",

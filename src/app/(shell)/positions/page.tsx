@@ -62,7 +62,7 @@ export default async function PositionsPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Market / legs</th>
+                  <th>Market</th>
                   <th>Instrument</th>
                   <th>Delivery</th>
                   <th>Settlement</th>
@@ -89,12 +89,9 @@ export default async function PositionsPage() {
                       </td>
                       <td>
                         {inst ? (
-                          <div className="flex flex-col items-start gap-1">
-                            <span className="whitespace-nowrap" title={p.product}>
-                              {inst.shortLabel}
-                            </span>
-                            <span className={`badge ${inst.tone}`}>{inst.ruleLabel}</span>
-                          </div>
+                          <span className="whitespace-nowrap" title={inst.ruleLabel}>
+                            {inst.shortLabel}
+                          </span>
                         ) : (
                           <span className="t-mute">{p.instrument}</span>
                         )}
@@ -176,12 +173,10 @@ export default async function PositionsPage() {
         title="Positions"
         aside={<span className="badge badge-neutral">{open.length} open</span>}
       >
-        A day-ahead and a real-time position on the same hour are different
-        instruments, and a spread is held separately from either leg. A
-        delivered position is cashed out automatically once ERCOT&apos;s prices
-        for its operating day are final (16:00 Central, two business days
-        later, after any corrections), recording realized P&L without you
-        closing it.
+        Every hour you hold, marked against ERCOT&apos;s real-time price as it
+        prints. A delivered hour cashes out by itself once ERCOT calls its
+        prices final (4:00 PM Central, two business days later, after any
+        corrections), so there is nothing to close.
       </PageHeader>
       <RiskLadder
         ladder={buildLadder(

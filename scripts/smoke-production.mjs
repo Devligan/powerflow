@@ -42,8 +42,8 @@ async function main() {
   const location = dashboard.headers.get("location") ?? "";
   check("signed-out /dashboard redirects to /login", dashboard.status >= 300 && dashboard.status < 400 && location.includes("/login"), `${dashboard.status} ${location}`);
 
-  const portfolio = await get("/api/portfolio");
-  check("signed-out /api/portfolio is refused", portfolio.status === 401, `${portfolio.status}`);
+  const orders = await get("/api/orders");
+  check("signed-out /api/orders is refused", orders.status === 401, `${orders.status}`);
 
   const statusRes = await get("/api/market-data/status");
   check("GET /api/market-data/status", statusRes.status === 200, `${statusRes.status}`);

@@ -9,6 +9,7 @@ import { LocalClock } from "@/components/ui/clock";
 import { getSessionUser } from "@/lib/auth";
 import { damDeadlineUtc, firstOpenOperatingDay, hourEndingStartUtc } from "@/lib/ercot/hour-ending";
 import { requestTime } from "@/lib/time";
+import { countdown } from "@/lib/format";
 import { listMarkets } from "@/lib/markets";
 import { loadMarketStory, type MarketStory } from "@/lib/market-story";
 import marketsShot from "../../public/showcase/markets.png";
@@ -252,9 +253,7 @@ export default async function Home() {
             {minutesLeft != null && (
               <>
                 {" "}in{" "}
-                <span className="mono t-accent">
-                  {Math.floor(minutesLeft / 60)}h {String(minutesLeft % 60).padStart(2, "0")}m
-                </span>
+                <span className="mono t-accent">{countdown(minutesLeft)}</span>
               </>
             )}
             .

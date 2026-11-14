@@ -9,7 +9,6 @@ import { Avatar } from "@/components/ui/avatar";
 const NAV = [
   { href: "/dashboard", label: "Desk" },
   { href: "/markets", label: "Markets" },
-  { href: "/portfolio", label: "Portfolio" },
   { href: "/positions", label: "Positions" },
   { href: "/orders", label: "Orders" },
   { href: "/trades", label: "Blotter" },
@@ -69,7 +68,7 @@ export function Nav({
           ))}
         </div>
 
-        {/* Eight sections, the clock and the account just fit the 6xl
+        {/* Seven sections, the clock and the account fit the 6xl
             column, so the "ERCOT data · paper trading" badge lives in the
             shell footer instead. */}
         <div className="ml-auto flex items-center gap-3">

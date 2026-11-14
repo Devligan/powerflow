@@ -11,9 +11,9 @@ export default function TradesPage() {
         title="Executed trades"
         aside={<span className="badge badge-neutral">Append-only</span>}
       >
-        Every executed paper trade is immutable and audited. P&amp;L is
-        attributed per trade by replaying the blotter through the same engine
-        that filled it.
+        Every fill and settlement on your book, in the order it happened. Fills
+        can only be added, never edited, and each one carries the P&amp;L it
+        realized.
       </PageHeader>
       <TradesTable />
     </div>

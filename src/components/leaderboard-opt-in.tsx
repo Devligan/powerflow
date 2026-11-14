@@ -13,7 +13,8 @@ export function LeaderboardOptIn({
   replayed = false,
 }: {
   optedIn: boolean;
-  /** This account's results depended on the replay clock, so they do not rank. */
+  /** This account once traded past days on a rewound clock (before 0053),
+   *  so its results do not rank. */
   replayed?: boolean;
 }) {
   const router = useRouter();
@@ -45,7 +46,7 @@ export function LeaderboardOptIn({
     <div className="card flex flex-wrap items-center justify-between gap-3">
       <p className="text-[13px] t-dim">
         {replayed
-          ? "This account traded in replay, where outcomes are already known, so it does not rank in the standings."
+          ? "This account once traded past days whose outcomes were already known, so it does not rank in the standings."
           : optedIn
           ? "You are listed in the standings. Only your name, picture and aggregate figures are shown."
           : "Your account is private, so you are not listed. Join to show your name and aggregate figures — never your positions or trades."}{" "}
