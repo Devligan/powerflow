@@ -122,7 +122,7 @@ export default async function DashboardPage() {
       {/* A trader who has never bid: the first trade, walked through. */}
       {!everOrdered && <FirstTrade />}
 
-      <div className={`grid grid-cols-2 gap-3 md:grid-cols-3 ${stats.length > 5 ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
+      <div className={`stat-grid grid grid-cols-2 gap-3 md:grid-cols-3 ${stats.length > 5 ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
         {stats.map((s, i) => (
           <Stat key={s.label} label={s.label} value={s.value} tone={s.tone} delay={i * 40} />
         ))}
