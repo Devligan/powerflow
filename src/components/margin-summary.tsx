@@ -66,7 +66,9 @@ export function MarginSummary({ margin }: { margin: MarginView | null }) {
         <Figure label="Maintenance" value={usd(margin.maintenanceMargin)} />
       </div>
 
-      <p className="mt-3 text-[11px] leading-relaxed t-mute">{tier.note}</p>
+      <p className="mt-3 text-[11px] leading-relaxed t-mute">
+        {hasBook ? tier.note : "No open exposure, so no margin is required."}
+      </p>
 
       <div className="mt-3 space-y-2">
         {margin.deficit > 0n && (
@@ -84,12 +86,6 @@ export function MarginSummary({ margin }: { margin: MarginView | null }) {
             <Link href="/positions" className="underline">
               View positions
             </Link>
-          </p>
-        )}
-
-        {!hasBook && (
-          <p className="text-[11px] t-mute">
-            No open exposure, so no margin is required.
           </p>
         )}
       </div>

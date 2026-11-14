@@ -4,14 +4,14 @@ import { AnalyticsCharts } from "./analytics-charts";
 import { usd, sign, signedUsd, bpsToPercent, num, volumeUnitLabel, signTone } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { parseDec } from "@/lib/money";
+import { Stat } from "@/components/ui/stat";
+
+export const dynamic = "force-dynamic";
 
 const absDec = (v: string): bigint => {
   const n = parseDec(v);
   return n < 0n ? -n : n;
 };
-import { Stat } from "@/components/ui/stat";
-
-export const dynamic = "force-dynamic";
 
 const toneOf = (v: string): "pos" | "neg" | undefined => {
   const n = parseFloat(v);
@@ -21,6 +21,9 @@ const toneOf = (v: string): "pos" | "neg" | undefined => {
 export default async function AnalyticsPage() {
   const user = await requireUser();
   const a = await getAnalytics(user.id);
+  // Per-trade figures describe closed trades; with none, there is no figure.
+  const perTrade = (v: string) =>
+    a.closedTrades === 0 ? { value: "—" } : { value: signedUsd(v), tone: toneOf(v) };
 
   const kpis: Array<{
     label: string;
@@ -46,15 +49,11 @@ export default async function AnalyticsPage() {
     },
     { label: "Closed trades", value: String(a.closedTrades), note: `of ${a.totalTrades} fills` },
     { label: "Win rate", value: a.winRatePercent == null ? "—" : `${a.winRatePercent}%` },
-    {
-      label: "Avg trade P&L",
-      value: signedUsd(a.avgTradePnl),
-      tone: toneOf(a.avgTradePnl),
-    },
+    { label: "Avg trade P&L", ...perTrade(a.avgTradePnl) },
     // Coloured by the figure's own sign: a profitable worst trade is still a
     // profit, and a zero drawdown is not a loss.
-    { label: "Best trade", value: signedUsd(a.bestTradePnl), tone: toneOf(a.bestTradePnl) },
-    { label: "Worst trade", value: signedUsd(a.worstTradePnl), tone: toneOf(a.worstTradePnl) },
+    { label: "Best trade", ...perTrade(a.bestTradePnl) },
+    { label: "Worst trade", ...perTrade(a.worstTradePnl) },
     {
       label: "Max drawdown",
       // Stored as a magnitude; shown as the loss it is from the peak.
