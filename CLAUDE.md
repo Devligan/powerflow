@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 @AGENTS.md
 
-PowerFlow: a multi-user ERCOT electricity paper-trading app (Next.js 16 App Router + Supabase Postgres + Vercel). `README.md` is the long-form design reference (pricing, settlement, margin, instruments, security model) — read the relevant section before changing engine behaviour. The as-of engine, simulation clock and limit orders (0020–0028) are documented mainly in those migration headers.
+PowerFlow: a multi-user ERCOT electricity paper-trading app (Next.js 16 App Router + Supabase Postgres + Vercel). `README.md` is the showcase for visitors; `docs/design.md` is the long-form design reference (pricing, settlement, margin, instruments, security model) — read the relevant section before changing engine behaviour. The as-of engine, simulation clock and limit orders (0020–0028) are documented mainly in those migration headers.
 
 ## Commands
 

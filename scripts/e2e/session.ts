@@ -10,7 +10,10 @@ export interface Response {
   text: string;
 }
 
-export type Call = (method: string, path: string, body?: unknown) => Promise<Response>;
+export type Call = ((method: string, path: string, body?: unknown) => Promise<Response>) & {
+  /** The session's cookies as they stand, e.g. to hand the session to a browser. */
+  cookies(): Array<{ name: string; value: string }>;
+};
 
 export async function signIn(site: string, email: string, password: string): Promise<Call> {
   const jar = new Map<string, string>();
@@ -23,7 +26,7 @@ export async function signIn(site: string, email: string, password: string): Pro
   const { error } = await ssr.auth.signInWithPassword({ email, password });
   if (error) throw new Error(`sign in: ${error.message}`);
 
-  return async (method, path, body) => {
+  const call = async (method: string, path: string, body?: unknown): Promise<Response> => {
     const res = await fetch(site + path, {
       method,
       headers: {
@@ -45,6 +48,7 @@ export async function signIn(site: string, email: string, password: string): Pro
     try { json = JSON.parse(text); } catch { /* not json */ }
     return { status: res.status, json, text };
   };
+  return Object.assign(call, { cookies: () => [...jar].map(([name, value]) => ({ name, value })) });
 }
 
 /** HE18 (17:00 Central) of an operating day, in UTC ms. */

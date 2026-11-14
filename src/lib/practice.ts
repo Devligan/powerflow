@@ -17,7 +17,7 @@ import { priceFinalAt } from "@/lib/ercot/settlement-calendar";
  *             the settlement that follows a clock jump cashes the day out.
  */
 
-/** Continuous ERCOT history starts here (README "Market data"). */
+/** Continuous ERCOT history starts here (docs/design.md "Market data"). */
 export const PRACTICE_HISTORY_START = "2026-09-20";
 
 const MINUTE_MS = 60_000;
