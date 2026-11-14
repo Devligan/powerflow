@@ -17,6 +17,15 @@ const NAV = [
   { href: "/leaderboard", label: "Rank" },
 ];
 
+/** A visitor without an account sees the pages they can open, not a row of
+ *  desk sections that would each send them to sign in. */
+const PUBLIC_NAV = [
+  { href: "/learn", label: "How it works" },
+  { href: "/engineering", label: "How it's built" },
+  { href: "/leaderboard", label: "Leaderboard" },
+  { href: "/status", label: "Status" },
+];
+
 /**
  * The control bar.
  *
@@ -35,6 +44,7 @@ export function Nav({
   avatarUrl: string | null;
 }) {
   const pathname = usePathname();
+  const links = user ? NAV : PUBLIC_NAV;
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
@@ -42,12 +52,12 @@ export function Nav({
   return (
     <nav className="sticky top-0 z-40 border-b border-white/10 bg-[var(--ink-panel)]">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
-        <Brand tag="desk" />
+        <Brand tag={user ? "desk" : "paper trading"} />
 
         <span className="hidden h-5 w-px bg-white/10 sm:block" />
 
         <div className="hidden items-center lg:flex">
-          {NAV.map((n) => (
+          {links.map((n) => (
             <Link
               key={n.href}
               href={n.href}
@@ -96,7 +106,7 @@ export function Nav({
       </div>
 
       <div className="scroll-thin flex items-center gap-1 overflow-x-auto border-t border-white/5 px-4 lg:hidden">
-        {NAV.map((n) => (
+        {links.map((n) => (
           <Link
             key={n.href}
             href={n.href}
