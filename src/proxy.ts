@@ -18,10 +18,11 @@ export const config = {
   matcher: [
     // Metadata files fetched by browsers and crawlers with no session — link
     // previews, icons (/icon.svg, /icon-app/…), the manifest, robots and the
-    // sitemap — must never be redirected to /login. "icon" skips every path
+    // sitemap — must never be redirected to /login, and neither may the
+    // landing page's screenshots (public/showcase/). "icon" skips every path
     // that starts with it: a page must never be named /icon…
     // (src/lib/route-access.test.ts pins this list).
-    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|manifest.webmanifest|opengraph-image|twitter-image|icon|apple-icon).*)",
+    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|manifest.webmanifest|opengraph-image|twitter-image|icon|apple-icon|showcase/).*)",
   ],
 };
 

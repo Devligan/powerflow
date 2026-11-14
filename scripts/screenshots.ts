@@ -1,5 +1,6 @@
 /**
- * The README's screenshots, taken from the live site rather than mocked up:
+ * The landing page's and README's screenshots, taken from the live site rather
+ * than mocked up:
  *
  *   npx tsx scripts/screenshots.ts [https://powerflow-two.vercel.app] [--only landing,desk]
  *
@@ -8,7 +9,7 @@
  * API: a handful of day-ahead virtual bids, the clearing, delivery, and the
  * settlement. Chrome, driven over the DevTools Protocol with that session's
  * cookies, photographs each stage at a desktop viewport in Central time, then
- * the account is deleted. Images land in docs/screenshots/.
+ * the account is deleted. Images land in public/showcase/.
  *
  * Needs SUPABASE_DB_PASSWORD and the project URL/anon key from .env, and
  * Chrome (or CHROME_PATH).
@@ -24,7 +25,7 @@ const SITE = (args.find((a) => a.startsWith("http")) ?? "https://powerflow-two.v
 const onlyArg = args[args.indexOf("--only") + 1];
 /** e.g. `--only desk,positions`: retake some shots, keep the rest. */
 const ONLY = args.includes("--only") && onlyArg ? new Set(onlyArg.split(",")) : null;
-const OUT = join("docs", "screenshots");
+const OUT = join("public", "showcase");
 const VIEWPORT = { width: 1440, height: 900 };
 
 /** The book the screenshots show: a few views on one operating day. */

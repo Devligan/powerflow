@@ -1,23 +1,25 @@
+import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import { Brand } from "@/components/brand";
 import { BuiltBy } from "@/components/built-by";
 import { MarketsStrip } from "@/components/markets-strip";
+import { PriceTape } from "@/components/price-tape";
 import { StoryChart } from "@/components/story-chart";
 import { LocalClock } from "@/components/ui/clock";
 import { getSessionUser } from "@/lib/auth";
+import { listMarkets } from "@/lib/markets";
 import { loadMarketStory, type MarketStory } from "@/lib/market-story";
-import { loadSystemStatus } from "@/lib/system-status";
-import { timeAgo } from "@/lib/format";
+import marketsShot from "../../public/showcase/markets.png";
+import positionsShot from "../../public/showcase/positions.png";
+import analyticsShot from "../../public/showcase/analytics.png";
 
 /**
  * The landing page.
  *
- * It leads with one true thing rather than a list of features: the hour of
- * yesterday's Texas market where day-ahead and real time were furthest apart,
- * drawn from the same ERCOT data the desk trades on. The story explains the
- * product (that gap is the trade), the chart proves the data is real, and
- * everything after it is short: three moves, three facts, two links. The
- * detail lives on /learn and /engineering for whoever wants it.
+ * It sells the product, not the plumbing. The tape and yesterday's story say
+ * the prices are real; the hero says what the trade is; then the desk itself,
+ * three screens of it, in the words a trader would use. How it is built is one
+ * link away for whoever wants it (/engineering).
  */
 
 const CENTRAL = "America/Chicago";
@@ -33,18 +35,44 @@ const price = (v: number) =>
 /** The size of the bet the payoff line prices, in MW. */
 const STORY_MW = 10;
 
-const MOVES: Array<{ title: string; body: string }> = [
+interface TourStop {
+  kicker: string;
+  title: string;
+  body: string;
+  shot: StaticImageData;
+  /** The region of the screenshot to show, in its pixels. */
+  crop: { x: number; y: number; w: number; h: number };
+  path: string;
+  alt: string;
+}
+
+const TOUR: TourStop[] = [
   {
-    title: "Bid blind",
-    body: "Day-ahead bids close at 10 AM the day before, as they do at ERCOT. Nobody knows the clearing price when they bid, and neither do you.",
+    kicker: "The auction",
+    title: "Bid tomorrow before anyone knows the price.",
+    body: "Pick a hub, read the curve, and put in a DEC or an INC on any hour before ERCOT's 10 AM gate. It fills that afternoon at the real clearing price.",
+    shot: marketsShot,
+    crop: { x: 150, y: 296, w: 1130, h: 420 },
+    path: "markets/HB_NORTH",
+    alt: "The HB_NORTH market: the day-ahead curve against real time, and the bid ticket",
   },
   {
-    title: "Watch it deliver",
-    body: "As each hour of the day happens, your position is marked against ERCOT's real-time price.",
+    kicker: "The book",
+    title: "Watch your risk, hour by hour.",
+    body: "Every megawatt you hold, laid out across the delivery day and marked to ERCOT's real-time price as each hour prints.",
+    shot: positionsShot,
+    crop: { x: 150, y: 288, w: 1130, h: 612 },
+    path: "positions",
+    alt: "Positions: a risk ladder of net megawatt-hours by delivery hour, each position marked to real time",
   },
   {
-    title: "Settle for real",
-    body: "It pays out when ERCOT calls the price final, two business days later. Or replay a past day on the practice desk in about two minutes.",
+    kicker: "The scorecard",
+    title: "Find out if you're any good.",
+    body: "Positions settle when ERCOT calls the price final. Then the numbers that matter: return, win rate, your best and worst trade, drawdown.",
+    shot: analyticsShot,
+    crop: { x: 150, y: 244, w: 1130, h: 302 },
+    path: "analytics",
+    alt: "Analytics after a settled day: equity, return, realized P&L, win rate, best and worst trade, drawdown",
   },
 ];
 
@@ -68,65 +96,96 @@ function StoryHero({ story }: { story: MarketStory }) {
   );
 }
 
+/**
+ * A screen of the desk, framed as a browser window and cropped to the part
+ * worth reading (`crop` is in the screenshot's own pixels), so it is shown
+ * near its real size instead of shrunk whole.
+ */
+function Screen({ stop }: { stop: TourStop }) {
+  const { shot, crop, path, alt } = stop;
+  const pct = (v: number, of: number) => `${(v / of) * 100}%`;
+  return (
+    <div className="screen">
+      <div className="flex h-8 items-center gap-1.5 border-b border-white/10 bg-[var(--ink-plate)] px-3">
+        <span className="h-2 w-2 rounded-full bg-white/15" aria-hidden="true" />
+        <span className="h-2 w-2 rounded-full bg-white/15" aria-hidden="true" />
+        <span className="h-2 w-2 rounded-full bg-white/15" aria-hidden="true" />
+        <span className="mono mx-auto truncate pr-8 text-[10.5px] t-mute">powerflow / {path}</span>
+      </div>
+      <div className="relative overflow-hidden" style={{ aspectRatio: `${crop.w} / ${crop.h}` }}>
+        <Image
+          src={shot}
+          alt={alt}
+          placeholder="blur"
+          sizes={`(min-width: 1152px) ${Math.round((1120 * shot.width) / crop.w)}px, ${Math.round((100 * shot.width) / crop.w)}vw`}
+          className="absolute h-auto max-w-none"
+          style={{
+            width: pct(shot.width, crop.w),
+            left: `-${pct(crop.x, crop.w)}`,
+            top: `-${pct(crop.y, crop.h)}`,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default async function Home() {
-  const [user, story, status] = await Promise.all([
+  const [user, story, markets] = await Promise.all([
     getSessionUser().catch(() => null),
     loadMarketStory().catch(() => null),
-    loadSystemStatus().catch(() => null),
+    listMarkets().catch(() => []),
   ]);
-  const ledger = status?.ledger ?? null;
-  const run = status?.latestRuns[0] ?? null;
 
-  const FACTS: Array<{ figure: string; label: string; note: string | null }> = [
-    {
-      // The audit's own count, whatever it is: this line must never claim a
-      // clean book the reconciliation did not report.
-      figure: ledger ? String(ledger.checks.reduce((n, c) => n + (c.violations ?? 0), 0)) : "—",
-      label: "discrepancies in the books",
-      note: ledger
-        ? `All ${ledger.trades.toLocaleString("en-US")} fills checked against every account's books ${timeAgo(ledger.checkedAt)}. It runs every hour.`
-        : null,
-    },
-    {
-      figure: "15 min",
-      label: "from ERCOT's report to the desk",
-      note: run ? `Last pulled ${timeAgo(run.started_at)}. Real data only, never a simulated feed.` : null,
-    },
-    {
-      figure: "0",
-      label: "floating-point numbers in the money",
-      note: "Every balance is exact to a millionth of a dollar, from the database to the screen.",
-    },
-  ];
+  const startButtons = user ? (
+    <Link href="/dashboard" className="btn btn-primary">
+      Go to the desk
+    </Link>
+  ) : (
+    <>
+      <Link href="/signup" className="btn btn-primary">
+        Start with $100,000 virtual
+      </Link>
+      <Link href="/learn" className="btn">
+        How the market works
+      </Link>
+    </>
+  );
 
   return (
     <div className="min-h-dvh">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-[var(--ink-panel)]">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
-          <Brand tag="paper trading" />
-          <div className="ml-auto flex items-center gap-3">
-            <Link href="/engineering" className="nav-link hidden sm:inline-flex">
-              How it&apos;s built
-            </Link>
-            <span className="hidden border-l border-white/10 pl-3 md:block">
-              <LocalClock />
-            </span>
-            {user ? (
-              <Link href="/dashboard" className="btn btn-primary btn-sm">
-                Open the desk
+      <header className="sticky top-0 z-40 bg-[var(--ink-panel)]">
+        <div className="border-b border-white/10">
+          <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
+            <Brand tag="paper trading" />
+            <div className="ml-auto flex items-center gap-3">
+              <Link href="/learn" className="nav-link hidden md:inline-flex">
+                How it works
               </Link>
-            ) : (
-              <>
-                <Link href="/login" className="btn btn-sm">
-                  Sign in
+              <Link href="/leaderboard" className="nav-link hidden md:inline-flex">
+                Leaderboard
+              </Link>
+              <span className="hidden border-l border-white/10 pl-3 lg:block">
+                <LocalClock />
+              </span>
+              {user ? (
+                <Link href="/dashboard" className="btn btn-primary btn-sm">
+                  Open the desk
                 </Link>
-                <Link href="/signup" className="btn btn-primary btn-sm">
-                  Start trading
-                </Link>
-              </>
-            )}
+              ) : (
+                <>
+                  <Link href="/login" className="btn btn-sm">
+                    Sign in
+                  </Link>
+                  <Link href="/signup" className="btn btn-primary btn-sm">
+                    Start trading
+                  </Link>
+                </>
+              )}
+            </div>
           </div>
         </div>
+        <PriceTape markets={markets} />
       </header>
 
       <main className="mx-auto max-w-6xl px-4">
@@ -142,26 +201,10 @@ export default async function Home() {
               </h1>
             </>
           )}
-
-          <div className="mt-8 flex flex-wrap gap-3">
-            {user ? (
-              <Link href="/dashboard" className="btn btn-primary">
-                Go to the desk
-              </Link>
-            ) : (
-              <>
-                <Link href="/signup" className="btn btn-primary">
-                  Start with $100,000 virtual
-                </Link>
-                <Link href="/learn" className="btn">
-                  How the market works
-                </Link>
-              </>
-            )}
-          </div>
+          <div className="mt-8 flex flex-wrap gap-3">{startButtons}</div>
         </section>
 
-        <section className="reveal pb-16" style={{ animationDelay: "80ms" }}>
+        <section className="reveal pb-24" style={{ animationDelay: "80ms" }}>
           <div className="card card-bracket p-4 sm:p-6">
             {story ? (
               <>
@@ -187,49 +230,53 @@ export default async function Home() {
           </div>
         </section>
 
-        {/* ---- Three moves --------------------------------------------------- */}
-        <section className="pb-16">
-          <ol className="grid gap-8 sm:grid-cols-3">
-            {MOVES.map((move, i) => (
-              <li key={move.title}>
-                <span className="mono text-[12px] t-accent">{String(i + 1).padStart(2, "0")}</span>
-                <h3 className="mt-2 font-display text-xl font-semibold tracking-tight">{move.title}</h3>
-                <p className="mt-2 text-[14px] leading-relaxed t-dim">{move.body}</p>
-              </li>
-            ))}
-          </ol>
+        {/* ---- The desk ------------------------------------------------------ */}
+        <section className="border-t border-white/10 pt-20 pb-8">
+          <p className="caption">Inside the desk</p>
+          <h2 className="mt-3 max-w-2xl font-display text-3xl leading-tight font-bold tracking-tight sm:text-4xl">
+            Everything a power trader looks at, on a market that actually happened.
+          </h2>
         </section>
 
-        {/* ---- Built like a desk ----------------------------------------------- */}
-        <section className="border-t border-white/10 py-16">
-          <div className="grid gap-10 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
-            <div>
-              <h2 className="font-display text-2xl font-bold tracking-tight">Built like a real trading desk.</h2>
-              <p className="mt-3 text-[14px] leading-relaxed t-dim">
-                The engine runs inside the database and is held to ERCOT&apos;s own rules. A replayed day can&apos;t see
-                its own future. The books check themselves every hour, in public.
-              </p>
-              <div className="mt-5 flex flex-wrap gap-3">
-                <Link href="/engineering" className="btn">
-                  How it&apos;s built
-                </Link>
-                <Link href="/status" className="btn">
-                  Live status
-                </Link>
+        {TOUR.map((stop, i) => (
+          <section key={stop.kicker} className="py-12">
+            <div className="mb-8 grid gap-4 lg:grid-cols-2 lg:items-end lg:gap-14">
+              <div>
+                <span className="mono text-[12px] t-accent">
+                  {String(i + 1).padStart(2, "0")} · {stop.kicker}
+                </span>
+                <h3 className="mt-3 font-display text-2xl leading-snug font-bold tracking-tight sm:text-3xl">
+                  {stop.title}
+                </h3>
               </div>
+              <p className="text-[15px] leading-relaxed t-dim">{stop.body}</p>
             </div>
-            <dl className="grid gap-6 sm:grid-cols-3">
-              {FACTS.map((fact) => (
-                <div key={fact.label} className="border-t border-white/10 pt-4">
-                  <dt className="sr-only">{fact.label}</dt>
-                  <dd>
-                    <div className="mono text-4xl font-medium t-fg">{fact.figure}</div>
-                    <div className="mt-1 text-[13px] font-medium">{fact.label}</div>
-                    {fact.note && <p className="mt-2 text-[12.5px] leading-relaxed t-dim">{fact.note}</p>}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+            <Screen stop={stop} />
+          </section>
+        ))}
+
+        {/* ---- The close ----------------------------------------------------- */}
+        <section className="my-20 card card-bracket px-6 py-12 text-center sm:px-12 sm:py-16">
+          <h2 className="mx-auto max-w-2xl font-display text-3xl leading-tight font-bold tracking-tight sm:text-4xl">
+            Don&apos;t want to wait for tomorrow?
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed t-dim">
+            The practice desk replays any recent day on the prices that really happened. Bid, clear, deliver and settle
+            in about two minutes, then see how you&apos;d have done.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            {user ? (
+              <Link href="/dashboard" className="btn btn-primary">
+                Go to the desk
+              </Link>
+            ) : (
+              <Link href="/signup" className="btn btn-primary">
+                Start with $100,000 virtual
+              </Link>
+            )}
+            <Link href="/leaderboard" className="btn">
+              See the leaderboard
+            </Link>
           </div>
         </section>
       </main>
@@ -239,6 +286,7 @@ export default async function Home() {
           <BuiltBy />
           <p className="caption">
             Actual ERCOT data, simulated money · not investment advice ·{" "}
+            <Link href="/engineering" className="hover:underline">How it&apos;s built</Link> ·{" "}
             <Link href="/status" className="hover:underline">Status</Link> ·{" "}
             <Link href="/privacy" className="hover:underline">Privacy</Link> ·{" "}
             <Link href="/terms" className="hover:underline">Terms</Link>

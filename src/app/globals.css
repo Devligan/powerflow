@@ -704,6 +704,39 @@
   .scroll-thin {
     scrollbar-width: thin;
   }
+
+  /* The landing page's price tape: two copies of the strip, moved left by
+     one copy's width so the loop has no seam. */
+  @keyframes pf-tape {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  .tape-track {
+    animation: pf-tape 70s linear infinite;
+  }
+  .tape:hover .tape-track {
+    animation-play-state: paused;
+  }
+  .tape {
+    mask-image: linear-gradient(90deg, transparent, #000 2rem, #000 calc(100% - 2rem), transparent);
+  }
+
+  /* A screenshot of the desk, framed as a window. */
+  .screen {
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    background: var(--ink-panel);
+    overflow: hidden;
+    box-shadow:
+      0 0 0 1px rgb(0 0 0 / 0.4),
+      0 30px 80px -20px rgb(0 0 0 / 0.8),
+      0 0 120px -40px var(--accent-line);
+  }
 }
 
 /* Nothing above may move when the reader has asked for stillness. */
@@ -714,5 +747,13 @@
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+  }
+
+  /* The tape stands still and scrolls by hand instead. */
+  .tape-track {
+    animation: none !important;
+  }
+  .tape {
+    overflow-x: auto;
   }
 }
