@@ -20,6 +20,9 @@ export interface AnalyticsResult {
   realizedPnl: string;
   unrealizedPnl: string;
   totalTrades: number;
+  /** Trades that realized P&L (closes and settlements): what the win rate,
+   *  average, best and worst are taken over. */
+  closedTrades: number;
   /** Share of realizing trades that made money; null until one has. */
   winRatePercent: number | null;
   avgTradePnl: string;
@@ -45,10 +48,17 @@ export interface AnalyticsResult {
     decPnl: string;
     incPnl: string;
     pnlByHour: Array<{ he: number; pnl: string }>;
-    /** Annualized Sharpe of daily realized P&L; null under two days. */
+    /** Annualized Sharpe of daily realized P&L; null until there are
+     *  SHARPE_MIN_DAYS days of it, since a handful of days says nothing. */
     sharpe: number | null;
+    /** Days of realized P&L the Sharpe is (or will be) taken over. */
+    sharpeDays: number;
   };
 }
+
+/** Days of realized P&L before a Sharpe ratio is shown. Under a month of
+ *  daily observations its standard error is larger than the ratio itself. */
+export const SHARPE_MIN_DAYS = 20;
 
 /** Derive per-trade realized P&L by replaying history through the trading
  *  engine identical to execute_trade. Requires full trade history. */
@@ -187,7 +197,7 @@ export async function getAnalytics(userId: string): Promise<AnalyticsResult> {
   const cumulative = byDay.map(({ pnl }) => Number(pnl) / 1e6);
   const daily = cumulative.map((v, i) => v - (i ? cumulative[i - 1] : 0));
   let sharpe: number | null = null;
-  if (daily.length >= 2) {
+  if (daily.length >= SHARPE_MIN_DAYS) {
     const mean = daily.reduce((a, b) => a + b, 0) / daily.length;
     const sd = Math.sqrt(daily.reduce((a, b) => a + (b - mean) ** 2, 0) / (daily.length - 1));
     sharpe = sd > 0 ? Math.round((mean / sd) * Math.sqrt(252) * 100) / 100 : null;
@@ -200,6 +210,7 @@ export async function getAnalytics(userId: string): Promise<AnalyticsResult> {
     realizedPnl: m(metrics.realizedPnl),
     unrealizedPnl: m(unrealized),
     totalTrades,
+    closedTrades: decided.length,
     winRatePercent,
     avgTradePnl: m(avg),
     bestTradePnl: m(best),
@@ -232,6 +243,7 @@ export async function getAnalytics(userId: string): Promise<AnalyticsResult> {
       incPnl: m(incPnl),
       pnlByHour: [...byHour.entries()].sort((a, b) => a[0] - b[0]).map(([he, pnl]) => ({ he, pnl: m(pnl) })),
       sharpe,
+      sharpeDays: daily.length,
     },
   };
 }

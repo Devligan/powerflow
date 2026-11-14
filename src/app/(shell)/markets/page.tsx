@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { listMarkets } from "@/lib/markets";
-import { usd, signedUsd, timeAgo, sourceInfo } from "@/lib/format";
+import { usd, signedUsd, timeAgo } from "@/lib/format";
 import { parseDec } from "@/lib/money";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/lib/auth";
@@ -30,15 +30,15 @@ export default async function MarketsPage() {
                 <th>Name</th>
                 <th className="text-right">Real time</th>
                 <th className="text-right">Day-ahead</th>
-                <th className="text-right">DART</th>
+                <th className="text-right" title="Real time minus day-ahead: what a DEC earns per MWh; an INC earns its negative">
+                  RT − DA
+                </th>
                 <th className="text-right">DA next day avg</th>
-                <th>Source</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((m: Market) => {
-                const sr = sourceInfo(m.source);
                 const dart =
                   m.price != null && m.dayAheadPrice != null
                     ? parseDec(m.price) - parseDec(m.dayAheadPrice)
@@ -60,19 +60,6 @@ export default async function MarketsPage() {
                     </td>
                     <td className="mono text-right">
                       {m.dayAheadNextDayAvg != null ? usd(m.dayAheadNextDayAvg) : "—"}
-                    </td>
-                    <td>
-                      <span
-                        className={
-                          sr.tone === "live"
-                            ? "badge badge-green"
-                            : sr.tone === "sim"
-                              ? "badge badge-amber"
-                              : "badge badge-neutral"
-                        }
-                      >
-                        {sr.label}
-                      </span>
                     </td>
                     <td>
                       <Link
@@ -111,8 +98,8 @@ export default async function MarketsPage() {
         reports. Real time is the settled
         hourly price
         {rtHour ? <> for the hour that ended {timeAgo(new Date(Date.parse(rtHour) + 3600_000).toISOString())}</> : null};
-        day-ahead is the clearing for that same hour, and DART is the gap
-        between them — what a virtual or DART spread settles on. When the grid
+        day-ahead is the clearing for that same hour, and RT − DA is the gap
+        between them: what a DEC earned per MWh (an INC earned its negative). When the grid
         is unconstrained every point clears at one price; the day-ahead column
         still shows where congestion was expected.
       </PageHeader>

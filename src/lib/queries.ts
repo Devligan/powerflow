@@ -327,6 +327,34 @@ export async function getPositionsView(userId: string): Promise<PositionView[]> 
   );
 }
 
+/** The fill that cashed a position out at settlement: the closing side, the
+ *  size it closed and the final price it closed at. */
+export interface SettlementFill {
+  side: "BUY" | "SELL";
+  quantityMwh: bigint;
+  price: bigint;
+}
+
+/** Settlement fills by trade id, for the history of a book. Scoped to the
+ *  account, so an id from anywhere else reads as missing. */
+export async function getSettlementFills(userId: string, tradeIds: string[]): Promise<Map<string, SettlementFill>> {
+  const out = new Map<string, SettlementFill>();
+  // The ids ride in the URL, so a long history is read in modest chunks.
+  const CHUNK = 150;
+  for (let i = 0; i < tradeIds.length; i += CHUNK) {
+    const { data, error } = await supabaseAdmin()
+      .from("trades")
+      .select("id, side, quantity_mwh, execution_price")
+      .eq("user_id", userId)
+      .in("id", tradeIds.slice(i, i + CHUNK));
+    if (error) throw new Error(error.message);
+    for (const t of (data ?? []) as Array<{ id: string; side: "BUY" | "SELL"; quantity_mwh: string; execution_price: string }>) {
+      out.set(t.id, { side: t.side, quantityMwh: parseDbDec(t.quantity_mwh), price: parseDbDec(t.execution_price) });
+    }
+  }
+  return out;
+}
+
 /** A `trades` row, as the read side uses it. */
 export interface HistoryTrade {
   id: string;

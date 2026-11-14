@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { getPositionsView } from "@/lib/queries";
+import { getPositionsView, getSettlementFills } from "@/lib/queries";
 import {
   usd,
   sign,
+  signedUsd,
   num,
   instrumentInfo,
   legsLabel,
   positionUnit,
+  tradeSideLabel,
   volumeUnitLabel,
 } from "@/lib/format";
 import { briefDateTime, localDate, windowLabel } from "@/lib/time";
@@ -40,8 +42,122 @@ export default async function PositionsPage() {
     a.settlementPoint.localeCompare(b.settlementPoint);
   const open = positions.filter((p) => p.isOpen).sort(byDelivery);
   const flat = positions.filter((p) => !p.isOpen).sort((a, b) => byDelivery(b, a));
+  const fills = await getSettlementFills(
+    user.id,
+    flat.map((p) => p.settlementTradeId).filter((id): id is string => id != null)
+  );
 
-  function table(title: string, rows: typeof open, showClosed: boolean) {
+  /** Market and instrument cells, shared by both tables. */
+  function nameCells(p: (typeof positions)[number]) {
+    const inst = instrumentInfo(p.instrument);
+    // A second leg is only meaningful for a path instrument; a stale counter
+    // point on a single-leg row must not render.
+    const legB = inst?.legs === 2 ? p.counterSettlementPoint : null;
+    return (
+      <>
+        {/* The market is the way back to trade it. */}
+        <td className="mono whitespace-nowrap font-medium">
+          <Link href={`/markets/${p.settlementPoint}`} className="hover:underline" title={`Trade ${p.settlementPoint}`}>
+            {legsLabel(p.settlementPoint, legB)}
+          </Link>
+        </td>
+        <td>
+          {inst ? (
+            <span className="whitespace-nowrap" title={inst.ruleLabel}>
+              {inst.shortLabel}
+            </span>
+          ) : (
+            <span className="t-mute">{p.instrument}</span>
+          )}
+        </td>
+        {/* The day on one line and the window on the next, so the book fits a
+            laptop screen without a scrollbar. A table cell ignores max-width,
+            so the break is explicit. A window instrument shows its dates. */}
+        <td className="whitespace-nowrap text-[12px] t-dim">
+          {inst?.rule === "AVERAGE" ? (
+            `${localDate(p.deliveryStart, tz)} → ${localDate(p.deliveryEnd, tz)}`
+          ) : (
+            <DeliveryWindow label={windowLabel(Date.parse(p.deliveryStart), Date.parse(p.deliveryEnd), tz)} />
+          )}
+        </td>
+      </>
+    );
+  }
+
+  /**
+   * What a closed position was, read off the fill that settled it: the side
+   * it held (the opposite of the closing fill), the size, what it was entered
+   * at and the final price it settled at. One closed by an offsetting trade
+   * before settlement has no such fill and shows its entry and P&L alone.
+   */
+  function history(rows: typeof flat) {
+    return (
+      <section className="card p-0">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-white/10 px-4 py-3">
+          <h2 className="card-title mb-0">History</h2>
+          <span className="caption">
+            {rows.length} position{rows.length === 1 ? "" : "s"}
+          </span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Market</th>
+                <th>Instrument</th>
+                <th>Delivery</th>
+                <th>Side</th>
+                <th className="text-right">Size</th>
+                <th className="text-right" title="The day-ahead price the position was filled at">
+                  Entry
+                </th>
+                <th className="text-right" title="The final price it settled at">
+                  Settled at
+                </th>
+                <th className="text-right">P&amp;L</th>
+                <th>Closed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((p) => {
+                const fill = p.settlementTradeId ? fills.get(p.settlementTradeId) : undefined;
+                return (
+                  <tr key={p.id}>
+                    {nameCells(p)}
+                    <td className="mono whitespace-nowrap text-[12px]">
+                      {fill ? tradeSideLabel(p.instrument, fill.side === "BUY" ? "SELL" : "BUY") : <span className="t-mute">—</span>}
+                    </td>
+                    <td className="mono whitespace-nowrap text-right">
+                      {fill ? (
+                        <>
+                          {num(fill.quantityMwh)}{" "}
+                          <span className="t-mute">{volumeUnitLabel(positionUnit(p.product))}</span>
+                        </>
+                      ) : (
+                        <span className="t-mute">—</span>
+                      )}
+                    </td>
+                    <td className="mono text-right">{usd(p.averageEntryPrice)}</td>
+                    <td className="mono text-right">{fill ? usd(fill.price) : <span className="t-mute">—</span>}</td>
+                    <td
+                      className={`mono text-right ${p.realizedPnl > 0n ? "pos" : p.realizedPnl < 0n ? "neg" : "t-mute"}`}
+                    >
+                      {signedUsd(p.realizedPnl)}
+                    </td>
+                    <td className="whitespace-nowrap text-[12px] t-dim">
+                      {p.settledAt ? `Settled ${briefDateTime(p.settledAt, tz)}` : "Closed before settlement"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
+  }
+
+  function table(title: string, rows: typeof open) {
     return (
       <section className="card p-0">
         <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-white/10 px-4 py-3">
@@ -52,9 +168,9 @@ export default async function PositionsPage() {
         </div>
         {rows.length === 0 ? (
           <p className="py-8 text-center text-[13px] t-mute">
-            {showClosed ? "No closed positions yet." : "No open positions. "}
+            No open positions.{" "}
             <Link href="/markets" className="t-accent hover:underline">
-              Trade now
+              Place a bid
             </Link>
           </p>
         ) : (
@@ -75,41 +191,9 @@ export default async function PositionsPage() {
               </thead>
               <tbody>
                 {rows.map((p) => {
-                  const inst = instrumentInfo(p.instrument);
-                  // A second leg is only meaningful for a path instrument; a
-                  // stale counter point on a single-leg row must not render.
-                  const legB = inst?.legs === 2 ? p.counterSettlementPoint : null;
                   return (
                     <tr key={p.id}>
-                      {/* The market is the way back to trade it. */}
-                      <td className="mono whitespace-nowrap font-medium">
-                        <Link href={`/markets/${p.settlementPoint}`} className="hover:underline" title={`Trade ${p.settlementPoint}`}>
-                          {legsLabel(p.settlementPoint, legB)}
-                        </Link>
-                      </td>
-                      <td>
-                        {inst ? (
-                          <span className="whitespace-nowrap" title={inst.ruleLabel}>
-                            {inst.shortLabel}
-                          </span>
-                        ) : (
-                          <span className="t-mute">{p.instrument}</span>
-                        )}
-                      </td>
-                      {/* The viewer's clock, with ERCOT's hour ending; a
-                          window instrument by its dates. */}
-                      {/* The day on one line and the window on the next, so the
-                          book fits a laptop screen without a scrollbar. A table
-                          cell ignores max-width, so the break is explicit. */}
-                      <td className="whitespace-nowrap text-[12px] t-dim">
-                        {inst?.rule === "AVERAGE" ? (
-                          `${localDate(p.deliveryStart, tz)} → ${localDate(p.deliveryEnd, tz)}`
-                        ) : (
-                          <DeliveryWindow
-                            label={windowLabel(Date.parse(p.deliveryStart), Date.parse(p.deliveryEnd), tz)}
-                          />
-                        )}
-                      </td>
+                      {nameCells(p)}
                       <td className="whitespace-nowrap">
                         {p.settlement === "SETTLED" ? (
                           <span className="badge badge-neutral">
@@ -195,8 +279,8 @@ export default async function PositionsPage() {
           })
         )}
       />
-      {table("Open positions", open, false)}
-      {flat.length > 0 && table("Closed and full history", flat, true)}
+      {table("Open positions", open)}
+      {flat.length > 0 && history(flat)}
     </div>
   );
 }

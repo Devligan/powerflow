@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { parseDec, format } from "@/lib/money";
+import { parseDec } from "@/lib/money";
+import { signedUsd, usd } from "@/lib/format";
 
 interface SeriesItem {
   day: string;
@@ -17,18 +18,20 @@ const AXIS = "rgb(230 227 221 / 0.1)";
 const LONG = "#5ec98b";
 const SHORT = "#e2664e";
 
-/** 2026-09-21 */
+/** 2026-09-21 → "Sep 21" */
 function day(iso: string): string {
-  return iso.slice(5, 10);
+  return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric" }).format(
+    Date.parse(`${iso.slice(0, 10)}T12:00:00Z`)
+  );
 }
 
-/**
- * A fixed-point value (1e6 per dollar) as whole dollars, rounded. `format`
- * truncates toward zero, which printed a 40-cent loss as "-0".
- */
-function dollars(v: number): string {
-  return format(BigInt(Math.round(v / 1e6)) * 1_000_000n, 0);
-}
+/** A fixed-point value (1e6 per dollar) to the whole dollar, rounded rather
+ *  than truncated, so a 40-cent loss does not print as "-0". */
+const whole = (v: number): bigint => BigInt(Math.round(v / 1e6)) * 1_000_000n;
+/** "−$191", for an axis. */
+const dollars = (v: number): string => usd(whole(v), 0);
+/** "+$1,595", for a P&L figure. */
+const pnl = (v: number): string => signedUsd(whole(v), 0);
 
 /**
  * The two performance views.
@@ -102,10 +105,10 @@ export function AnalyticsCharts({
 
   const markets = useMemo(() => {
     if (pnlByMarket.length === 0) return null;
-    const rows = pnlByMarket.map((m) => ({
-      label: m.market,
-      value: Number(parseDec(m.pnl)),
-    }));
+    // Best to worst, so the ranking reads straight down.
+    const rows = pnlByMarket
+      .map((m) => ({ label: m.market, value: Number(parseDec(m.pnl)) }))
+      .sort((a, b) => b.value - a.value);
     const maxAbs = Math.max(1, ...rows.map((r) => Math.abs(r.value)));
     const total = rows.reduce((acc, r) => acc + r.value, 0);
     return { rows, maxAbs, total };
@@ -121,8 +124,7 @@ export function AnalyticsCharts({
             <span
               className={`mono text-[12px] ${curve.last > 0 ? "pos" : curve.last < 0 ? "neg" : "t-mute"}`}
             >
-              {curve.last > 0 ? "+" : ""}
-              {dollars(curve.last)}
+              {pnl(curve.last)}
             </span>
           )}
         </div>
@@ -136,7 +138,7 @@ export function AnalyticsCharts({
             viewBox={`0 0 ${curve.W} ${curve.H}`}
             className="w-full"
             role="img"
-            aria-label={`Cumulative realized P&L across ${pnlByDay.length} days, ending at ${dollars(curve.last)}.`}
+            aria-label={`Cumulative realized P&L across ${pnlByDay.length} days, ending at ${pnl(curve.last)}.`}
           >
             {/* Band gridlines with money labels */}
             {[0, 0.5, 1].map((t) => {
@@ -269,8 +271,7 @@ export function AnalyticsCharts({
                   <span
                     className={`mono text-right text-[11px] ${m.value > 0 ? "pos" : m.value < 0 ? "neg" : "t-mute"}`}
                   >
-                    {m.value > 0 ? "+" : ""}
-                    {dollars(m.value)}
+                    {pnl(m.value)}
                   </span>
                 </div>
               );
@@ -281,8 +282,7 @@ export function AnalyticsCharts({
               <span
                 className={`mono text-[13px] ${markets.total > 0 ? "pos" : markets.total < 0 ? "neg" : "t-mute"}`}
               >
-                {markets.total > 0 ? "+" : ""}
-                {format(BigInt(Math.round(markets.total)), 2)}
+                {signedUsd(BigInt(Math.round(markets.total)))}
               </span>
             </div>
           </div>

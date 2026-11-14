@@ -4,7 +4,6 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { parseDec } from "@/lib/money";
-import { usd } from "@/lib/format";
 import { dateTime, localTime, operatingDayLabel } from "@/lib/time";
 import { useTimeZone } from "@/components/time-zone";
 import {
@@ -92,14 +91,12 @@ const HOW_IT_PAYS: Record<string, string> = {
 export function TradePanel({
   marketId,
   settlementPoint,
-  latestPrice,
   pricedThrough,
   markets,
   simNowMs,
 }: {
   marketId: string;
   settlementPoint: string;
-  latestPrice: string | null;
   /** The series the page shows (the ticket always bids day-ahead). */
   product?: string;
   /** Latest day-ahead interval ERCOT has published. */
@@ -252,7 +249,11 @@ export function TradePanel({
         } else {
           await placeOne(hourWindow(h.startMs), quantity, null);
         }
-        out.push({ label, ok: true, detail: bidType === "LIMIT" ? `-step curve` : "at clearing" });
+        out.push({
+          label,
+          ok: true,
+          detail: bidType === "LIMIT" ? (steps.length === 1 ? "limit" : `${steps.length}-step curve`) : "at clearing",
+        });
       } catch (err) {
         out.push({ label, ok: false, detail: err instanceof Error ? err.message : "Refused" });
       }
@@ -271,19 +272,9 @@ export function TradePanel({
   return (
     <form onSubmit={onSubmit} className="card p-0">
       {/* Faceplate */}
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
-        <div className="min-w-0">
-          <h2 className="card-title mb-0">Day-ahead bid</h2>
-          <p className="mono mt-1 truncate text-[11px] t-mute">{settlementPoint}</p>
-        </div>
-        {latestPrice != null && (
-          <span
-            className="badge badge-amber"
-            title="Day-ahead clearing price for the next hour ERCOT has already cleared at this point — a reference, not the price this bid will get"
-          >
-            Next cleared DA {usd(latestPrice)}
-          </span>
-        )}
+      <div className="border-b border-white/10 px-4 py-3">
+        <h2 className="card-title mb-0">Day-ahead bid</h2>
+        <p className="mono mt-1 truncate text-[11px] t-mute">{settlementPoint}</p>
       </div>
 
       <div className="space-y-4 p-4">

@@ -23,7 +23,7 @@ export const GLOSSARY = {
   },
   dart: {
     term: "DART spread",
-    short: "Day-ahead minus real-time price for the same hour and place. Positive when the day-ahead market overpaid, negative when real time spiked.",
+    short: "The gap between the day-ahead and real-time prices for the same hour and place. This desk shows it as real time minus day-ahead (RT − DA): positive when real time came in above day-ahead and a DEC earned, negative when it came in below and an INC earned. Some desks quote it the other way round.",
   },
   virtual: {
     term: "Virtual bid (INC / DEC)",
