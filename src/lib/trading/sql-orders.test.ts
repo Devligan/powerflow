@@ -101,8 +101,9 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
       ...over,
     });
 
-  const setClock = async (client: SupabaseClient, userId: string, iso: string) => {
-    const { error } = await client.rpc("set_sim_clock", { p_user_id: userId, p_iso: iso });
+  const setClock = async (userId: string, iso: string) => {
+    // The service role moves clocks: no session may since 0055.
+    const { error } = await admin().rpc("set_sim_clock", { p_user_id: userId, p_iso: iso });
     expect(error).toBeNull();
   };
 
@@ -113,12 +114,12 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
   };
 
   it("fills a crossing buy at the actual print, through the instant engine", async () => {
-    await setClock(clientA, userA.id, beforeGate);
+    await setClock(userA.id, beforeGate);
     const { data: orderId, error } = await place(clientA, userA.id);
     expect(error).toBeNull();
     expect(orderId).toBeTruthy();
 
-    await setClock(clientA, userA.id, afterClearing);
+    await setClock(userA.id, afterClearing);
     const summary = await sweep();
     expect(summary.filled).toBeGreaterThanOrEqual(1);
 
@@ -167,13 +168,13 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
 
   it("ends a non-crossing order at the clearing", async () => {
     // A buy well below the print cannot cross, and the market only clears once.
-    await setClock(clientA, userA.id, beforeGate);
+    await setClock(userA.id, beforeGate);
     const { data: orderId, error } = await place(clientA, userA.id, {
       p_limit_price: (print - 20).toFixed(2),
     });
     expect(error).toBeNull();
 
-    await setClock(clientA, userA.id, afterClearing);
+    await setClock(userA.id, afterClearing);
     const summary = await sweep();
     expect(summary.expired).toBeGreaterThanOrEqual(1);
     const { data: order } = await db
@@ -185,7 +186,7 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
   }, 60_000);
 
   it("closes an order on cancellation, before the deadline", async () => {
-    await setClock(clientA, userA.id, beforeGate);
+    await setClock(userA.id, beforeGate);
     const { data: orderId, error } = await place(clientA, userA.id, {
       p_limit_price: (print - 20).toFixed(2),
     });
@@ -207,7 +208,7 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
 
   it("expires an order past its expiry on the sweep", async () => {
     // Expiry is on the account's clock, so it is set from that clock.
-    await setClock(clientA, userA.id, beforeGate);
+    await setClock(userA.id, beforeGate);
     const { data: orderId, error } = await place(clientA, userA.id, {
       p_limit_price: (print - 20).toFixed(2),
       p_expires_at: new Date(Date.parse(beforeGate) + 3_000).toISOString(),
@@ -229,7 +230,7 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
     const { error: foreignErr } = await place(clientA, userB.id);
     expect(foreignErr!.message).toContain("FORBIDDEN");
     // …nor cancel another user's order.
-    await setClock(clientB, userB.id, beforeGate);
+    await setClock(userB.id, beforeGate);
     const { data: mine } = await place(clientB, userB.id, {
       p_limit_price: (print - 20).toFixed(2),
     });

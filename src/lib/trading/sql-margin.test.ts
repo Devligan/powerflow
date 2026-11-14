@@ -91,7 +91,7 @@ describe.skipIf(!dbTestsEnabled())("margin and settlement funding (live database
   const freshDesk = async (label: string): Promise<Desk> => {
     const user = await createReplayTestUser(`sql-margin-${label}`);
     const client = await userClient(user);
-    const { error } = await client.rpc("set_sim_clock", {
+    const { error } = await admin().rpc("set_sim_clock", {
       p_user_id: user.id,
       p_iso: shift(hours[BASE], -1),
     });

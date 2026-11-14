@@ -173,7 +173,7 @@ async function apply(client: Client, paths: string[], dryRun: boolean) {
         await record(client, m);
         console.log(`[migration] applied (uncommitted): ${m.name} in ${Date.now() - t} ms`);
       }
-      // Since 0046 a session may call exactly eight functions, and anon none.
+      // A session may call exactly six functions (0046, 0055), and anon none.
       const { rows } = await client.query(`
         select count(*) filter (where has_function_privilege('authenticated', p.oid, 'execute')) as authenticated_functions,
                count(*) filter (where has_function_privilege('anon', p.oid, 'execute')) as anon_functions

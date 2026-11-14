@@ -102,7 +102,7 @@ describe.skipIf(!dbTestsEnabled())("settlement calendar (live database)", () => 
     const user = await createReplayTestUser(`sql-calendar-${label}`);
     const client = await userClient(user);
     const clock = async (to: string) => {
-      const { error } = await client.rpc("set_sim_clock", { p_user_id: user.id, p_iso: to });
+      const { error } = await admin().rpc("set_sim_clock", { p_user_id: user.id, p_iso: to });
       expect(error).toBeNull();
     };
     await clock(iso);

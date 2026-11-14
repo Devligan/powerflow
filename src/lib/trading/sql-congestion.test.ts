@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { admin, createReplayTestUser, dbTestsEnabled, userClient } from "@/lib/testing/db";
+import { admin, createReplayTestUser, dbTestsEnabled } from "@/lib/testing/db";
 import { loadFixturePoint } from "@/lib/testing/ercot-fixture";
 import { PRODUCTS, INSTRUMENTS } from "@/lib/ercot/types";
 
@@ -33,7 +33,6 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
 
   let db: SupabaseClient;
   let user: Awaited<ReturnType<typeof createReplayTestUser>>;
-  let client: SupabaseClient;
   let legA: string;
   let legB: string;
   let interval: string;
@@ -90,7 +89,6 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
   beforeAll(async () => {
     db = admin();
     user = await createReplayTestUser("sql-congestion");
-    client = await userClient(user);
 
     // The path and its prices come from the corpus, not from a discovery
     // heuristic over the live feed: every hub in the fixture carries a
@@ -116,7 +114,7 @@ describe.skipIf(!dbTestsEnabled())("congestion settlement (live database)", () =
     // that price the path are visible (ERCOT posted them the day before),
     // the real-time outcome is not. Without the clock these fixture intervals
     // are historical and every fill would be refused as past delivery.
-    const { error: clockErr } = await client.rpc("set_sim_clock", {
+    const { error: clockErr } = await db.rpc("set_sim_clock", {
       p_user_id: user.id,
       p_iso: shift(interval, -1),
     });
