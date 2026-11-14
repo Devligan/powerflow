@@ -84,7 +84,7 @@ export default async function Home() {
       figure: ledger ? String(ledger.checks.reduce((n, c) => n + (c.violations ?? 0), 0)) : "—",
       label: "discrepancies in the books",
       note: ledger
-        ? `Every account reconciled against its ${ledger.trades.toLocaleString("en-US")} fills, ${timeAgo(ledger.checkedAt)}. It runs every hour.`
+        ? `All ${ledger.trades.toLocaleString("en-US")} fills checked against every account's books ${timeAgo(ledger.checkedAt)}. It runs every hour.`
         : null,
     },
     {
