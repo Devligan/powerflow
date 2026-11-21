@@ -263,7 +263,14 @@ export function checkOrderForm(input: OrderFormInput): OrderFormCheck {
   const now = input.now ?? Date.now();
 
   if (!QUANTITY_RE.test(input.quantity)) {
-    return { ok: false, message: "Quantity must be a positive number." };
+    // "1e9" is positive, so saying it is not would be wrong: what is wrong is
+    // the way it is written.
+    return {
+      ok: false,
+      message: /^\s*-/.test(input.quantity)
+        ? "Quantity must be greater than zero."
+        : "Enter the quantity in MW as a plain number, like 10 or 12.5.",
+    };
   }
   const qty = parseDec(input.quantity);
   if (qty <= 0n) return { ok: false, message: "Quantity must be greater than zero." };
@@ -347,6 +354,39 @@ export function checkOrderForm(input: OrderFormInput): OrderFormCheck {
   }
 
   return { ok: true };
+}
+
+/** One hour of a submitted ticket, as the server answered it. */
+export interface BidResult {
+  label: string;
+  startMs: number;
+  ok: boolean;
+  detail: string;
+}
+
+/**
+ * The refused hours of a ticket, grouped by reason, with consecutive hours
+ * written as a range: "HE10–HE22 · Not enough credit…" once, rather than the
+ * same reason thirteen times.
+ */
+export function refusals(results: BidResult[]): Array<{ reason: string; hours: string; count: number }> {
+  const byReason = new Map<string, BidResult[]>();
+  for (const r of results) {
+    if (r.ok) continue;
+    byReason.set(r.detail, [...(byReason.get(r.detail) ?? []), r]);
+  }
+  return [...byReason].map(([reason, refused]) => {
+    const runs: BidResult[][] = [];
+    for (const r of [...refused].sort((a, b) => a.startMs - b.startMs)) {
+      const run = runs.at(-1);
+      if (run && run.at(-1)!.startMs + HOUR_MS === r.startMs) run.push(r);
+      else runs.push([r]);
+    }
+    const hours = runs
+      .map((run) => (run.length === 1 ? run[0].label : `${run[0].label}–${run.at(-1)!.label}`))
+      .join(", ");
+    return { reason, hours, count: refused.length };
+  });
 }
 
 /** Most hours one strip ticket may place: a full operating day. */

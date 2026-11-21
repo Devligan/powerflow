@@ -25,6 +25,8 @@ import {
   MAX_QUANTITY,
   MIN_BID_MW,
   checkOrderForm,
+  refusals,
+  type BidResult,
   type DeliveryWindow,
 } from "@/lib/trading/order-form";
 
@@ -134,7 +136,7 @@ export function TradePanel({
   const [steps, setSteps] = useState<Array<{ mw: string; price: string }>>([{ mw: "10", price: "" }]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [results, setResults] = useState<Array<{ label: string; ok: boolean; detail: string }> | null>(null);
+  const [results, setResults] = useState<BidResult[] | null>(null);
   const [resultKey, setResultKey] = useState<string | null>(null);
 
   const instrument = requireInstrument(instrumentCode);
@@ -163,12 +165,16 @@ export function TradePanel({
       if (v < parseDec(String(BID_PRICE_FLOOR)) || v > parseDec(String(BID_PRICE_CAP))) {
         return `ERCOT accepts bid prices from −$${-BID_PRICE_FLOOR} to $${BID_PRICE_CAP.toLocaleString("en-US")}/MWh.`;
       }
-      if (!(Number(s.mw) > 0) || Number(s.mw) > MAX_QUANTITY) return `Each step needs 0–${MAX_QUANTITY} MW.`;
+      if (!(Number(s.mw) > 0) || Number(s.mw) > MAX_QUANTITY) return `Each step needs more than 0 and at most ${MAX_QUANTITY} MW.`;
       if (!MW_RE.test(s.mw.trim())) return "ERCOT takes bid quantities in steps of 0.1 MW.";
     }
     return null;
   })();
-  const totalMw = bidType === "LIMIT" ? steps.reduce((a, s) => a + (Number(s.mw) || 0), 0) : Number(quantity);
+  // Only a quantity the ticket would send counts: "1e9" or "-50" is not one,
+  // and the button and the total must not repeat it back as if it were.
+  const mwOf = (s: string) => (MW_RE.test(s.trim()) ? Number(s.trim()) : NaN);
+  const totalMw = bidType === "LIMIT" ? steps.reduce((a, s) => a + mwOf(s.mw), 0) : mwOf(quantity);
+  const shownMw = Number.isFinite(totalMw) && totalMw > 0 ? totalMw : null;
   // ERCOT's minimum is per bid, and a curve's steps make one bid per hour.
   const minimumProblem =
     totalMw > 0 && totalMw < MIN_BID_MW ? `ERCOT's minimum bid is ${MIN_BID_MW} MW an hour.` : null;
@@ -256,7 +262,7 @@ export function TradePanel({
     setIntent({ form: formKey, id: base });
     let unanswered = false;
     // Sequential: a refused hour is reported and the rest carry on.
-    const out: Array<{ label: string; ok: boolean; detail: string }> = [];
+    const out: BidResult[] = [];
     for (const h of chosen) {
       const label = `HE${String(h.he).padStart(2, "0")}${h.repeated ? "*" : ""}`;
       // One key per bid: each hour, and each step of a curve, is its own order.
@@ -269,13 +275,14 @@ export function TradePanel({
         }
         out.push({
           label,
+          startMs: h.startMs,
           ok: true,
           detail: bidType === "LIMIT" ? (steps.length === 1 ? "limit" : `${steps.length}-step curve`) : "at clearing",
         });
       } catch (err) {
         // A network failure or a 5xx may have placed the bid anyway.
         if (!(err instanceof OrderRefused) || err.unanswered) unanswered = true;
-        out.push({ label, ok: false, detail: err instanceof Error ? err.message : "Refused" });
+        out.push({ label, startMs: h.startMs, ok: false, detail: err instanceof Error ? err.message : "Refused" });
       }
       setResults([...out]);
     }
@@ -287,8 +294,8 @@ export function TradePanel({
   const counterOptions = markets.filter((m) => m.id !== marketId);
   const counterPoint = counterOptions.find((m) => m.id === counterMarketId)?.settlementPoint ?? null;
   const isBuy = side === "BUY";
-  const qtyNum = totalMw;
   const placedCount = results?.filter((r) => r.ok).length ?? 0;
+  const refused = results ? refusals(results) : [];
 
   return (
     <form onSubmit={onSubmit} className="card p-0">
@@ -448,7 +455,7 @@ export function TradePanel({
             {chosen.length === 0
               ? "No hours chosen."
               : `${chosen.length} hour${chosen.length === 1 ? "" : "s"} · ${
-                  Number.isFinite(qtyNum) ? `${(qtyNum * chosen.length).toLocaleString("en-US")} MWh total` : "—"
+                  shownMw != null ? `${(shownMw * chosen.length).toLocaleString("en-US")} MWh total` : "—"
                 } · first ${localTime(chosen[0].startMs, tz)}`}
           </p>
         </div>
@@ -556,7 +563,9 @@ export function TradePanel({
         {showResult && results && (
           <div className={`note ${results.every((r) => r.ok) ? "note-ok" : "note-warn"}`}>
             <p className="mb-1">
-              {placedCount} of {chosen.length} hourly bids placed{busy ? "…" : "."}{" "}
+              {placedCount} of {chosen.length} hourly bids placed
+              {refused.length > 0 && `, ${results.length - placedCount} refused`}
+              {busy ? "…" : "."}{" "}
               {placedCount > 0 && (
                 <>
                   They fill when ERCOT publishes the day-ahead prices.{" "}
@@ -566,15 +575,14 @@ export function TradePanel({
                 </>
               )}
             </p>
-            {results.some((r) => !r.ok) && (
-              <ul className="mono space-y-0.5 text-[11px]">
-                {results
-                  .filter((r) => !r.ok)
-                  .map((r) => (
-                    <li key={r.label} className="t-short">
-                      {r.label} · {r.detail}
-                    </li>
-                  ))}
+            {/* Each reason once, with the hours it refused. */}
+            {refused.length > 0 && (
+              <ul className="space-y-1 text-[12px]">
+                {refused.map((g) => (
+                  <li key={g.reason}>
+                    <span className="mono t-short">{g.hours}</span> · {g.reason}
+                  </li>
+                ))}
               </ul>
             )}
           </div>
@@ -583,12 +591,12 @@ export function TradePanel({
         <button type="submit" disabled={busy || !check.ok} className="btn btn-primary w-full">
           {busy
             ? "Placing"
-            : `${sideLabels[side][0]} ${totalMw || 0} MW × ${chosen.length} h ${
+            : `${sideLabels[side][0]} ${shownMw ?? "—"} MW × ${chosen.length} h ${
                 bidType === "LIMIT" ? `on a ${steps.length}-step curve` : "at clearing"
               }`}
         </button>
 
-        {qtyNum > MAX_QUANTITY && (
+        {shownMw != null && shownMw > MAX_QUANTITY && (
           <p className="text-[11px] t-short">The desk accepts at most {MAX_QUANTITY} MW per hour.</p>
         )}
       </div>
