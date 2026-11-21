@@ -16,6 +16,9 @@ import {
  * throws on "1e2" or "NaN", and a throw inside validation is a 500 rather
  * than the 422 a malformed number deserves.
  */
+/** paper_orders.client_order_id's bound (0057), as execute_trade's (0010). */
+const MAX_KEY_LENGTH = 128;
+
 export const OrderRequest = z.object({
   marketId: z.string().uuid(),
   instrument: z.string().min(1).default(DEFAULT_INSTRUMENT),
@@ -41,6 +44,26 @@ export const OrderRequest = z.object({
   deliveryStart: z.string().datetime(),
   deliveryEnd: z.string().datetime(),
   expiresAt: z.string().datetime().optional(),
+  clientOrderId: z.string().trim().min(1).max(MAX_KEY_LENGTH).optional(),
 });
 
 export type OrderRequestBody = z.infer<typeof OrderRequest>;
+
+/**
+ * The order's idempotency key (0057), from the `Idempotency-Key` header or the
+ * body's `clientOrderId`. Either will do; both must agree, because a request
+ * naming two keys has no single order it could be a retry of.
+ */
+export function idempotencyKey(
+  header: string | null,
+  body: string | undefined
+): { ok: true; key: string | null } | { ok: false; message: string } {
+  const fromHeader = header?.trim() || null;
+  if (fromHeader && fromHeader.length > MAX_KEY_LENGTH) {
+    return { ok: false, message: `Idempotency-Key must be at most ${MAX_KEY_LENGTH} characters.` };
+  }
+  if (fromHeader && body && fromHeader !== body) {
+    return { ok: false, message: "Idempotency-Key and clientOrderId disagree." };
+  }
+  return { ok: true, key: fromHeader ?? body ?? null };
+}
