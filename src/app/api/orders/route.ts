@@ -1,21 +1,14 @@
-import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
 import { fail, ok, m, serverError } from "@/lib/api";
 import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
-import { parseDbDec, parseDec } from "@/lib/money";
-import {
-  BID_PRICE_CAP,
-  BID_PRICE_FLOOR,
-  DEFAULT_INSTRUMENT,
-  DEFAULT_MARKET_PRODUCT,
-  DESK_INSTRUMENT_CODES,
-  getInstrument,
-} from "@/lib/ercot/types";
+import { parseDbDec } from "@/lib/money";
+import { DESK_INSTRUMENT_CODES, getInstrument } from "@/lib/ercot/types";
 import {
   needsCounterPoint,
   resolveTradedProduct,
 } from "@/lib/trading/instruments";
+import { OrderRequest } from "@/lib/trading/order-request";
 
 export const dynamic = "force-dynamic";
 
@@ -70,33 +63,6 @@ export async function GET(req: Request) {
 }
 
 // ---------------------------------------------------------------- POST (place)
-
-const OrderRequest = z.object({
-  marketId: z.string().uuid(),
-  instrument: z.string().min(1).default(DEFAULT_INSTRUMENT),
-  product: z.string().min(1).default(DEFAULT_MARKET_PRODUCT),
-  counterMarketId: z.string().uuid().nullish(),
-  side: z.enum(["BUY", "SELL"]),
-  quantityMwh: z
-    .string()
-    .regex(/^\d+(\.\d{1,6})?$/, "Quantity must be a positive decimal number")
-    .refine((v) => parseDec(v) > 0n && parseDec(v) <= parseDec("1000"), {
-      message: "Quantity must be > 0 and <= 1000 MWh",
-    }),
-  // Omitted or null: a MARKET order, filled at whatever the day-ahead market
-  // clears at. Otherwise a LIMIT (0038).
-  limitPrice: z
-    .string()
-    .regex(/^-?\d+(\.\d{1,6})?$/, "Limit price must be a number")
-    // ERCOT's bid/offer bounds: negative prices are ordinary in the west.
-    .refine((v) => parseDec(v) >= parseDec(String(BID_PRICE_FLOOR)) && parseDec(v) <= parseDec(String(BID_PRICE_CAP)), {
-      message: `Limit price must be between -$${-BID_PRICE_FLOOR} and $${BID_PRICE_CAP.toLocaleString("en-US")}/MWh`,
-    })
-    .nullish(),
-  deliveryStart: z.string().datetime(),
-  deliveryEnd: z.string().datetime(),
-  expiresAt: z.string().datetime().optional(),
-});
 
 const FRIENDLY: Record<string, string> = {
   FORBIDDEN: "You are not allowed to place orders on this account.",
