@@ -108,6 +108,20 @@ export interface MarginView {
   tier: MarginTier;
 }
 
+/** Credit, computed by `account_credit` (0058): the same figures the order
+ *  check refuses a bid on, so what the Desk shows is what limits trading. */
+export interface CreditView {
+  /** Cash, less any open loss or deficit. */
+  creditLimit: bigint;
+  /** Held by open bids until they fill or are cancelled. */
+  bidCollateral: bigint;
+  /** Held by open margined positions. */
+  positionCollateral: bigint;
+  /** What a new bid's collateral must fit in. */
+  availableCredit: bigint;
+  openBids: number;
+}
+
 export interface PortfolioSnapshot {
   account: {
     id: string | undefined;
@@ -120,7 +134,17 @@ export interface PortfolioSnapshot {
   metrics: ReturnType<typeof portfolioMetrics>;
   /** Null only when the margin state could not be read at all. */
   margin: MarginView | null;
+  /** Null only when the credit state could not be read at all. */
+  credit: CreditView | null;
   dataStatus: unknown;
+}
+
+interface AccountCreditRow {
+  credit_limit: string;
+  bid_collateral: string;
+  position_collateral: string;
+  available_credit: string;
+  open_bids: number | string;
 }
 
 interface AccountMarginRow {
@@ -252,9 +276,10 @@ export async function getPortfolioSnapshot(
   const admin = supabaseAdmin();
   const { rows, markById, settlementByMarket, nowMs } = await loadContexts(userId);
 
-  const [accountRes, marginRes] = await Promise.all([
+  const [accountRes, marginRes, creditRes] = await Promise.all([
     admin.from("paper_accounts").select("*").eq("user_id", userId).maybeSingle(),
     admin.rpc("account_margin", { p_user_id: userId }),
+    admin.rpc("account_credit", { p_user_id: userId }),
   ]);
 
   const positions = rows.map((row) =>
@@ -287,6 +312,7 @@ export async function getPortfolioSnapshot(
   });
 
   const marginRow = (marginRes.data as AccountMarginRow[] | null)?.[0];
+  const creditRow = (creditRes.data as AccountCreditRow[] | null)?.[0];
 
   return {
     account: {
@@ -299,6 +325,15 @@ export async function getPortfolioSnapshot(
     positions,
     metrics,
     margin: marginRow ? toMarginView(marginRow) : null,
+    credit: creditRow
+      ? {
+          creditLimit: parseDbDec(creditRow.credit_limit),
+          bidCollateral: parseDbDec(creditRow.bid_collateral),
+          positionCollateral: parseDbDec(creditRow.position_collateral),
+          availableCredit: parseDbDec(creditRow.available_credit),
+          openBids: Number(creditRow.open_bids),
+        }
+      : null,
     dataStatus: null,
   };
 }
