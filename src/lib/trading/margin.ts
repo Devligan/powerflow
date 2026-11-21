@@ -1,5 +1,5 @@
 import { isMarginedInstrument } from "@/lib/ercot/types";
-import { add, abs, mul, mulScalar, sub } from "@/lib/money";
+import { add, abs, cents, mul, mulScalar, sub } from "@/lib/money";
 
 /**
  * The margin model, as pure functions.
@@ -131,11 +131,14 @@ export function marginRequirements(
       unpricedPositions += 1;
       continue;
     }
+    // Each line in cents, as account_margin sums it (0059).
     markedValue = add(
       markedValue,
-      mul(
-        isMarginedInstrument(pos.instrument) ? pos.markPrice - (pos.averageEntryPrice ?? 0n) : pos.markPrice,
-        pos.quantityMwh
+      cents(
+        mul(
+          isMarginedInstrument(pos.instrument) ? pos.markPrice - (pos.averageEntryPrice ?? 0n) : pos.markPrice,
+          pos.quantityMwh
+        )
       )
     );
 

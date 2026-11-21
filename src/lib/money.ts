@@ -120,6 +120,14 @@ export function div(a: Num, b: Num): bigint {
   return num < 0n !== den < 0n ? -rounded : rounded;
 }
 
+/** Rounded to the cent, half away from zero: Postgres's `round(x, 2)`, the
+ *  way realized P&L and mark-to-market are booked (0059). */
+export function cents(n: bigint): bigint {
+  const unit = SCALE / 100n;
+  const rounded = ((abs(n) + unit / 2n) / unit) * unit;
+  return n < 0n ? -rounded : rounded;
+}
+
 export function negate(n: bigint): bigint {
   return -n;
 }

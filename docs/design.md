@@ -405,6 +405,16 @@ margined positions hold, and what is left. The order check refuses a bid whose
 collateral exceeds what is left, and the Desk shows the same figures, so a
 book of open bids reads as held credit rather than as "no open exposure".
 
+Money is stated in cents per line, as on a settlement statement (0059). A
+margined position's P&L is booked to the cent when it is realized (half away
+from zero), and cash moves by exactly that; its mark-to-market is stated the
+same way wherever equity is summed, so settling at the mark changes nothing.
+Collateral is the rate in cents per MW, rounded up, times MW, rounded up to the
+cent, per bid and per position. Prices and averages keep their full precision;
+only dollar amounts are in cents. So every total on the Desk, Positions and the
+standings is the exact sum of what is shown: equity is starting cash plus total
+P&L, and available credit is the limit less what is held.
+
 ### The ledger reconciles itself
 
 Each money path above is pinned by its own DB suite, but a suite proves a
