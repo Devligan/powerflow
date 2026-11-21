@@ -5,7 +5,9 @@ import {
   BID_PRICE_FLOOR,
   DEFAULT_INSTRUMENT,
   DEFAULT_MARKET_PRODUCT,
+  type InstrumentDef,
 } from "@/lib/ercot/types";
+import { resolveTradedProduct } from "@/lib/trading/instruments";
 
 /**
  * The body of `POST /api/orders`.
@@ -22,7 +24,8 @@ const MAX_KEY_LENGTH = 128;
 export const OrderRequest = z.object({
   marketId: z.string().uuid(),
   instrument: z.string().min(1).default(DEFAULT_INSTRUMENT),
-  product: z.string().min(1).default(DEFAULT_MARKET_PRODUCT),
+  // Optional: see orderProduct.
+  product: z.string().min(1).max(64).optional(),
   counterMarketId: z.string().uuid().nullish(),
   side: z.enum(["BUY", "SELL"]),
   quantityMwh: z
@@ -48,6 +51,24 @@ export const OrderRequest = z.object({
 });
 
 export type OrderRequestBody = z.infer<typeof OrderRequest>;
+
+/**
+ * The product the order trades. A single-leg instrument trades the series the
+ * request names. A virtual or a PTP obligation has no series of its own: it
+ * clears in the day-ahead market, so a request may leave `product` out or name
+ * that one. Naming any other asks for an order the desk does not place, and is
+ * refused rather than quietly stored as day-ahead.
+ */
+export function orderProduct(
+  instrument: Pick<InstrumentDef, "productFromTrade">,
+  requested: string | undefined
+): { ok: true; product: string } | { ok: false; message: string } {
+  const product = resolveTradedProduct(instrument, requested ?? DEFAULT_MARKET_PRODUCT);
+  if (requested !== undefined && requested !== product) {
+    return { ok: false, message: `This instrument clears in ${product}. Send that product, or leave it out.` };
+  }
+  return { ok: true, product };
+}
 
 /**
  * The order's idempotency key (0057), from the `Idempotency-Key` header or the

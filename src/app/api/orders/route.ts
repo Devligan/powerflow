@@ -4,11 +4,8 @@ import { fail, ok, m, serverError } from "@/lib/api";
 import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 import { parseDbDec } from "@/lib/money";
 import { DESK_INSTRUMENT_CODES, getInstrument } from "@/lib/ercot/types";
-import {
-  needsCounterPoint,
-  resolveTradedProduct,
-} from "@/lib/trading/instruments";
-import { OrderRequest, idempotencyKey } from "@/lib/trading/order-request";
+import { needsCounterPoint } from "@/lib/trading/instruments";
+import { OrderRequest, idempotencyKey, orderProduct } from "@/lib/trading/order-request";
 
 export const dynamic = "force-dynamic";
 
@@ -130,8 +127,10 @@ export async function POST(req: Request) {
 
   // The trade's product follows the same derivation as execution: the caller
   // names a series for single-leg instruments; derived instruments clear in
-  // the day-ahead market regardless of the page they were placed from.
-  const product = resolveTradedProduct(instrument, o.product);
+  // the day-ahead market, and a request naming another product is refused.
+  const traded = orderProduct(instrument, o.product);
+  if (!traded.ok) return fail(traded.message, 422);
+  const product = traded.product;
 
   // Through the caller's own session: the engine checks that it may act for
   // this account (acts_for, 0048).

@@ -666,7 +666,9 @@ Two consequences worth knowing:
   **derived** (the day-ahead market it clears in) rather than taken from the
   caller. That keeps the identity canonical: two virtual trades on the same
   point and interval cannot land in different positions because the caller
-  passed a different product.
+  passed a different product. `POST /api/orders` takes `product` left out or
+  naming that market, and refuses any other with a 422 rather than storing it
+  as day-ahead.
 - A window instrument's `delivery_start`/`delivery_end` are the settlement
   **window**, not an interval, so there is no second pair of columns to keep in
   sync — the same identity covers both.
