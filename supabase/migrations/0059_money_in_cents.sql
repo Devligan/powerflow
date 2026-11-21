@@ -105,6 +105,10 @@ begin
 end;
 $$;
 
+-- Unchanged from 0058: the Desk reads it with the service role; no session may.
+revoke execute on function public.account_credit(uuid) from public, anon, authenticated;
+grant execute on function public.account_credit(uuid) to service_role;
+
 comment on function public.account_credit(uuid) is
   'Credit limit (cash, less any open loss or deficit), collateral held by open bids and margined positions (each MW x rate, rounded up to the cent), and what is left for a new bid. place_limit_order refuses a bid whose collateral exceeds available_credit. Migrations 0058, 0059.';
 
