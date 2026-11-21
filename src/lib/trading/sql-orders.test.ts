@@ -206,6 +206,50 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
     expect(againErr!.message).toContain("ORDER_NOT_OPEN");
   }, 60_000);
 
+  it("places one order per idempotency key, even sent concurrently (0057)", async () => {
+    await setClock(userA.id, beforeGate);
+    await setClock(userB.id, beforeGate);
+    const key = `retry-${crypto.randomUUID()}`;
+    const resting = { p_limit_price: (print - 20).toFixed(2), p_client_order_id: key };
+
+    // A burst of retries of one request: every one answers with the same order.
+    const burst = await Promise.all(Array.from({ length: 5 }, () => place(clientA, userA.id, resting)));
+    for (const r of burst) expect(r.error).toBeNull();
+    const ids = new Set(burst.map((r) => r.data));
+    expect(ids.size).toBe(1);
+    const [orderId] = [...ids];
+    const { count } = await db
+      .from("paper_orders")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userA.id)
+      .eq("client_order_id", key);
+    expect(count).toBe(1);
+
+    // A retry that arrives after the order closed still names it, rather than
+    // placing it again.
+    const { error: cancelErr } = await clientA.rpc("cancel_order", { p_user_id: userA.id, p_order_id: orderId });
+    expect(cancelErr).toBeNull();
+    const late = await place(clientA, userA.id, resting);
+    expect(late.error).toBeNull();
+    expect(late.data).toBe(orderId);
+
+    // The same key for a different order is a client bug, not a retry.
+    const reused = await place(clientA, userA.id, { ...resting, p_quantity_mwh: "11" });
+    expect(reused.error?.message).toContain("IDEMPOTENCY_KEY_REUSED");
+
+    // Keys are per account: another trader's identical key is their own order.
+    const other = await place(clientB, userB.id, resting);
+    expect(other.error).toBeNull();
+    expect(other.data).not.toBe(orderId);
+
+    // The control: without a key, the same request twice is two orders.
+    const plain = { p_limit_price: (print - 20).toFixed(2) };
+    const [a, b] = await Promise.all([place(clientA, userA.id, plain), place(clientA, userA.id, plain)]);
+    expect(a.error).toBeNull();
+    expect(b.error).toBeNull();
+    expect(a.data).not.toBe(b.data);
+  }, 60_000);
+
   it("expires an order past its expiry on the sweep", async () => {
     // Expiry is on the account's clock, so it is set from that clock.
     await setClock(userA.id, beforeGate);

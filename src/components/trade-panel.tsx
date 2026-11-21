@@ -70,6 +70,13 @@ function hourWindow(startMs: number): DeliveryWindow {
   };
 }
 
+/** A bid the server answered with an error; `unanswered` if it may have landed anyway. */
+class OrderRefused extends Error {
+  constructor(message: string, readonly unanswered: boolean) {
+    super(message);
+  }
+}
+
 const SIDE_LABEL: Record<string, { BUY: [string, string]; SELL: [string, string] }> = {
   VIRTUAL: {
     BUY: ["DEC", "buy DA · sell back RT"],
@@ -189,6 +196,12 @@ export function TradePanel({
 
   const formKey = [instrumentCode, counterMarketId, side, quantity, opDay, hours.join(","), bidType, JSON.stringify(steps)].join("|");
   const showResult = resultKey === formKey;
+  // The idempotency key of the order this form describes (0057). It is kept
+  // while a submission may have reached the server unanswered, so pressing
+  // again replays the bids that landed instead of placing them twice, and it
+  // is dropped once every bid has a definite answer, so a deliberate repeat
+  // places new ones.
+  const [intent, setIntent] = useState<{ form: string; id: string } | null>(null);
 
   function setPreset(which: "PEAK" | "OFFPEAK" | "ATC" | "NONE") {
     const pick = (h: OperatingHour) =>
@@ -209,10 +222,10 @@ export function TradePanel({
     if (!needsCounterPoint(requireInstrument(code).settlementRule)) setCounterMarketId(null);
   }
 
-  async function placeOne(w: DeliveryWindow, mw: string, limit: string | null) {
+  async function placeOne(w: DeliveryWindow, mw: string, limit: string | null, key: string) {
     const res = await fetch("/api/orders", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "idempotency-key": key },
       body: JSON.stringify({
         marketId,
         instrument: instrument.code,
@@ -226,7 +239,7 @@ export function TradePanel({
       }),
     });
     const body = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(body?.error ?? "Order failed");
+    if (!res.ok) throw new OrderRefused(body?.error ?? "Order failed", res.status >= 500);
   }
 
   async function onSubmit(e: FormEvent) {
@@ -239,15 +252,20 @@ export function TradePanel({
     setBusy(true);
     setError(null);
     setResults(null);
+    const base = intent?.form === formKey ? intent.id : crypto.randomUUID();
+    setIntent({ form: formKey, id: base });
+    let unanswered = false;
     // Sequential: a refused hour is reported and the rest carry on.
     const out: Array<{ label: string; ok: boolean; detail: string }> = [];
     for (const h of chosen) {
       const label = `HE${String(h.he).padStart(2, "0")}${h.repeated ? "*" : ""}`;
+      // One key per bid: each hour, and each step of a curve, is its own order.
+      const key = (step: number) => `${base}:${keyOf(h)}:${step}`;
       try {
         if (bidType === "LIMIT") {
-          for (const s of steps) await placeOne(hourWindow(h.startMs), s.mw.trim(), s.price.trim());
+          for (const [i, s] of steps.entries()) await placeOne(hourWindow(h.startMs), s.mw.trim(), s.price.trim(), key(i));
         } else {
-          await placeOne(hourWindow(h.startMs), quantity, null);
+          await placeOne(hourWindow(h.startMs), quantity, null, key(0));
         }
         out.push({
           label,
@@ -255,10 +273,13 @@ export function TradePanel({
           detail: bidType === "LIMIT" ? (steps.length === 1 ? "limit" : `${steps.length}-step curve`) : "at clearing",
         });
       } catch (err) {
+        // A network failure or a 5xx may have placed the bid anyway.
+        if (!(err instanceof OrderRefused) || err.unanswered) unanswered = true;
         out.push({ label, ok: false, detail: err instanceof Error ? err.message : "Refused" });
       }
       setResults([...out]);
     }
+    if (!unanswered) setIntent(null);
     setBusy(false);
     router.refresh();
   }

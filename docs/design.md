@@ -316,6 +316,16 @@ response says `replayed: true`. The check sits inside `execute_trade`, around
 the existing per-user row lock, so concurrent duplicates fill exactly once; a
 unique index on `(user_id, client_order_id)` is the backstop.
 
+Placing a bid follows the same rule (0057). `POST /api/orders` takes an
+`Idempotency-Key` header (or `clientOrderId` in the body); `place_limit_order`
+looks the key up under the account lock that already serializes an account's
+orders, before any validation, and a key it has seen returns the order it
+placed, even one since cancelled or filled. The same key with a different
+order is refused (`IDEMPOTENCY_KEY_REUSED`, 409) rather than answered with an
+order that is not the one asked for. The ticket keys each hour and curve step
+of a submission, and keeps the key only while a bid might have landed
+unanswered, so pressing again after a timeout replays instead of doubling.
+
 The TypeScript engine in `src/lib/trading/accounting.ts` mirrors this logic
 exactly for previews/analytics and is pinned by tests
 (`src/lib/trading/accounting.test.ts`).

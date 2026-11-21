@@ -8,7 +8,7 @@ import {
   needsCounterPoint,
   resolveTradedProduct,
 } from "@/lib/trading/instruments";
-import { OrderRequest } from "@/lib/trading/order-request";
+import { OrderRequest, idempotencyKey } from "@/lib/trading/order-request";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +92,9 @@ const FRIENDLY: Record<string, string> = {
   DAM_CLOSED: "Day-ahead bids for that operating day closed at 10:00 AM Central the day before.",
   DAM_NOT_OPEN: "ERCOT takes day-ahead bids for an operating day from fourteen days before it.",
   QUANTITY_INCREMENT: "ERCOT takes bid quantities in steps of 0.1 MW.",
+  CLIENT_ORDER_ID_INVALID: "The idempotency key must be 1 to 128 characters.",
+  IDEMPOTENCY_KEY_REUSED:
+    "That idempotency key was already used for a different order. Use a new key for a new order.",
 };
 
 export async function POST(req: Request) {
@@ -112,6 +115,9 @@ export async function POST(req: Request) {
     return fail(parsed.error.issues[0]?.message ?? "Invalid order", 422);
   }
   const o = parsed.data;
+
+  const key = idempotencyKey(req.headers.get("idempotency-key"), o.clientOrderId);
+  if (!key.ok) return fail(key.message, 422);
 
   const instrument = getInstrument(o.instrument);
   if (!instrument) return fail("That is not an instrument this desk trades.", 422);
@@ -144,12 +150,14 @@ export async function POST(req: Request) {
     p_delivery_start: o.deliveryStart,
     p_delivery_end: o.deliveryEnd,
     p_expires_at: o.expiresAt ?? null,
+    // A retry with the same key returns the order it placed (0057).
+    p_client_order_id: key.key,
   });
 
   if (error) {
     const raw = error.message;
     const code = Object.keys(FRIENDLY).find((k) => raw.includes(k));
-    if (code) return fail(FRIENDLY[code], 422);
+    if (code) return fail(FRIENDLY[code], code === "IDEMPOTENCY_KEY_REUSED" ? 409 : 422);
     return serverError("order placement", raw, "The order could not be placed. Please try again.");
   }
 
