@@ -400,6 +400,10 @@ Bids post collateral (0040): MW × the 95th-percentile |RT − DA| at the point,
 least $10/MW, held on every open bid and every open margined position. Together
 they must fit within the lesser of cash and equity, so an open loss or a deficit
 reduces what a new bid can post, and an open gain does not add to it.
+`account_credit()` (0058) states that sum once: the limit, what bids and
+margined positions hold, and what is left. The order check refuses a bid whose
+collateral exceeds what is left, and the Desk shows the same figures, so a
+book of open bids reads as held credit rather than as "no open exposure".
 
 ### The ledger reconciles itself
 

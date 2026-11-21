@@ -184,8 +184,8 @@ export default async function DashboardPage() {
       </ol>
 
       {/* Margin: what the open book requires, and the state the settlement leg
-          will act on. */}
-      <MarginSummary margin={snapshot?.margin ?? null} />
+          will act on; credit: what open bids hold, and what a new one has. */}
+      <MarginSummary margin={snapshot?.margin ?? null} credit={snapshot?.credit ?? null} />
 
       <section>
         <div className="mb-2 flex items-center justify-between gap-3">
