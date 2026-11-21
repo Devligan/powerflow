@@ -7,6 +7,7 @@ import {
   effectiveProduct,
   estimateInstrumentPrice,
   probePrice,
+  refusals,
   selectableProducts,
   windowIntervals,
   type SeriesPoint,
@@ -218,6 +219,17 @@ describe("order ticket validation", () => {
     expect(checkOrderForm(ticket({ quantity: String(MAX_QUANTITY + 1) })).ok).toBe(false);
   });
 
+  it("says what is wrong with a quantity, not that a positive one is negative", () => {
+    const message = (quantity: string) => {
+      const c = checkOrderForm(ticket({ quantity }));
+      return c.ok ? null : c.message;
+    };
+    expect(message("1e9")).toBe("Enter the quantity in MW as a plain number, like 10 or 12.5.");
+    expect(message("abc")).toBe("Enter the quantity in MW as a plain number, like 10 or 12.5.");
+    expect(message("-50")).toBe("Quantity must be greater than zero.");
+    expect(message("0")).toBe("Quantity must be greater than zero.");
+  });
+
   it("refuses a settled interval and one beyond the traded horizon", () => {
     const settled = ticket({
       delivery: win(1),
@@ -276,5 +288,35 @@ describe("order ticket validation", () => {
 
   it("refuses a product that is not on the desk", () => {
     expect(checkOrderForm(ticket({ product: "NOT_A_PRODUCT" })).ok).toBe(false);
+  });
+});
+
+describe("refusals", () => {
+  const H = 3_600_000;
+  const hour = (he: number, ok: boolean, detail = "Not enough credit.") => ({
+    label: `HE${String(he).padStart(2, "0")}`,
+    startMs: he * H,
+    ok,
+    detail,
+  });
+
+  it("states each reason once, with its consecutive hours as a range", () => {
+    // A 5x16 strip that ran out of credit after three hours.
+    const results = [7, 8, 9].map((he) => hour(he, true)).concat(
+      Array.from({ length: 13 }, (_, i) => hour(10 + i, false))
+    );
+    expect(refusals(results)).toEqual([{ reason: "Not enough credit.", hours: "HE10–HE22", count: 13 }]);
+  });
+
+  it("keeps gaps and separate reasons apart", () => {
+    const results = [hour(7, false), hour(8, false), hour(10, false), hour(11, true), hour(12, false, "Closed.")];
+    expect(refusals(results)).toEqual([
+      { reason: "Not enough credit.", hours: "HE07–HE08, HE10", count: 3 },
+      { reason: "Closed.", hours: "HE12", count: 1 },
+    ]);
+  });
+
+  it("is empty when every hour was placed", () => {
+    expect(refusals([hour(7, true), hour(8, true)])).toEqual([]);
   });
 });
