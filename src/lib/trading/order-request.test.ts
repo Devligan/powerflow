@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { OrderRequest, idempotencyKey } from "@/lib/trading/order-request";
+import { requireInstrument } from "@/lib/ercot/types";
+import { OrderRequest, idempotencyKey, orderProduct } from "@/lib/trading/order-request";
 
 const base = {
   marketId: "00000000-0000-4000-8000-000000000001",
@@ -50,6 +51,29 @@ describe("OrderRequest", () => {
     expect(OrderRequest.safeParse({ ...base, clientOrderId: "k".repeat(128) }).success).toBe(true);
     expect(OrderRequest.safeParse({ ...base, clientOrderId: "k".repeat(129) }).success).toBe(false);
     expect(OrderRequest.safeParse({ ...base, clientOrderId: "   " }).success).toBe(false);
+  });
+});
+
+describe("orderProduct", () => {
+  const virtual = requireInstrument("VIRTUAL");
+  const ptp = requireInstrument("PTP_OBLIGATION");
+
+  it("puts the desk's instruments in the day-ahead market, named or left out", () => {
+    expect(orderProduct(virtual, undefined)).toEqual({ ok: true, product: "DAM_HOURLY" });
+    expect(orderProduct(virtual, "DAM_HOURLY")).toEqual({ ok: true, product: "DAM_HOURLY" });
+    expect(orderProduct(ptp, undefined)).toEqual({ ok: true, product: "DAM_HOURLY" });
+  });
+
+  // Each of these used to be stored as DAM_HOURLY with a 201.
+  it.each(["RT_5MIN", "RTM_HOURLY", "<script>", "dam_hourly"])("refuses product %j for a virtual", (p) => {
+    const r = orderProduct(virtual, p);
+    expect(r.ok).toBe(false);
+    expect(r.ok ? "" : r.message).toMatch(/DAM_HOURLY/);
+  });
+
+  it("lets a single-leg instrument name its series", () => {
+    expect(orderProduct(requireInstrument("ENERGY_SPOT"), "DAM_HOURLY")).toEqual({ ok: true, product: "DAM_HOURLY" });
+    expect(orderProduct(requireInstrument("ENERGY_SPOT"), undefined)).toEqual({ ok: true, product: "RTM_HOURLY" });
   });
 });
 
