@@ -63,6 +63,8 @@ describe.skipIf(!dbTestsEnabled())("historical replay on actual ERCOT data (live
     expect(Math.abs(actual - expected)).toBeLessThan(1e-6);
 
   const num = (v: unknown) => Number(v);
+  /** To the cent, half away from zero, as the engine books P&L (0059). */
+  const cents = (x: number) => (Math.sign(x) * Math.round(Math.abs(x) * 100 + 1e-9)) / 100;
 
   const cash = async (): Promise<number> => {
     const { data } = await db.from("paper_accounts").select("cash_balance").eq("user_id", user.id).single();
@@ -453,7 +455,42 @@ describe.skipIf(!dbTestsEnabled())("historical replay on actual ERCOT data (live
     expect(settleError).toBeNull();
     const settled = (await position(hour2))!;
     expect(settled.qty).toBe(0);
-    near(settled.realized, 5 * (revised - dayAhead2));
+    near(settled.realized, cents(5 * (revised - dayAhead2))); // booked in cents (0059)
+  }, 60_000);
+
+  it("books realized P&L in cents, and moves cash by exactly that (0059)", async () => {
+    // An hour no other test trades, and an odd size: 0.3 MW x the spread has
+    // decimals past the cent, which the engine used to keep. Not a half cent,
+    // so the float arithmetic here rounds it as Postgres does.
+    const hour2 = new Date(new Date(hour).getTime() + 3_600_000).toISOString();
+    const exact = (h: string) => 0.3 * (num(rtHour.get(h)!.price) - num(dam.get(h)!.price));
+    const h3 = [...rtHour.keys()].sort().find((h) => {
+      if (h === hour || h === hour2 || !dam.has(h)) return false;
+      const frac = (Math.abs(exact(h)) * 100) % 1;
+      return frac > 0.01 && frac < 0.99 && Math.abs(frac - 0.5) > 0.01;
+    });
+    expect(h3).toBeDefined();
+    const h3End = new Date(new Date(h3!).getTime() + 3_600_000).toISOString();
+
+    await setClock(new Date(new Date(h3!).getTime() - 20 * 60_000).toISOString());
+    const { error: openError } = await db.rpc(
+      "execute_trade",
+      trade({ p_quantity_mwh: 0.3, p_delivery_start: h3, p_delivery_end: h3End })
+    );
+    expect(openError).toBeNull();
+
+    const cashBefore = await cash();
+    const tSettle3 = new Date(new Date(rtHour.get(h3!)!.publishedAt).getTime() + 5 * 60_000).toISOString();
+    await setClock(tSettle3);
+    const { error } = await db.rpc("settle_delivered_positions", { p_as_of: tSettle3, p_user_id: user.id });
+    expect(error).toBeNull();
+
+    const settled = (await position(h3!))!;
+    expect(settled.qty).toBe(0);
+    const booked = cents(exact(h3!));
+    near(settled.realized, booked);
+    expect(Math.abs(settled.realized - exact(h3!))).toBeGreaterThan(1e-6); // the third decimal is gone
+    near((await cash()) - cashBefore, booked);
   }, 60_000);
 
   it("keeps a live-mode account sealed off from the replayed market", async () => {

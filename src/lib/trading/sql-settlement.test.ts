@@ -76,6 +76,9 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
 
   const near = (actual: number, expected: number) =>
     expect(Math.abs(actual - expected)).toBeLessThan(1e-6);
+  /** A margined position's P&L, as the engine books it: to the cent, half
+   *  away from zero (0059). */
+  const cents = (x: number) => (Math.sign(x) * Math.round(Math.abs(x) * 100 + 1e-9)) / 100;
 
   const shift = (ts: string, hours: number) =>
     new Date(new Date(ts).getTime() + hours * HOUR).toISOString();
@@ -320,14 +323,14 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     expect(pos!.avg).toBeCloseTo(entryPrice, 6);
     expect(pos!.settledAt).not.toBeNull();
     expect(pos!.settlementTradeId).not.toBeNull();
-    near(pos!.realized, (settlementPrice - entryPrice) * 10);
+    near(pos!.realized, cents((settlementPrice - entryPrice) * 10));
 
     // A margined position settles its P&L only; it never put up cash (0041).
-    near((await cash()) - cashBefore, (settlementPrice - entryPrice) * 10);
+    near((await cash()) - cashBefore, cents((settlementPrice - entryPrice) * 10));
 
     // Settlement moves equity by exactly the realized P&L — the DA→RT basis
     // jump — and by nothing else: no double-counted mark, no leaked cash.
-    near((await openEquity()) - equityBefore, (settlementPrice - entryPrice) * 10);
+    near((await openEquity()) - equityBefore, cents((settlementPrice - entryPrice) * 10));
 
     const mine = await settledTradesAt(start);
     expect(mine).toHaveLength(1);
@@ -342,7 +345,7 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     expect(forThis[0].entity_type).toBe("position");
     const meta = forThis[0].metadata as Record<string, unknown>;
     near(Number(meta.settlement_price), settlementPrice);
-    near(Number(meta.realized_delta), (settlementPrice - entryPrice) * 10);
+    near(Number(meta.realized_delta), cents((settlementPrice - entryPrice) * 10));
   });
 
   it("settles a short at the actual real-time price, banking the result", async () => {
@@ -367,11 +370,11 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     // A short profits as the price falls. The engine realizes the signed
     // expression (settlement − avg) × qty, so with qty = −10 a rising RT
     // price realizes negative P&L for the short.
-    near(pos!.realized, (settlementPrice - entryPrice) * -10);
+    near(pos!.realized, cents((settlementPrice - entryPrice) * -10));
 
     // Margined (0041): the short is paid its P&L, not the notional.
-    near((await cash()) - cashBefore, (entryPrice - settlementPrice) * 10);
-    near((await openEquity()) - equityBefore, (entryPrice - settlementPrice) * 10);
+    near((await cash()) - cashBefore, cents((entryPrice - settlementPrice) * 10));
+    near((await openEquity()) - equityBefore, cents((entryPrice - settlementPrice) * 10));
 
     const mine = await settledTradesAt(start);
     expect(mine).toHaveLength(1);
@@ -565,7 +568,7 @@ describe.skipIf(!dbTestsEnabled())("automatic settlement (live database)", () =>
     expect(pos!.settledAt).not.toBeNull();
     expect(await settledTradesAt(start)).toHaveLength(1);
     // Cash moved once: the position's P&L, never twice (0041).
-    near((await cash()) - cashBefore, (settlementPrice - entryPrice) * 10);
+    near((await cash()) - cashBefore, cents((settlementPrice - entryPrice) * 10));
   });
 
   it("leaves a delivered position open and reports it when its interval is unpriced", async () => {

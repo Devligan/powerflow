@@ -207,6 +207,68 @@ describe("portfolio metrics", () => {
   });
 });
 
+describe("money in cents (0059)", () => {
+  // The live book behind #66: hourly marks have four decimals, so each line's
+  // P&L had three, and the totals were each rounded on their own.
+  const book: Array<[string, string, string]> = [
+    ["10", "24.79", "23.3625"], ["10", "21.92", "24.315"], ["10", "12.8", "9.4425"],
+    ["10", "11.67", "10.895"], ["10", "12.3", "13.975"], ["10", "14.87", "12.7175"],
+    ["10", "17.64", "13.615"], ["10", "17.71", "16.5725"], ["10", "15.58", "16.5175"],
+    ["10", "17.92", "16.2475"], ["10", "29.2", "28.895"], ["10", "30.46", "26.715"],
+    ["-5", "28.49", "27.82"], ["10", "27.96", "23.875"], ["10", "25.71", "24.685"],
+    ["10", "24.64", "24.025"], ["10", "23.4", "23.7725"],
+  ];
+  const positions = book.map(([q, avg], i) =>
+    live({
+      instrument: "VIRTUAL",
+      product: "DAM_HOURLY",
+      deliveryStart: `2026-11-20T${String(i + 1).padStart(2, "0")}:00:00Z`,
+      deliveryEnd: `2026-11-20T${String(i + 2).padStart(2, "0")}:00:00Z`,
+      quantityMwh: parseDec(q),
+      averageEntryPrice: parseDec(avg),
+    })
+  );
+  const marks = new Map(positions.map((p, i) => [positionKey(p), parseDec(book[i][2])]));
+  const whole = (n: bigint) => n % 10_000n === 0n;
+
+  it("marks each line in cents, so the lines sum to the account's P&L", () => {
+    const lines = positions.map((p) => unrealizedPnl(p, marks.get(positionKey(p))!));
+    expect(lines.every(whole)).toBe(true);
+    expect(format(lines[0])).toBe("-14.28"); // 10 × (23.3625 − 24.79) = −14.275
+    const m = portfolioMetrics({ cashBalance: parseDec("100000"), startingCash: parseDec("100000"), marks, positions });
+    expect(lines.reduce((a, b) => a + b, 0n)).toBe(m.unrealizedPnl);
+    expect(format(m.totalPnl)).toBe("-186.09");
+    // The Desk's figures add up: $100,000 − $186.09 = $99,813.91.
+    expect(format(m.equity)).toBe("99813.91");
+    expect(m.equity - m.startingCash).toBe(m.totalPnl);
+  });
+
+  it("books a margined close in cents, and settling at the mark changes nothing", () => {
+    const open = pos("10", "24.79");
+    const close = applyTrade(open, "SELL", parseDec("10"), parseDec("23.3625"), "VIRTUAL");
+    expect(format(close.realizedDelta)).toBe("-14.28");
+    expect(close.realizedDelta).toBe(unrealizedPnl(open, parseDec("23.3625")));
+    // A short: 5 × (28.49 − 27.8213) = 3.3435 → 3.34.
+    const short = applyTrade(pos("-5", "28.49"), "BUY", parseDec("5"), parseDec("27.8213"), "VIRTUAL");
+    expect(format(short.realizedDelta)).toBe("3.34");
+  });
+
+  it("leaves a cash-settled instrument's realized P&L exact", () => {
+    const r = applyTrade(pos("10", "24.79"), "SELL", parseDec("10"), parseDec("23.3625"), "ENERGY_SPOT");
+    expect(format(r.realizedDelta, 6)).toBe("-14.275");
+  });
+
+  it("replays a margined history to the cents the engine booked", () => {
+    const base = { instrument: "VIRTUAL", marketId: "m1", counterMarketId: null, product: "DAM_HOURLY",
+      deliveryStart: "2026-11-20T15:00:00Z", deliveryEnd: "2026-11-20T16:00:00Z" };
+    const r = replayTrades([
+      { ...base, id: "a", side: "BUY", quantityMwh: parseDec("10"), executionPrice: parseDec("24.79") },
+      { ...base, id: "b", side: "SELL", quantityMwh: parseDec("10"), executionPrice: parseDec("23.3625") },
+    ]);
+    expect(format(r.cumulativeRealized)).toBe("-14.28");
+  });
+});
+
 describe("database-sourced values (PostgreSQL numeric scale)", () => {
   // Postgres returns numeric at whatever scale it has, so persisted money
   // arrives with more than the 6 decimals the engine fixes on.

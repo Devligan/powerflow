@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { div, format, parseDbDec, parseDec } from "@/lib/money";
+import { cents, div, format, parseDbDec, parseDec } from "@/lib/money";
+
+describe("cents", () => {
+  it("rounds to the cent half away from zero, as Postgres round(x, 2) does", () => {
+    expect(format(cents(parseDec("-186.075")), 6)).toBe("-186.08");
+    expect(format(cents(parseDec("186.075")), 6)).toBe("186.08");
+    expect(format(cents(parseDec("14.2749")), 6)).toBe("14.27");
+    expect(format(cents(parseDec("-0.004999")), 6)).toBe("0");
+    expect(cents(parseDec("12.34"))).toBe(parseDec("12.34"));
+  });
+});
 
 describe("div", () => {
   it("rounds to nearest whichever way the quotient points", () => {

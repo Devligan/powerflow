@@ -2,6 +2,7 @@ import {
   SCALE,
   abs,
   add,
+  cents,
   div,
   mul,
   sub,
@@ -122,15 +123,17 @@ export interface TradeEffect {
  *   direction; a flip (open the opposite direction) is re-priced at the new
  *   trade price; same-direction additions use a weighted average.
  *
- * Averages and cash are exact fixed-point (see lib/money). The authoritative
- * execution lives in the PostgreSQL `execute_trade` RPC; this module must
- * match it, which is pinned by tests.
+ * Averages and cash are exact fixed-point (see lib/money). Pass `instrument`
+ * and a margined instrument's realized P&L is rounded to the cent, as the
+ * engine books it (0059). The authoritative execution lives in the PostgreSQL
+ * `execute_trade` RPC; this module must match it, which is pinned by tests.
  */
 export function applyTrade(
   prev: PositionState,
   side: TradeSide,
   quantityMwh: bigint,
-  executionPrice: bigint
+  executionPrice: bigint,
+  instrument?: string
 ): TradeEffect {
   if (quantityMwh <= 0n) {
     throw new Error("quantity must be positive");
@@ -185,6 +188,11 @@ export function applyTrade(
     }
   }
 
+  // 0059: a margined instrument's P&L is booked in cents.
+  if (instrument != null && isMarginedInstrument(instrument)) {
+    realizedDelta = cents(realizedDelta);
+  }
+
   return {
     next: {
       quantityMwh: add(s, t),
@@ -195,12 +203,14 @@ export function applyTrade(
   };
 }
 
-/** Unrealized P&L for a marked position: (mark - avg) × signed quantity. */
+/** Unrealized P&L for a marked position: (mark - avg) × signed quantity, in
+ *  cents, as the engine marks it line by line (0059). So the positions sum to
+ *  the account's P&L, and settling at the mark books exactly this. */
 export function unrealizedPnl(
   position: Pick<PositionState, "quantityMwh" | "averageEntryPrice">,
   markPrice: bigint
 ): bigint {
-  return mul(sub(markPrice, position.averageEntryPrice), position.quantityMwh);
+  return cents(mul(sub(markPrice, position.averageEntryPrice), position.quantityMwh));
 }
 
 /** The settlement leg of a delivered position. */
@@ -253,7 +263,7 @@ export function settlePosition(
 
   const side: TradeSide = q > 0n ? "SELL" : "BUY";
   const magnitude = abs(q);
-  const effect = applyTrade(position, side, magnitude, settlementPrice);
+  const effect = applyTrade(position, side, magnitude, settlementPrice, instrument);
 
   return {
     side,
@@ -395,7 +405,7 @@ export function replayTrades(trades: ReplayTradeInput[]): ReplayResult {
   for (const t of trades) {
     const key = positionKey(t);
     const prev = positions.get(key) ?? { ...t, ...EMPTY_POSITION };
-    const effect = applyTrade(prev, t.side, t.quantityMwh, t.executionPrice);
+    const effect = applyTrade(prev, t.side, t.quantityMwh, t.executionPrice, t.instrument);
     positions.set(key, { ...t, ...effect.next });
     realizedDelta = add(realizedDelta, effect.realizedDelta);
     out.push({ ...t, realizedPnL: effect.realizedDelta });
@@ -524,7 +534,8 @@ export function portfolioMetrics(pf: PortfolioMark) {
 
     const unreal = unrealizedPnl(pos, mark);
     // A margined position (0041) put no cash up, so it is worth its P&L only.
-    const mv = isMarginedInstrument(pos.instrument) ? unreal : mul(mark, pos.quantityMwh);
+    // Each line in cents, as account_margin sums it (0059).
+    const mv = isMarginedInstrument(pos.instrument) ? unreal : cents(mul(mark, pos.quantityMwh));
     // A path's mark can be negative; its exposure cannot.
     const gross = mul(abs(mark), abs(pos.quantityMwh));
     markedValue = add(markedValue, mv);
