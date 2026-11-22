@@ -82,7 +82,7 @@ const FRIENDLY: Record<string, string> = {
   DELIVERY_MUST_BE_ALIGNED: "Delivery must start on a settlement-interval boundary.",
   DELIVERY_IN_PAST: "That delivery period has already started, so it can no longer be traded.",
   DELIVERY_TOO_FAR_OUT: "That delivery is too far in the future (max 35 days).",
-  EXPIRY_INVALID: "Expiry must be in the future.",
+  EXPIRY_INVALID: "Expiry must be in the future, and no later than the start of delivery.",
   OPEN_ORDER_LIMIT: "You have 500 open orders, the most an account can hold. Cancel some to place more.",
   CREDIT_LIMIT_EXCEEDED:
     "Not enough credit: the collateral on your open bids and positions plus this one would exceed your available funds (cash, less any open loss or deficit). Each MW holds the 95th-percentile day-ahead/real-time gap at its point (at least $10/MW).",
