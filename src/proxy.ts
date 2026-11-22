@@ -9,10 +9,12 @@ import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import { isCrossSiteWrite } from "@/lib/same-origin";
 import { requiredMediaType } from "@/lib/media-type";
 import { fail } from "@/lib/api";
+import { contentSecurityPolicy, newNonce } from "@/lib/csp";
 import { isPublicPath, sendsSignedInToDesk } from "@/lib/route-access";
 
 /**
- * Route protection + Supabase session refresh (cookie rotation).
+ * Route protection + Supabase session refresh (cookie rotation), and each
+ * page's Content-Security-Policy with its script nonce.
  * API routes only pass the cross-site and content-type checks here: each
  * handler performs its own auth, and the cron endpoints are guarded by
  * CRON_SECRET.
@@ -43,10 +45,23 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // This page's script nonce (#72). Next reads it from the policy on the
+  // request and puts it on every script it renders; the browser enforces the
+  // same policy. Development sends none: its tooling needs eval.
+  const csp =
+    process.env.NODE_ENV === "production"
+      ? contentSecurityPolicy(newNonce(), process.env.NEXT_PUBLIC_SUPABASE_URL)
+      : null;
+  if (csp) request.headers.set("content-security-policy", csp);
+  const withCsp = (res: NextResponse) => {
+    if (csp) res.headers.set("Content-Security-Policy", csp);
+    return res;
+  };
+
   let supabaseResponse = NextResponse.next({ request });
 
   if (!isSupabaseConfigured()) {
-    return NextResponse.next({ request });
+    return withCsp(NextResponse.next({ request }));
   }
 
   const supabase = createServerClient(requireSupabaseUrl(), requireSupabaseAnonKey(), {
@@ -80,15 +95,15 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+    return withCsp(NextResponse.redirect(url));
   }
 
   if (user && sendsSignedInToDesk(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     url.search = "";
-    return NextResponse.redirect(url);
+    return withCsp(NextResponse.redirect(url));
   }
 
-  return supabaseResponse;
+  return withCsp(supabaseResponse);
 }
