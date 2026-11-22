@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
 import { fail, ok, serverError } from "@/lib/api";
+import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export async function DELETE(
 ) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
+  if (await overLimit(LIMITS.cancels, user.id)) return tooManyRequests(LIMITS.cancels);
 
   const { id } = await ctx.params;
   const parsed = CancelRequest.safeParse({ orderId: id });

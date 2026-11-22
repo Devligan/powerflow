@@ -66,6 +66,7 @@ export async function POST(req: Request) {
 export async function DELETE() {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
+  if (await overLimit(LIMITS.avatar, user.id)) return tooManyRequests(LIMITS.avatar);
 
   const previous = (await getUserProfile(user.id))?.avatar_url ?? null;
   const { error } = await supabaseAdmin().rpc("set_profile_avatar", {

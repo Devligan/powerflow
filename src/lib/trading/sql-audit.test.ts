@@ -261,6 +261,13 @@ describe.skipIf(!dbTestsEnabled())("engine regressions (live database)", () => {
       expect((await bid(d, he(17), { p_quantity_mwh: "1.5" })).error).toBeNull();
     }, 60_000);
 
+    it("takes limit prices in whole cents, as ERCOT does (0061)", async () => {
+      const d = await desk("price-cents", BEFORE_GATE);
+      const off = await bid(d, he(17), { p_limit_price: "35.125" });
+      expect(off.error?.message).toContain("PRICE_INCREMENT");
+      expect((await bid(d, he(17), { p_limit_price: "-35.12" })).error).toBeNull();
+    }, 60_000);
+
     it("locks a bid at the deadline: it cannot be withdrawn once bids have closed", async () => {
       const d = await desk("cancel", BEFORE_GATE);
       const early = await placed(d, he(17));

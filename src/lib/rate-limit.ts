@@ -28,9 +28,12 @@ export const LIMITS = {
   forgotByIp: { name: "forgot-ip", max: 10, windowSeconds: 900 },
   forgotByEmail: { name: "forgot-email", max: 3, windowSeconds: 3600 },
   accountEmail: { name: "account-email", max: 5, windowSeconds: 3600 },
+  // Setting a password, signing out other devices, deleting the account.
+  accountChange: { name: "account-change", max: 20, windowSeconds: 3600 },
   avatar: { name: "avatar", max: 10, windowSeconds: 3600 },
   // One ticket is up to 25 hours of 4 bid-curve steps: 100 requests.
   orders: { name: "orders", max: 120, windowSeconds: 60 },
+  cancels: { name: "cancels", max: 120, windowSeconds: 60 },
   profile: { name: "profile", max: 20, windowSeconds: 60 },
   usernameCheck: { name: "username-check", max: 60, windowSeconds: 60 },
   publicRead: { name: "public-read", max: 120, windowSeconds: 60 },

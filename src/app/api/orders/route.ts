@@ -89,6 +89,7 @@ const FRIENDLY: Record<string, string> = {
   DAM_CLOSED: "Day-ahead bids for that operating day closed at 10:00 AM Central the day before.",
   DAM_NOT_OPEN: "ERCOT takes day-ahead bids for an operating day from fourteen days before it.",
   QUANTITY_INCREMENT: "ERCOT takes bid quantities in steps of 0.1 MW.",
+  PRICE_INCREMENT: "ERCOT takes bid prices in whole cents per MWh.",
   CLIENT_ORDER_ID_INVALID: "The idempotency key must be 1 to 128 characters.",
   IDEMPOTENCY_KEY_REUSED:
     "That idempotency key was already used for a different order. Use a new key for a new order.",

@@ -5,6 +5,7 @@ import { getSessionUser, getUserProfile } from "@/lib/auth";
 import { ok, fail } from "@/lib/api";
 import { removeAvatarAt } from "@/lib/account";
 import { normalizeUsername } from "@/lib/profile";
+import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,7 @@ const Body = z.object({ confirm: z.string().max(64) });
 export async function DELETE(req: Request) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
+  if (await overLimit(LIMITS.accountChange, user.id)) return tooManyRequests(LIMITS.accountChange);
 
   const parsed = Body.safeParse(await req.json().catch(() => null));
   const profile = await getUserProfile(user.id);

@@ -57,7 +57,8 @@ const DAM_PRODUCT = "DAM_HOURLY";
 type HourKey = string;
 const keyOf = (h: OperatingHour): HourKey => `${h.he}${h.repeated ? "r" : ""}`;
 
-const LIMIT_RE = /^-?\d+(\.\d{1,6})?$/;
+/** ERCOT takes bid prices in cents per MWh (0061). */
+const LIMIT_RE = /^-?\d+(\.\d{1,2})?$/;
 /** ERCOT takes bid quantities in steps of 0.1 MW (0045). */
 const MW_RE = /^\d+(\.\d)?$/;
 
@@ -160,7 +161,7 @@ export function TradePanel({
   const limitProblem = (() => {
     if (bidType !== "LIMIT") return null;
     for (const s of steps) {
-      if (!LIMIT_RE.test(s.price.trim())) return "Enter each step's price in $/MWh (it may be negative).";
+      if (!LIMIT_RE.test(s.price.trim())) return "Enter each step's price in $/MWh, to the cent (it may be negative).";
       const v = parseDec(s.price.trim());
       if (v < parseDec(String(BID_PRICE_FLOOR)) || v > parseDec(String(BID_PRICE_CAP))) {
         return `ERCOT accepts bid prices from −$${-BID_PRICE_FLOOR} to $${BID_PRICE_CAP.toLocaleString("en-US")}/MWh.`;
