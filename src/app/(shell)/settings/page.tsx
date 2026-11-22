@@ -193,6 +193,9 @@ export default async function SettingsPage({
           <dt className="t-mute">Member since</dt>
           <dd className="mono">{localDate(profile.created_at, tz)}</dd>
         </dl>
+        {/* A file download, not a page: <Link> would route to it client-side.
+            The rule reads the /api catch-all (api/[...path]) as a page. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a href="/api/trades/export" className="btn btn-sm inline-flex">
           Download trade blotter (CSV)
         </a>

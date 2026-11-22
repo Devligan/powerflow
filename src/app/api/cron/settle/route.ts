@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { runAutoSettlement, settlementEnabled } from "@/lib/settlement";
-import { safeEqual, ok, fail } from "@/lib/api";
+import { NO_STORE, safeEqual, ok, fail } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -39,7 +39,7 @@ async function handle(req: Request) {
       // per-position reasons rather than only a status code.
       return NextResponse.json(
         { ...summary, error: `settlement failed for ${summary.failed} position(s)` },
-        { status: 500 }
+        { status: 500, headers: NO_STORE }
       );
     }
     return ok(summary);

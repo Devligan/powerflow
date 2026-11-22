@@ -7,12 +7,15 @@ import {
 } from "@/lib/supabase/config";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import { isCrossSiteWrite } from "@/lib/same-origin";
+import { requiredMediaType } from "@/lib/media-type";
+import { fail } from "@/lib/api";
 import { isPublicPath, sendsSignedInToDesk } from "@/lib/route-access";
 
 /**
  * Route protection + Supabase session refresh (cookie rotation).
- * API routes only pass the cross-site check here: each handler performs its
- * own auth, and the cron endpoints are guarded by CRON_SECRET.
+ * API routes only pass the cross-site and content-type checks here: each
+ * handler performs its own auth, and the cron endpoints are guarded by
+ * CRON_SECRET.
  */
 export const config = {
   matcher: [
@@ -32,9 +35,13 @@ export async function proxy(request: NextRequest) {
     (isApi || request.nextUrl.pathname === "/auth/signout") &&
     isCrossSiteWrite(request.method, request.headers)
   ) {
-    return NextResponse.json({ error: "Cross-site request refused." }, { status: 403 });
+    return fail("Cross-site request refused.", 403);
   }
-  if (isApi) return NextResponse.next();
+  if (isApi) {
+    const required = requiredMediaType(request.method, request.nextUrl.pathname, request.headers);
+    if (required) return fail(`Send this request as ${required}.`, 415, { Accept: required });
+    return NextResponse.next();
+  }
 
   let supabaseResponse = NextResponse.next({ request });
 

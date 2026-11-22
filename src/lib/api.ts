@@ -4,12 +4,19 @@ import { format } from "@/lib/money";
 /** Money value as a human decimal string (consumer parses with parseDec). */
 export const m = (n: bigint) => format(n, 6);
 
+/**
+ * API answers are about one account, or about a request that failed: no cache,
+ * shared or private, may keep them (#71). Without this, Vercel marks a
+ * handler's response `public`. Only okPublic opts out.
+ */
+export const NO_STORE = { "Cache-Control": "no-store" } as const;
+
 export function ok<T>(data: T, init?: number): NextResponse {
-  return NextResponse.json(data, { status: init ?? 200 });
+  return NextResponse.json(data, { status: init ?? 200, headers: NO_STORE });
 }
 
-export function fail(message: string, status = 400): NextResponse {
-  return NextResponse.json({ error: message }, { status });
+export function fail(message: string, status = 400, headers?: Record<string, string>): NextResponse {
+  return NextResponse.json({ error: message }, { status, headers: { ...NO_STORE, ...headers } });
 }
 
 /**
