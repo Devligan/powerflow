@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/auth";
 import { ok, fail } from "@/lib/api";
 import { passwordLinkStatus } from "@/lib/account";
 import { PASSWORD_MIN } from "@/lib/profile";
+import { LIMITS, overLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ const Body = z.object({ password: z.string().min(PASSWORD_MIN).max(128) });
 export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return fail("Unauthorized", 401);
+  if (await overLimit(LIMITS.accountChange, user.id)) return tooManyRequests(LIMITS.accountChange);
 
   const link = await passwordLinkStatus();
   if (!link.ok) {
