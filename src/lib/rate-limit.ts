@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { NextResponse } from "next/server";
+import type { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { fail } from "@/lib/api";
 
 /**
  * Per-subject request limits, counted in Postgres (rate_limit_hit, 0042) so
@@ -67,10 +68,9 @@ export async function overLimit(limit: Limit, subject: string): Promise<boolean>
 }
 
 export function tooManyRequests(limit: Limit): NextResponse {
-  return NextResponse.json(
-    { error: "Too many requests. Wait a little and try again." },
-    { status: 429, headers: { "Retry-After": String(limit.windowSeconds) } }
-  );
+  return fail("Too many requests. Wait a little and try again.", 429, {
+    "Retry-After": String(limit.windowSeconds),
+  });
 }
 
 /** The visitor's address, as Vercel's edge reports it. */

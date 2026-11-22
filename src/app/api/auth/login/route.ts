@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { fail, ok } from "@/lib/api";
 import { LIMITS, clientIp, overLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -22,14 +22,11 @@ export async function POST(req: Request) {
       }
     }
   } catch {
-    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    return fail("Invalid request.", 400);
   }
 
   if (!email || !password) {
-    return NextResponse.json(
-      { error: "Email and password are required." },
-      { status: 400 }
-    );
+    return fail("Email and password are required.", 400);
   }
 
   const ip = clientIp(req);
@@ -47,19 +44,13 @@ export async function POST(req: Request) {
     // cannot be used to find out who has an account. An unconfirmed address
     // is only reported after the password matched, so saying so leaks nothing.
     if (error.code === "email_not_confirmed") {
-      return NextResponse.json(
-        { error: "Confirm your email address first, using the link we sent you." },
-        { status: 401 }
-      );
+      return fail("Confirm your email address first, using the link we sent you.", 401);
     }
     if (error.status === 429) {
-      return NextResponse.json(
-        { error: "Too many attempts. Wait a minute and try again." },
-        { status: 429 }
-      );
+      return fail("Too many attempts. Wait a minute and try again.", 429);
     }
-    return NextResponse.json({ error: "Incorrect email or password." }, { status: 401 });
+    return fail("Incorrect email or password.", 401);
   }
 
-  return NextResponse.json({ ok: true });
+  return ok({ ok: true });
 }
