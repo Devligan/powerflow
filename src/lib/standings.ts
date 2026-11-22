@@ -31,7 +31,8 @@ export interface StandingsRow {
   joinedAt: string;
 }
 
-interface RawRow {
+/** A row of get_leaderboard, as the service role reads it. */
+export interface RawRow {
   user_id: string;
   username: string;
   display_name: string | null;
@@ -57,30 +58,65 @@ export function standingsSize(raw: string | null | undefined): number {
 /**
  * The standings mark every opted-in book to market, and the Rank page is
  * public: computed per visitor, anyone could turn page loads into database
- * load. They are held for STANDINGS_TTL_MS per function instance, and
- * concurrent requests share one computation; only `isViewer` is per request.
+ * load. The ranking is held for STANDINGS_TTL_MS per function instance, and
+ * concurrent requests share one computation.
+ *
+ * Who may be shown is not cached. Leaving the standings takes effect on the
+ * next page load, not when the cache expires (#70), and a new name or picture
+ * shows at once: those are read per request, by primary key.
  */
 const STANDINGS_TTL_MS = 30_000;
-type Ranked = { row: RawRow; avatarUrl: string | null };
-const standingsCache = new Map<number, { at: number; rows: Promise<Ranked[]> }>();
+const standingsCache = new Map<number, { at: number; rows: Promise<RawRow[]> }>();
 
-async function rankedStandings(top: number): Promise<Ranked[]> {
-  const admin = supabaseAdmin();
-  const { data, error } = await admin.rpc("get_leaderboard", { p_top: top });
+async function rankedStandings(top: number): Promise<RawRow[]> {
+  const { data, error } = await supabaseAdmin().rpc("get_leaderboard", { p_top: top });
   if (error) throw new Error(error.message);
-  const rows = (data ?? []) as unknown as RawRow[];
-  if (rows.length === 0) return [];
+  return (data ?? []) as unknown as RawRow[];
+}
 
-  const { data: profiles, error: pError } = await admin
-    .from("profiles")
-    .select("id, avatar_url, onboarded_at")
-    .in("id", rows.map((r) => r.user_id));
-  if (pError) throw new Error(pError.message);
-  const byId = new Map((profiles ?? []).map((p) => [p.id as string, p]));
+/** A profile as it is now: whether, and as whom, the trader may be shown. */
+export interface ListedProfile {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  onboarded_at: string | null;
+  leaderboard_opt_in: boolean;
+}
 
-  return rows
-    .filter((r) => byId.get(r.user_id)?.onboarded_at != null && r.display_name)
-    .map((row) => ({ row, avatarUrl: (byId.get(row.user_id)?.avatar_url as string | null) ?? null }));
+/**
+ * The cached ranking, cut to the traders who are listed now, ranked again.
+ * A trader who has left, or has not yet chosen a name (onboarded_at NULL),
+ * is left out; one without a current profile row is too.
+ */
+export function listedStandings(
+  ranked: RawRow[],
+  profiles: ListedProfile[],
+  viewerId: string | null
+): StandingsRow[] {
+  const byId = new Map(profiles.map((p) => [p.id, p]));
+  const rows: StandingsRow[] = [];
+  for (const r of ranked) {
+    const p = byId.get(r.user_id);
+    if (!p || !p.leaderboard_opt_in || p.onboarded_at == null || !p.display_name) continue;
+    rows.push({
+      rank: rows.length + 1,
+      displayName: p.display_name,
+      avatarUrl: p.avatar_url,
+      isViewer: viewerId != null && r.user_id === viewerId,
+      startingCash: r.starting_cash,
+      cashBalance: r.cash_balance,
+      realizedPnl: r.realized_pnl,
+      markedValue: r.marked_value,
+      equity: r.equity,
+      returnBps: r.return_bps,
+      openNotionalMwh: r.open_notional_mwh,
+      openNotionalMw: r.open_notional_mw,
+      positionsCount: r.positions_count,
+      tradesCount: r.trades_count,
+      joinedAt: r.joined_at,
+    });
+  }
+  return rows;
 }
 
 /**
@@ -119,22 +155,14 @@ export async function getPublicStandings(
     entry.rows.catch(() => standingsCache.delete(top));
   }
   const ranked = await entry.rows;
+  if (ranked.length === 0) return [];
 
-  return ranked.map(({ row: r, avatarUrl }, i) => ({
-      rank: i + 1,
-      displayName: r.display_name as string,
-      avatarUrl,
-      isViewer: viewerId != null && r.user_id === viewerId,
-      startingCash: r.starting_cash,
-      cashBalance: r.cash_balance,
-      realizedPnl: r.realized_pnl,
-      markedValue: r.marked_value,
-      equity: r.equity,
-      returnBps: r.return_bps,
-      openNotionalMwh: r.open_notional_mwh,
-      openNotionalMw: r.open_notional_mw,
-      positionsCount: r.positions_count,
-      tradesCount: r.trades_count,
-      joinedAt: r.joined_at,
-    }));
+  // A failure here fails the page: it must never fall back to showing anyone.
+  const { data: profiles, error } = await supabaseAdmin()
+    .from("profiles")
+    .select("id, display_name, avatar_url, onboarded_at, leaderboard_opt_in")
+    .in("id", ranked.map((r) => r.user_id));
+  if (error) throw new Error(error.message);
+
+  return listedStandings(ranked, (profiles ?? []) as ListedProfile[], viewerId);
 }
