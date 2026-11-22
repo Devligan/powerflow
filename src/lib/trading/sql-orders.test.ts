@@ -269,6 +269,32 @@ describe.skipIf(!dbTestsEnabled())("limit orders (live database)", () => {
     expect(order!.status).toBe("EXPIRED");
   }, 60_000);
 
+  it("refuses an expiry after delivery starts, and takes one at it (0060)", async () => {
+    await setClock(userA.id, beforeGate);
+    const limit = { p_limit_price: (print - 20).toFixed(2) };
+
+    const late = await place(clientA, userA.id, {
+      ...limit,
+      p_expires_at: new Date(Date.parse(deliveryStart) + 1_000).toISOString(),
+    });
+    expect(late.error?.message).toContain("EXPIRY_INVALID");
+    const far = await place(clientA, userA.id, { ...limit, p_expires_at: "2099-01-01T00:00:00Z" });
+    expect(far.error?.message).toContain("EXPIRY_INVALID");
+
+    const atDelivery = await place(clientA, userA.id, { ...limit, p_expires_at: deliveryStart });
+    expect(atDelivery.error).toBeNull();
+    const byDefault = await place(clientA, userA.id, limit);
+    expect(byDefault.error).toBeNull();
+    const { data: rows } = await db
+      .from("paper_orders")
+      .select("expires_at")
+      .in("id", [atDelivery.data, byDefault.data]);
+    expect(rows!.map((r) => Date.parse(r.expires_at as string))).toEqual([
+      Date.parse(deliveryStart),
+      Date.parse(deliveryStart),
+    ]);
+  }, 60_000);
+
   it("enforces ownership and the service-role boundary", async () => {
     // A user cannot place into someone else's account…
     const { error: foreignErr } = await place(clientA, userB.id);
